@@ -1,0 +1,8 @@
+{
+  "name": "fnb-saas-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
