@@ -33,11 +33,10 @@ export function Sidebar() {
           <NavLink
             key={link.to}
             to={link.to}
-            className={({ isActive }) => 
-              `flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                isActive 
-                  ? 'bg-[var(--color-brand-accent)]/40 text-[var(--color-brand-secondary)] shadow-sm' 
-                  : 'text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)]'
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${isActive
+                ? 'bg-[var(--color-brand-accent)]/40 text-[var(--color-brand-secondary)] shadow-sm'
+                : 'text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)]'
               }`
             }
           >
