@@ -47,11 +47,13 @@ export class SupportService {
     // 3. Resolve customer_id from authenticated user (if CUSTOMER role)
     let customerId: string | null = order.customer_id ?? null;
     if (user.role_app === 'CUSTOMER' && !customerId) {
-      // Try to resolve customer by auth_user_id
+      // ISSUE 4 FIX: Phải filter theo cả auth_user_id + tenant_id
+      // Nếu user có customer profile ở nhiều tenant, .single() sẽ lỗi nếu thiếu tenant filter
       const { data: customer } = await supabase
         .from('customers')
         .select('id')
         .eq('auth_user_id', user.sub)
+        .eq('tenant_id', user.tenant_id)
         .single();
       customerId = customer?.id ?? null;
     }

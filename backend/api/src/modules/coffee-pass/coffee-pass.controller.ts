@@ -1,16 +1,13 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { CoffeePassService } from './coffee-pass.service.js';
-import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard.js';
-import { TenantGuard } from '../../common/guards/tenant.guard.js';
-import { RolesGuard } from '../../common/guards/roles.guard.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { SubscribeDto } from './dto/subscribe.dto.js';
 import { RedeemDto } from './dto/redeem.dto.js';
 
+// Guards (SupabaseAuthGuard, TenantGuard, RolesGuard) đã được đăng ký global trong CommonModule
 @Controller('coffee-pass')
-@UseGuards(SupabaseAuthGuard, TenantGuard, RolesGuard)
 export class CoffeePassController {
   constructor(private readonly coffeePassService: CoffeePassService) {}
 

@@ -206,3 +206,55 @@
   - TOTP replay window of 30 seconds.
   - Duplicate `@UseGuards` on B2 controllers vs B1 global guards.
 - **Ready for Git review:** YES. Code is frozen and ready for the `bedev` branch commit/push.
+
+---
+
+## Code Review Fix Round
+
+**Date:** 2026-09-03
+**Trigger:** B2_REVIEW_REPORT.md — 6 issues từ code review
+
+### Issue 1 — Group Order Foreign Key Violation
+- **Status:** FIXED
+- **File:** `group-order.service.ts`
+- **Change:** Resolve `customers.id` bằng `auth_user_id + tenant_id` trước khi lưu vào Redis cart item. Không còn lưu `user.sub` (auth.users.id) vào `added_by_customer_id`.
+
+### Issue 2 — Group Order Realtime Room Cannot Be Joined
+- **Status:** FIXED
+- **File:** `realtime.gateway.ts`
+- **Change:** Thêm `@SubscribeMessage('join_group_order')` và `@SubscribeMessage('leave_group_order')` handlers. tenant_id từ JWT claim, không tin client. Room name khớp `emitGroupOrderCartUpdated`.
+
+### Issue 3 — Wallet Payment Atomicity
+- **Status:** FIXED
+- **Files:** `order.service.ts`, `database/migrations/005_pay_order_wallet.sql` (NEW)
+- **Change:** Tạo PostgreSQL function `fn_pay_order_wallet` với `FOR UPDATE` lock + full DB transaction. `payOrder` WALLET path gọi 1 RPC duy nhất thay vì 2 independent operations.
+
+### Issue 4 — Support CSAT Customer Lookup Not Tenant-Scoped
+- **Status:** FIXED
+- **File:** `support.service.ts`
+- **Change:** Thêm `.eq('tenant_id', user.tenant_id)` vào customer lookup trong `submitCsat`.
+
+### Issue 5 — Coffee Pass TOTP Replay
+- **Status:** FIXED
+- **File:** `coffee-pass.service.ts`
+- **Change:** Inject `RedisService`. Thêm `claimTotpWindow()` dùng `SET NX EX 60`. Claim TOTP window trước khi decrement DB. Key: `coffee_pass:redeemed:{tenantId}:{subscriptionId}:{totpWindow}`.
+
+### Issue 6 — Duplicate @UseGuards
+- **Status:** FIXED
+- **Files:** `group-order.controller.ts`, `wallet.controller.ts`, `coffee-pass.controller.ts`, `support.controller.ts`
+- **Change:** Xóa `@UseGuards(SupabaseAuthGuard, TenantGuard, RolesGuard)` và import guard thừa. Guards đã global trong CommonModule.
+
+### Build & Test After Fix Round
+- **npm run build:** ✅ PASS (exit code 0)
+- **npm test (vitest run):** ✅ 18/18 PASS
+- **E2E tests:** NOT EXECUTED — cần Supabase + Redis live environment.
+
+### New Files Created
+- `backend/api/database/migrations/005_pay_order_wallet.sql`
+
+### Known Remaining Risks After Fix
+1. `fn_pay_order_wallet` phải được deploy lên Supabase SQL Editor trước khi WALLET payment hoạt động.
+2. Nếu Redis down, TOTP claim sẽ throw → Coffee Pass redeem fail (fail-closed — an toàn về security).
+3. `added_by_customer_id = null` với khách vãng lai (không có customer profile) — chấp nhận được theo schema (nullable FK).
+4. E2E scenarios chưa thể tự động hóa không có seeded Supabase + Redis.
+

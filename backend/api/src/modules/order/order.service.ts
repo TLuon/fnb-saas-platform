@@ -317,9 +317,40 @@ export class OrderService {
       throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã thanh toán hoặc đã hủy');
     }
 
-    // Integration Boundary cho Wallet & Coffee Pass (Phase 5 & 6)
     if (dto.payment_method === 'WALLET') {
-      await this.walletService.payWithWallet(user, accessToken, Number(order.final_amount) || Number(order.subtotal), orderId);
+      // ISSUE 3 FIX: Gọi một RPC fn_pay_order_wallet duy nhất
+      // Toàn bộ wallet debit + order COMPLETED xảy ra trong 1 DB transaction
+      // Không còn 2 operation độc lập có thể mất đồng bộ
+      const supabaseAdmin = this.supabaseService.admin();
+      const { data: result, error: rpcError } = await supabaseAdmin.rpc('fn_pay_order_wallet', {
+        p_order_id:     orderId,
+        p_auth_user_id: user.sub,
+        p_tenant_id:    user.tenant_id
+      });
+
+      if (rpcError) {
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi thanh toán ví: ${rpcError.message}`);
+      }
+
+      const rpcResult = result as { success: boolean; error_code?: string; message?: string };
+      if (!rpcResult?.success) {
+        const errCode = (rpcResult?.error_code ?? 'ERR_9002_INTERNAL_SERVER_ERROR') as import('../../common/constants/error-codes.js').ErrorCode;
+        const errMsg  = rpcResult?.message ?? 'Thanh toán ví thất bại';
+        throw new AppException(errCode, errMsg);
+      }
+
+      // RPC đã tự update order + free table — chỉ cần ghi audit log
+      await supabaseAdmin.from('audit_logs').insert({
+        tenant_id:    user.tenant_id,
+        actor_user_id: user.sub,
+        action:       'PAY_ORDER',
+        entity_type:  'orders',
+        entity_id:    orderId,
+        metadata:     { payment_method: 'WALLET', ...rpcResult }
+      });
+
+      return { message: 'Đã thanh toán thành công' };
+
     } else if (dto.payment_method === 'COFFEE_PASS') {
       if (!dto.coffee_pass_subscription_id || !dto.totp_code) {
         throw new AppException('ERR_9001_VALIDATION_FAILED', 'Thiếu thông tin gói Coffee Pass hoặc mã xác nhận');
@@ -327,7 +358,8 @@ export class OrderService {
       await this.coffeePassService.redeemForOrder(user, accessToken, dto.coffee_pass_subscription_id, dto.totp_code, orderId);
     }
 
-    // 2. Mark as completed (VIETQR / default / WALLET / COFFEE_PASS)
+    // CASH / VIETQR / COFFEE_PASS: Update order status thông thường
+    // (COFFEE_PASS redeemForOrder đã xử lý validation, chỉ cần mark COMPLETED)
     const { error: updateError } = await supabase
       .from('orders')
       .update({
@@ -340,7 +372,7 @@ export class OrderService {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi cập nhật order thành COMPLETED');
     }
 
-    // 3. Free table
+    // Free table
     if (order.table_id) {
       await supabase
         .from('tables')
@@ -351,15 +383,15 @@ export class OrderService {
         .eq('id', order.table_id);
     }
 
-    // 4. Audit Log
+    // Audit Log
     const supabaseAdmin = this.supabaseService.admin();
     await supabaseAdmin.from('audit_logs').insert({
-      tenant_id: user.tenant_id,
+      tenant_id:    user.tenant_id,
       actor_user_id: user.sub,
-      action: 'PAY_ORDER',
-      entity_type: 'orders',
-      entity_id: orderId,
-      metadata: { payment_method: dto.payment_method }
+      action:       'PAY_ORDER',
+      entity_type:  'orders',
+      entity_id:    orderId,
+      metadata:     { payment_method: dto.payment_method }
     });
 
     return { message: 'Đã thanh toán thành công' };

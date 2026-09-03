@@ -2,7 +2,7 @@
   "name": "fnb-saas-platform",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "backend/*"
+    "backend/*",
+    "packages/*"
   ]
 }

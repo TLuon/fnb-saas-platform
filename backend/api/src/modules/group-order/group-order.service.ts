@@ -96,6 +96,17 @@ export class GroupOrderService {
       throw new AppException('ERR_7002_PRODUCT_NOT_FOUND', 'Sản phẩm không khả dụng');
     }
 
+    // ISSUE 1 FIX: Resolve tenant-scoped customers.id từ auth_user_id + tenant_id
+    // Không lưu user.sub (auth.users.id) vào added_by_customer_id vì FK phải là customers.id
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('auth_user_id', user.sub)
+      .eq('tenant_id', user.tenant_id)
+      .single();
+    // Nếu không tìm thấy customer (ví dụ STAFF thêm hộ), để null thay vì FK violation
+    const resolvedCustomerId: string | null = customer?.id ?? null;
+
     const redis = this.redisService.getClient();
     const key = this.getSessionKey(user.tenant_id, tableId);
     
@@ -115,14 +126,14 @@ export class GroupOrderService {
         throw new AppException('ERR_5002_SESSION_ALREADY_CONFIRMED', 'Session đã được chốt, không thể thêm món');
       }
 
-      // Add item
+      // Lưu resolvedCustomerId (customers.id) thay vì auth user UUID
       cart.cart_items.push({
         product_id: product.id,
         product_name: product.name,
         quantity: dto.quantity,
         unit_price: product.price,
         modifiers: dto.modifiers || [],
-        added_by_customer_id: user.sub,
+        added_by_customer_id: resolvedCustomerId,
         added_by_name: user.email || 'Khách'
       });
 

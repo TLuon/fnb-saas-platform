@@ -5,14 +5,10 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   ParseIntPipe,
   DefaultValuePipe
 } from '@nestjs/common';
 import { SupportService } from './support.service.js';
-import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard.js';
-import { TenantGuard } from '../../common/guards/tenant.guard.js';
-import { RolesGuard } from '../../common/guards/roles.guard.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
@@ -21,8 +17,8 @@ import { ProposeMatchDto } from './dto/propose-match.dto.js';
 import { ResolveTicketDto } from './dto/resolve-ticket.dto.js';
 import { MergeCustomersDto } from './dto/merge-customers.dto.js';
 
+// Guards (SupabaseAuthGuard, TenantGuard, RolesGuard) đã được đăng ký global trong CommonModule
 @Controller('support')
-@UseGuards(SupabaseAuthGuard, TenantGuard, RolesGuard)
 export class SupportController {
   constructor(private readonly supportService: SupportService) {}
 

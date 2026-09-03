@@ -1,16 +1,13 @@
-import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param } from '@nestjs/common';
 import { GroupOrderService } from './group-order.service.js';
-import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard.js';
-import { TenantGuard } from '../../common/guards/tenant.guard.js';
-import { RolesGuard } from '../../common/guards/roles.guard.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { JoinGroupOrderDto } from './dto/join-group-order.dto.js';
 import { AddCartItemDto } from './dto/add-cart-item.dto.js';
 
+// Guards (SupabaseAuthGuard, TenantGuard, RolesGuard) đã được đăng ký global trong CommonModule
 @Controller('group-order')
-@UseGuards(SupabaseAuthGuard, TenantGuard, RolesGuard)
 export class GroupOrderController {
   constructor(private readonly groupOrderService: GroupOrderService) {}
 

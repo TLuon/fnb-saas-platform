@@ -1,15 +1,12 @@
-import { Controller, Get, Post, Body, Query, UseGuards, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
 import { WalletService } from './wallet.service.js';
-import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard.js';
-import { TenantGuard } from '../../common/guards/tenant.guard.js';
-import { RolesGuard } from '../../common/guards/roles.guard.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { TopupDto } from './dto/topup.dto.js';
 
+// Guards (SupabaseAuthGuard, TenantGuard, RolesGuard) đã được đăng ký global trong CommonModule
 @Controller('wallet')
-@UseGuards(SupabaseAuthGuard, TenantGuard, RolesGuard)
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
 

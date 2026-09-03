@@ -4,6 +4,9 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
@@ -85,6 +88,64 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  /**
+   * ISSUE 2 FIX — join_group_order handler (server-side)
+   *
+   * Client emit: socket.emit('join_group_order', { table_id: '<uuid>' })
+   * Server xác minh:
+   *   1. Socket đã xác thực JWT (client.user được set trong handleConnection)
+   *   2. tenant_id lấy từ JWT — không tin payload client gửi
+   *   3. Client chỉ được join room thuộc tenant của mình
+   *
+   * Room name khớp chính xác với emitGroupOrderCartUpdated: group_order:{tenantId}:{tableId}
+   */
+  @SubscribeMessage('join_group_order')
+  async handleJoinGroupOrder(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { table_id: string }
+  ) {
+    const user = (client as any).user;
+
+    // Guard: socket phải đã xác thực (handleConnection set user)
+    if (!user || !user.tenant_id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const tableId = data?.table_id;
+    if (!tableId || typeof tableId !== 'string') {
+      client.emit('error', { message: 'table_id is required' });
+      return;
+    }
+
+    // tenant_id lấy từ JWT claim — client không thể inject tenant khác
+    const room = `group_order:${user.tenant_id}:${tableId}`;
+    client.join(room);
+    this.logger.log(`Client ${client.id} joined group order room ${room}`);
+
+    client.emit('joined_group_order', { room, table_id: tableId });
+  }
+
+  /**
+   * leave_group_order — cleanup khi client rời khỏi phòng nhóm chủ động
+   */
+  @SubscribeMessage('leave_group_order')
+  handleLeaveGroupOrder(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { table_id: string }
+  ) {
+    const user = (client as any).user;
+
+    if (!user || !user.tenant_id) return;
+
+    const tableId = data?.table_id;
+    if (!tableId || typeof tableId !== 'string') return;
+
+    const room = `group_order:${user.tenant_id}:${tableId}`;
+    client.leave(room);
+    this.logger.log(`Client ${client.id} left group order room ${room}`);
   }
 
   private extractToken(client: Socket): string | null {
