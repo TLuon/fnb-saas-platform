@@ -11,4 +11,26 @@ describe('RealtimeClient', () => {
     
     expect(client).toBeDefined();
   });
+
+  it('should pass token to socket auth handshake when provided', () => {
+    const client = new RealtimeClient({
+      supabaseUrl: 'https://test.supabase.co',
+      supabaseKey: 'test-key',
+      socketUrl: 'http://localhost:3000',
+      token: 'my-jwt-token'
+    });
+    
+    // Socket.IO stores auth in socket.auth
+    expect((client.socket as any).auth).toEqual({ token: 'Bearer my-jwt-token' });
+  });
+
+  it('should work without token (backwards compatible)', () => {
+    const client = new RealtimeClient({
+      supabaseUrl: 'https://test.supabase.co',
+      supabaseKey: 'test-key',
+      socketUrl: 'http://localhost:3000'
+    });
+    
+    expect(client.socket).toBeDefined();
+  });
 });

@@ -83,14 +83,23 @@ export default function SupportBoard() {
                       Tạo Đề xuất (Maker)
                     </button>
                   )}
-                  {tx.status === 'PENDING_APPROVAL' && (
-                    <button 
-                      onClick={() => handleApprove(tx.id)}
-                      className="bg-[var(--color-brand-primary)] text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-[var(--color-brand-secondary)] transition shadow-md"
-                    >
-                      Duyệt (Checker)
-                    </button>
-                  )}
+                  {tx.status === 'PENDING_APPROVAL' && (() => {
+                    const isSelfApproval = tx.makerId === currentUser.id;
+                    return (
+                      <button 
+                        onClick={() => handleApprove(tx.id)}
+                        disabled={isSelfApproval}
+                        title={isSelfApproval ? 'Bạn không thể tự duyệt đề xuất của chính mình' : 'Phê duyệt đề xuất'}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-bold transition shadow-md ${
+                          isSelfApproval 
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-50' 
+                            : 'bg-[var(--color-brand-primary)] text-white hover:bg-[var(--color-brand-secondary)]'
+                        }`}
+                      >
+                        Duyệt (Checker)
+                      </button>
+                    );
+                  })()}
                 </td>
               </tr>
             ))}
