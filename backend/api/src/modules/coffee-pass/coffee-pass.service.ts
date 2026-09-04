@@ -213,7 +213,7 @@ export class CoffeePassService {
     return { message: 'Đổi mã thành công', remaining_redemptions: sub.remaining_redemptions - 1 };
   }
 
-  async redeemForOrder(user: AuthenticatedUser, accessToken: string, subscriptionId: string, code: string, orderId: string) {
+  async redeemForOrder(user: AuthenticatedUser, accessToken: string, subscriptionId: string, code: string, _orderId: string) {
     const supabase = this.supabaseService.forUser(accessToken);
 
     const { data: sub, error } = await supabase

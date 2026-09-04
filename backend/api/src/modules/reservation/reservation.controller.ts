@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
 import { ReservationService } from './reservation.service.js';
 import { LockTableDto } from './dto/lock-table.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
@@ -30,10 +30,26 @@ export class ReservationController {
     return this.reservationService.generateQr(user, code);
   }
 
-  @Post('webhook/mock-payment')
+  /**
+   * POST /reservations/webhook/mock-payment/:tenantId
+   *
+   * @Public — không yêu cầu JWT (đây là webhook từ bank mock).
+   *
+   * `:tenantId` buộc bank/mock caller phải chỉ định tenant mà payment thuộc về.
+   * Server validate tenant tồn tại trước khi insert, không tin mù vào giá trị này
+   * mà chỉ dùng để gắn context — giả mạo tenantId sẽ bị chặn bởi
+   * validation tenant tồn tại (bước đầu tiên trong processMockPayment).
+   *
+   * Thay đổi này đảm bảo mọi payment_transactions (kể cả UNMATCHED) luôn có
+   * tenant_id ≠ null, cho phép Support của đúng tenant query được qua listUnmatched.
+   */
+  @Post('webhook/mock-payment/:tenantId')
   @Public()
-  async mockPaymentWebhook(@Body() dto: MockPaymentDto) {
-    return this.reservationService.processMockPayment(dto);
+  async mockPaymentWebhook(
+    @Param('tenantId') tenantId: string,
+    @Body() dto: MockPaymentDto,
+  ) {
+    return this.reservationService.processMockPayment(tenantId, dto);
   }
 
   @Delete(':code')

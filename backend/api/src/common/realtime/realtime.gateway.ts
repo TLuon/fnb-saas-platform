@@ -35,7 +35,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   constructor(private readonly configService: ConfigService) {}
 
-  afterInit(server: Server) {
+  afterInit(_server: Server) {
     const supabaseUrl = this.configService.get<string>('supabase.url') ?? '';
     this.issuer = this.configService.get<string>('supabase.jwtIssuer') ?? `${supabaseUrl}/auth/v1`;
     this.jwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));

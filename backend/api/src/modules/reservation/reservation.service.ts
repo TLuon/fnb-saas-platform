@@ -91,20 +91,40 @@ export class ReservationService {
     };
   }
 
-  async processMockPayment(dto: MockPaymentDto) {
-    // Extract RES_XXXXXX from transfer content
-    const match = dto.raw_transfer_content.match(/RES_[A-Z0-9]+/);
-    const code = match ? match[0] : null;
-    
+  async processMockPayment(tenantId: string, dto: MockPaymentDto) {
     const supabaseAdmin = this.supabaseService.admin();
     const redisClient = this.redisService.getClient();
+
+    // ── Bước 0: Validate tenant tồn tại ────────────────────────────────────
+    // Không tin mù tenantId từ caller — verify tenant tồn tại trong DB.
+    // Nếu tenantId giả/sai → throw luôn, không insert gì.
+    // (supabaseAdmin bỏ qua RLS nên query tenants không bị block)
+    const { data: tenant, error: tenantError } = await supabaseAdmin
+      .from('tenants')
+      .select('id')
+      .eq('id', tenantId)
+      .single();
+
+    if (tenantError || !tenant) {
+      throw new AppException('ERR_1003_TENANT_MISMATCH', 'Tenant không tồn tại hoặc tenantId không hợp lệ');
+    }
+
+    // ── Extract RES_XXXXXX từ nội dung chuyển khoản ────────────────────────
+    const match = dto.raw_transfer_content.match(/RES_[A-Z0-9]+/);
+    const code = match ? match[0] : null;
 
     if (code) {
       const resDataStr = await redisClient.get(`reservation:${code}`);
       if (resDataStr) {
         const resData = JSON.parse(resDataStr);
-        
-        // Valid payment match
+
+        // Đảm bảo reservation thuộc đúng tenant được gửi trong route param.
+        // Nếu caller gửi tenantId sai cho 1 reservation hợp lệ → reject.
+        if (resData.tenant_id !== tenantId) {
+          throw new AppException('ERR_1003_TENANT_MISMATCH', 'tenantId không khớp với reservation');
+        }
+
+        // Valid payment match — dùng tenant_id từ Redis (server-side, đáng tin)
         const { data: paymentTx, error: txError } = await supabaseAdmin
           .from('payment_transactions')
           .insert({
@@ -136,10 +156,13 @@ export class ReservationService {
       }
     }
 
-    // Unmatched payment
+    // ── Unmatched payment ────────────────────────────────────────────────────
+    // FIX: luôn set tenant_id = tenantId (đã validate ở bước 0)
+    // Trước đây thiếu tenant_id → transaction bị "mồ côi", Support không thấy được.
     const { data: paymentTx, error: txError } = await supabaseAdmin
       .from('payment_transactions')
       .insert({
+        tenant_id: tenantId,       // ← FIX: set tenant_id đúng, không để null
         amount: dto.amount,
         raw_transfer_content: dto.raw_transfer_content,
         status: 'UNMATCHED'
