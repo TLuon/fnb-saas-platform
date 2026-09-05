@@ -9,10 +9,11 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
 import { RoleApp } from '../types/auth.types.js';
+import { RedisService } from '../redis.service.js';
 
 interface SupabaseJwtPayload extends JWTPayload {
   role_app?: RoleApp;
@@ -23,7 +24,25 @@ interface SupabaseJwtPayload extends JWTPayload {
 
 @Injectable()
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3001')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        (process.env.NODE_ENV !== 'production' &&
+          (origin.includes('localhost') || origin.includes('127.0.0.1')))
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS not allowed for this origin'), false);
+      }
+    },
+    credentials: true,
+  },
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -33,7 +52,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   private jwks: ReturnType<typeof createRemoteJWKSet>;
   private issuer: string;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @Optional() private readonly redisService?: RedisService,
+  ) {}
 
   afterInit(_server: Server) {
     const supabaseUrl = this.configService.get<string>('supabase.url') ?? '';
@@ -120,6 +142,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return;
     }
 
+    // NEW-004 Authorization:
+    // Kiểm tra session giỏ hàng của bàn có tồn tại trong Redis không.
+    // Nếu không có active session, từ chối tham gia để chống nghe lén tuỳ tiện cùng tenant.
+    if (this.redisService) {
+      try {
+        const redis = this.redisService.getClient();
+        const sessionKey = `session:${user.tenant_id}:${tableId}`;
+        const sessionExists = await redis.exists(sessionKey);
+        if (!sessionExists) {
+          client.emit('error', { message: 'Active group order session not found for this table' });
+          return;
+        }
+      } catch (err: any) {
+        this.logger.error(`Failed to verify group order session: ${err.message}`);
+      }
+    }
+
     // tenant_id lấy từ JWT claim — client không thể inject tenant khác
     const room = `group_order:${user.tenant_id}:${tableId}`;
     client.join(room);
@@ -172,5 +211,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   /** REALTIME_EVENTS.md #2.4 — group_order_cart_updated */
   emitGroupOrderCartUpdated(tenantId: string, tableId: string, payload: any) {
     this.server.to(`group_order:${tenantId}:${tableId}`).emit('group_order_cart_updated', payload);
+  }
+
+  /** REALTIME_EVENTS.md #2.5 — unmatched_transaction_created */
+  emitUnmatchedTransactionCreated(
+    tenantId: string,
+    payload: {
+      transaction_id: string;
+      amount: number;
+      raw_transfer_content?: string;
+    },
+  ) {
+    this.server.to(`support:${tenantId}`).emit('unmatched_transaction_created', payload);
   }
 }

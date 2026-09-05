@@ -49,24 +49,17 @@ export class CoffeePassService {
   async subscribe(user: AuthenticatedUser, accessToken: string, dto: SubscribeDto) {
     const supabase = this.supabaseService.forUser(accessToken);
 
-    // Get customer
-    const { data: customer } = await supabase.from('customers').select('id').eq('auth_user_id', user.sub).single();
-    if (!customer) throw new AppException('ERR_1001_UNAUTHORIZED', 'Customer không tồn tại');
-
-    // Get plan
+    // Validate plan exists and belongs to tenant
     const { data: plan, error: planError } = await supabase
       .from('coffee_pass_plans')
-      .select('*')
+      .select('id, name, price, valid_days, total_redemptions')
       .eq('id', dto.plan_id)
       .eq('tenant_id', user.tenant_id)
       .single();
 
     if (planError || !plan) {
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Plan không tồn tại');
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Gói Coffee Pass không tồn tại hoặc không thuộc tenant');
     }
-
-    const fakeOrderId = null as any; 
-    await this.walletService.payWithWallet(user, accessToken, Number(plan.price), fakeOrderId);
 
     // Generate secret
     const secret = generateSecret();
@@ -75,23 +68,45 @@ export class CoffeePassService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + plan.valid_days);
 
-    const { data: subscription, error: subError } = await supabase
-      .from('coffee_pass_subscriptions')
-      .insert({
-        customer_id: customer.id,
-        plan_id: plan.id,
-        remaining_redemptions: plan.total_redemptions,
-        totp_secret: secret,
-        expires_at: expiresAt.toISOString()
-      })
-      .select('id, remaining_redemptions, expires_at')
-      .single();
+    // NEW-001 FIX: Gọi RPC fn_subscribe_coffee_pass nguyên tử (migration 007)
+    // Toàn bộ logic kiểm tra ví, khóa dòng FOR UPDATE, trừ ví và tạo subscription
+    // diễn ra trong 1 transaction an toàn, không bị RLS chặn
+    const supabaseAdmin = this.supabaseService.admin();
+    const { data: result, error: rpcError } = await supabaseAdmin.rpc('fn_subscribe_coffee_pass', {
+      p_auth_user_id: user.sub,
+      p_tenant_id:    user.tenant_id,
+      p_plan_id:      plan.id,
+      p_totp_secret:  secret,
+      p_expires_at:   expiresAt.toISOString(),
+    });
 
-    if (subError) {
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khi tạo subscription');
+    if (rpcError) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi đăng ký Coffee Pass: ${rpcError.message}`);
     }
 
-    return { message: 'Đăng ký Coffee Pass thành công', subscription };
+    const rpcResult = result as {
+      success: boolean;
+      error_code?: string;
+      message?: string;
+      subscription_id?: string;
+      remaining_redemptions?: number;
+      expires_at?: string;
+    };
+
+    if (!rpcResult?.success) {
+      const errCode = (rpcResult?.error_code ?? 'ERR_9002_INTERNAL_SERVER_ERROR') as import('../../common/constants/error-codes.js').ErrorCode;
+      const errMsg  = rpcResult?.message ?? 'Đăng ký Coffee Pass thất bại';
+      throw new AppException(errCode, errMsg);
+    }
+
+    return {
+      message: 'Đăng ký Coffee Pass thành công',
+      subscription: {
+        id: rpcResult.subscription_id,
+        remaining_redemptions: rpcResult.remaining_redemptions,
+        expires_at: rpcResult.expires_at,
+      },
+    };
   }
 
   async getCurrentCode(user: AuthenticatedUser, accessToken: string, subscriptionId: string) {

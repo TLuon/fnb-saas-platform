@@ -1,7 +1,8 @@
-import { IsInt, IsNotEmpty, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, Min } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 export class AddOrderItemDto {
-  @IsUUID()
+  @IsUuidLoose()
   @IsNotEmpty()
   product_id: string;
 

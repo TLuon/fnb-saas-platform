@@ -30,59 +30,61 @@ export class OrderService {
 
     const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unit_price), 0);
 
+    const { data: order } = await supabase
+      .from('orders')
+      .select('discount_amount')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    const discount = order?.discount_amount ? Number(order.discount_amount) : 0;
+    const finalAmount = Math.max(0, subtotal - discount);
+
     await supabase
       .from('orders')
-      .update({ subtotal, final_amount: subtotal })
+      .update({ subtotal, final_amount: finalAmount })
       .eq('id', orderId);
   }
 
-  async createOrder(user: AuthenticatedUser, accessToken: string, dto: CreateOrderDto) {
-    const supabase = this.supabaseService.forUser(accessToken);
-
-    // 1. Check table
-    const { data: table, error: tableError } = await supabase
-      .from('tables')
-      .select('id, status, floor_id')
-      .eq('id', dto.table_id)
-      .single();
-
-    if (tableError || !table) {
-      throw new AppException('ERR_2001_TABLE_NOT_FOUND', 'Bàn không tồn tại');
-    }
-
-    if (table.status === 'OCCUPIED' || table.status === 'CLEANING') {
-      throw new AppException('ERR_2002_TABLE_LOCKED', 'Bàn đang không khả dụng để mở order');
-    }
-
-    // 2. Create Order
+  async createOrder(user: AuthenticatedUser, _accessToken: string, dto: CreateOrderDto) {
+    // NEW-007 FIX: Gọi atomic RPC fn_create_order (migration 007)
+    // Toàn bộ logic kiểm tra bàn, khóa dòng FOR UPDATE, kiểm tra và khấu trừ cọc,
+    // tạo order và cập nhật bàn OCCUPIED diễn ra trong 1 transaction duy nhất,
+    // chống double-credit và double-seating tuyệt đối dưới tải cao
     const orderCode = 'ORD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        tenant_id: user.tenant_id,
-        branch_id: user.branch_id,
-        table_id: dto.table_id,
-        order_code: orderCode,
-        order_type: 'DINE_IN',
-        status: 'PENDING'
-      })
-      .select('id')
-      .single();
+    const supabaseAdmin = this.supabaseService.admin();
 
-    if (orderError) {
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khi tạo order');
+    const { data: result, error: rpcError } = await supabaseAdmin.rpc('fn_create_order', {
+      p_tenant_id:        user.tenant_id,
+      p_branch_id:        user.branch_id,
+      p_table_id:         dto.table_id,
+      p_order_code:       orderCode,
+      p_reservation_code: dto.reservation_code || null,
+    });
+
+    if (rpcError) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi khi tạo order: ${rpcError.message}`);
     }
 
-    // 3. Update table status
-    await supabase
-      .from('tables')
-      .update({
-        status: 'OCCUPIED',
-        current_order_id: order.id
-      })
-      .eq('id', dto.table_id);
+    const rpcResult = result as {
+      success: boolean;
+      error_code?: string;
+      message?: string;
+      order_id?: string;
+      order_code?: string;
+      deposit_applied?: number;
+    };
 
-    return { order_id: order.id, order_code: orderCode };
+    if (!rpcResult?.success) {
+      const errCode = (rpcResult?.error_code ?? 'ERR_9002_INTERNAL_SERVER_ERROR') as import('../../common/constants/error-codes.js').ErrorCode;
+      const errMsg  = rpcResult?.message ?? 'Tạo order thất bại';
+      throw new AppException(errCode, errMsg);
+    }
+
+    return {
+      order_id: rpcResult.order_id,
+      order_code: rpcResult.order_code,
+      deposit_applied: rpcResult.deposit_applied ?? 0,
+    };
   }
 
   async addOrderItem(user: AuthenticatedUser, accessToken: string, orderId: string, dto: AddOrderItemDto) {

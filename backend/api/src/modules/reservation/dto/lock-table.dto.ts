@@ -1,7 +1,8 @@
-import { IsNotEmpty, IsUUID } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 export class LockTableDto {
-  @IsUUID()
+  @IsUuidLoose()
   @IsNotEmpty()
   table_id: string;
 }

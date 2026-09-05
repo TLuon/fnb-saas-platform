@@ -80,7 +80,7 @@ export class OrderController {
   }
 
   @Get(':id')
-  @Roles('STAFF', 'CUSTOMER')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async getOrder(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,

@@ -1,7 +1,8 @@
-import { IsNumber, Min } from 'class-validator';
+import { IsNumber, IsPositive, Min } from 'class-validator';
 
 export class TopupDto {
-  @IsNumber()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @IsPositive()
   @Min(1)
   amount: number;
 }

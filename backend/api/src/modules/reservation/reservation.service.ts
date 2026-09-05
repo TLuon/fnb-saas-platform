@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../../config/supabase.service.js';
 import { RedisService } from '../../common/redis.service.js';
+import { RealtimeGateway } from '../../common/realtime/realtime.gateway.js';
 import { LockTableDto } from './dto/lock-table.dto.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
@@ -12,6 +13,7 @@ export class ReservationService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly redisService: RedisService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async lockTable(user: AuthenticatedUser, accessToken: string, dto: LockTableDto) {
@@ -91,14 +93,28 @@ export class ReservationService {
     };
   }
 
-  async processMockPayment(tenantId: string, dto: MockPaymentDto) {
+  async processMockPayment(tenantId: string, dto: MockPaymentDto, secret?: string) {
     const supabaseAdmin = this.supabaseService.admin();
     const redisClient = this.redisService.getClient();
 
-    // ── Bước 0: Validate tenant tồn tại ────────────────────────────────────
-    // Không tin mù tenantId từ caller — verify tenant tồn tại trong DB.
-    // Nếu tenantId giả/sai → throw luôn, không insert gì.
-    // (supabaseAdmin bỏ qua RLS nên query tenants không bị block)
+    // ── Bước 0: Validate Webhook Secret (NEW-003: Fail closed in production) ──
+    const isProd = process.env.NODE_ENV === 'production';
+    const configuredSecret = process.env.MOCK_WEBHOOK_SECRET;
+
+    if (isProd && !configuredSecret) {
+      throw new AppException(
+        'ERR_9002_INTERNAL_SERVER_ERROR',
+        'MOCK_WEBHOOK_SECRET chưa được cấu hình trong môi trường Production'
+      );
+    }
+
+    const expectedSecret = configuredSecret || (isProd ? null : 'dev-mock-secret-key-12345');
+
+    if (!secret || secret !== expectedSecret) {
+      throw new AppException('ERR_1001_UNAUTHORIZED', 'Webhook secret không hợp lệ hoặc bị thiếu');
+    }
+
+    // ── Bước 1: Validate tenant tồn tại ────────────────────────────────────
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from('tenants')
       .select('id')
@@ -109,7 +125,24 @@ export class ReservationService {
       throw new AppException('ERR_1003_TENANT_MISMATCH', 'Tenant không tồn tại hoặc tenantId không hợp lệ');
     }
 
-    // ── Extract RES_XXXXXX từ nội dung chuyển khoản ────────────────────────
+    // ── Bước 2: Idempotency Check — tránh duplicate webhook xử lý nhiều lần ──
+    const { data: existingCompletedTx } = await supabaseAdmin
+      .from('payment_transactions')
+      .select('id, status, reservation_code')
+      .eq('tenant_id', tenantId)
+      .eq('raw_transfer_content', dto.raw_transfer_content)
+      .eq('status', 'COMPLETED')
+      .maybeSingle();
+
+    if (existingCompletedTx) {
+      return {
+        message: 'Giao dịch đã được xử lý trước đó',
+        payment_transaction_id: existingCompletedTx.id,
+        idempotent: true,
+      };
+    }
+
+    // ── Bước 3: Extract RES_XXXXXX từ nội dung chuyển khoản ────────────────
     const match = dto.raw_transfer_content.match(/RES_[A-Z0-9]+/);
     const code = match ? match[0] : null;
 
@@ -118,13 +151,12 @@ export class ReservationService {
       if (resDataStr) {
         const resData = JSON.parse(resDataStr);
 
-        // Đảm bảo reservation thuộc đúng tenant được gửi trong route param.
-        // Nếu caller gửi tenantId sai cho 1 reservation hợp lệ → reject.
+        // Đảm bảo reservation thuộc đúng tenant được gửi trong route param
         if (resData.tenant_id !== tenantId) {
           throw new AppException('ERR_1003_TENANT_MISMATCH', 'tenantId không khớp với reservation');
         }
 
-        // Valid payment match — dùng tenant_id từ Redis (server-side, đáng tin)
+        // Valid payment match
         const { data: paymentTx, error: txError } = await supabaseAdmin
           .from('payment_transactions')
           .insert({
@@ -138,6 +170,22 @@ export class ReservationService {
           .single();
 
         if (txError) {
+          // Xử lý race condition đồng thời: nếu dính unique index 23505, query lại record đã insert
+          if ((txError as any).code === '23505') {
+            const { data: raceCompletedTx } = await supabaseAdmin
+              .from('payment_transactions')
+              .select('id')
+              .eq('tenant_id', resData.tenant_id)
+              .eq('reservation_code', code)
+              .eq('status', 'COMPLETED')
+              .maybeSingle();
+
+            return {
+              message: 'Giao dịch đã được xử lý trước đó',
+              payment_transaction_id: raceCompletedTx?.id,
+              idempotent: true,
+            };
+          }
           throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi lưu giao dịch thanh toán');
         }
 
@@ -150,19 +198,31 @@ export class ReservationService {
         // Free Redis locks
         await redisClient.del(`lock:${resData.tenant_id}:${resData.table_id}`, `reservation:${code}`);
 
-        // Realtime event table_status_changed is handled by Supabase Realtime automatically on UPDATE
-
         return { message: 'Thanh toán thành công, bàn đã được giữ', payment_transaction_id: paymentTx.id };
       }
     }
 
-    // ── Unmatched payment ────────────────────────────────────────────────────
-    // FIX: luôn set tenant_id = tenantId (đã validate ở bước 0)
-    // Trước đây thiếu tenant_id → transaction bị "mồ côi", Support không thấy được.
+    // ── Bước 4: Unmatched payment ──────────────────────────────────────────
+    const { data: existingUnmatchedTx } = await supabaseAdmin
+      .from('payment_transactions')
+      .select('id, status')
+      .eq('tenant_id', tenantId)
+      .eq('raw_transfer_content', dto.raw_transfer_content)
+      .eq('status', 'UNMATCHED')
+      .maybeSingle();
+
+    if (existingUnmatchedTx) {
+      return {
+        message: 'Giao dịch không khớp đã được ghi nhận trước đó',
+        payment_transaction_id: existingUnmatchedTx.id,
+        idempotent: true,
+      };
+    }
+
     const { data: paymentTx, error: txError } = await supabaseAdmin
       .from('payment_transactions')
       .insert({
-        tenant_id: tenantId,       // ← FIX: set tenant_id đúng, không để null
+        tenant_id: tenantId,
         amount: dto.amount,
         raw_transfer_content: dto.raw_transfer_content,
         status: 'UNMATCHED'
@@ -171,6 +231,21 @@ export class ReservationService {
       .single();
 
     if (txError) {
+      if ((txError as any).code === '23505') {
+        const { data: raceUnmatchedTx } = await supabaseAdmin
+          .from('payment_transactions')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('raw_transfer_content', dto.raw_transfer_content)
+          .eq('status', 'UNMATCHED')
+          .maybeSingle();
+
+        return {
+          message: 'Giao dịch không khớp đã được ghi nhận trước đó',
+          payment_transaction_id: raceUnmatchedTx?.id,
+          idempotent: true,
+        };
+      }
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi lưu giao dịch thanh toán');
     }
 
@@ -180,6 +255,13 @@ export class ReservationService {
         payment_transaction_id: paymentTx.id,
         status: 'PENDING'
       });
+
+    // Bắn realtime event unmatched_transaction_created tới Support dashboard của đúng tenant
+    this.realtimeGateway.emitUnmatchedTransactionCreated(tenantId, {
+      transaction_id: paymentTx.id,
+      amount: dto.amount,
+      raw_transfer_content: dto.raw_transfer_content,
+    });
 
     throw new AppException('ERR_3002_PAYMENT_CONTENT_MISMATCH', 'Nội dung chuyển khoản không khớp hoặc reservation đã hết hạn');
   }

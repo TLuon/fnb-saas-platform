@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Headers, Param, Post, Query } from '@nestjs/common';
 import { ReservationService } from './reservation.service.js';
 import { LockTableDto } from './dto/lock-table.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
@@ -6,6 +6,8 @@ import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
+
+import { AppException } from '../../common/exceptions/app.exception.js';
 
 @Controller('reservations')
 export class ReservationController {
@@ -31,25 +33,33 @@ export class ReservationController {
   }
 
   /**
+   * POST /reservations/webhook/mock-payment
    * POST /reservations/webhook/mock-payment/:tenantId
    *
    * @Public — không yêu cầu JWT (đây là webhook từ bank mock).
-   *
-   * `:tenantId` buộc bank/mock caller phải chỉ định tenant mà payment thuộc về.
-   * Server validate tenant tồn tại trước khi insert, không tin mù vào giá trị này
-   * mà chỉ dùng để gắn context — giả mạo tenantId sẽ bị chặn bởi
-   * validation tenant tồn tại (bước đầu tiên trong processMockPayment).
-   *
-   * Thay đổi này đảm bảo mọi payment_transactions (kể cả UNMATCHED) luôn có
-   * tenant_id ≠ null, cho phép Support của đúng tenant query được qua listUnmatched.
+   * Hỗ trợ cả 2 route để hoàn toàn tương thích với API_CONTRACT.md mục 5
+   * và cho phép caller truyền tenantId qua path param, query (?tenant_id=),
+   * header (x-tenant-id) hoặc body.
    */
-  @Post('webhook/mock-payment/:tenantId')
+  @Post(['webhook/mock-payment', 'webhook/mock-payment/:tenantId'])
   @Public()
   async mockPaymentWebhook(
-    @Param('tenantId') tenantId: string,
     @Body() dto: MockPaymentDto,
+    @Param('tenantId') tenantIdParam?: string,
+    @Query('tenant_id') tenantIdQuery?: string,
+    @Headers('x-tenant-id') tenantIdHeader?: string,
+    @Headers('x-webhook-secret') secretHeader?: string,
+    @Query('secret') secretQuery?: string,
   ) {
-    return this.reservationService.processMockPayment(tenantId, dto);
+    const tenantId = tenantIdParam || tenantIdQuery || tenantIdHeader || dto.tenant_id;
+    if (!tenantId) {
+      throw new AppException(
+        'ERR_1003_TENANT_MISMATCH',
+        'Thiếu tenantId (cần truyền qua route param, query tenant_id, body tenant_id, hoặc header x-tenant-id)'
+      );
+    }
+    const providedSecret = secretHeader || secretQuery;
+    return this.reservationService.processMockPayment(tenantId, dto, providedSecret);
   }
 
   @Delete(':code')

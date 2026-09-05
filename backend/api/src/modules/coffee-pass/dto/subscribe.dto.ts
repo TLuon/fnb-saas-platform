@@ -1,7 +1,8 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 export class SubscribeDto {
-  @IsString()
   @IsNotEmpty()
+  @IsUuidLoose()
   plan_id: string;
 }

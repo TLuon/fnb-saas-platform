@@ -183,60 +183,86 @@ export class GroupOrderService {
       throw new AppException('ERR_4003_EMPTY_ORDER_SUBMIT', 'Giỏ hàng nhóm đang trống');
     }
 
-    // Lock session in Redis
+    // Lock session in Redis (temporary lock while processing DB mutations)
     cart.confirmed = true;
-    const res = await redis.multi().setex(key, 300, JSON.stringify(cart)).exec();
+    const res = await redis.multi().setex(key, 7200, JSON.stringify(cart)).exec();
     if (!res) {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Có người khác đang thao tác trên giỏ hàng');
     }
 
-    // Insert items to Postgres
-    const { data: table } = await supabase.from('tables').select('current_order_id').eq('id', tableId).single();
-    if (!table || !table.current_order_id) {
-      throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Không tìm thấy order liên kết với bàn');
+    let orderId: string | null = null;
+    let insertedItemIds: string[] = [];
+
+    try {
+      // Insert items to Postgres
+      const { data: table } = await supabase.from('tables').select('current_order_id').eq('id', tableId).single();
+      if (!table || !table.current_order_id) {
+        throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Không tìm thấy order liên kết với bàn');
+      }
+      orderId = table.current_order_id;
+
+      const itemsToInsert = cart.cart_items.map((item: any) => ({
+        order_id: orderId,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        modifiers: item.modifiers,
+        kitchen_status: 'QUEUED',
+        added_by_customer_id: item.added_by_customer_id
+      }));
+
+      const { data: insertedItems, error: insertError } = await supabase
+        .from('order_items')
+        .insert(itemsToInsert)
+        .select('id');
+
+      if (insertError || !insertedItems) {
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khi ghi nhận order');
+      }
+      insertedItemIds = insertedItems.map((i: any) => i.id);
+
+      // Recalculate Subtotal
+      const { data: items } = await supabase.from('order_items').select('quantity, unit_price').eq('order_id', orderId);
+      if (items) {
+        const subtotal = items.reduce((sum: number, it: any) => sum + (it.quantity * it.unit_price), 0);
+        await supabase.from('orders').update({ subtotal, final_amount: subtotal }).eq('id', orderId);
+      }
+
+      // Call submitKitchen from OrderService
+      await this.orderService.submitKitchen(user, accessToken, orderId!);
+
+      // Delete session after successful submit
+      await redis.del(key);
+
+      // Emit final empty/confirmed state — REALTIME_EVENTS.md #2.4
+      this.realtimeGateway.emitGroupOrderCartUpdated(user.tenant_id, tableId, {
+        table_id: tableId,
+        cart_items: [],
+        cart_total: 0,
+        confirmed: true
+      });
+
+      return { message: 'Đã chốt order nhóm thành công' };
+    } catch (error) {
+      // NEW-008 / ISSUE-003: Compensating rollback on partial DB success
+      // If order_items were inserted but submitKitchen (or subtotal update) failed,
+      // delete the inserted order_items and restore previous subtotal to prevent duplicate items / double billing on retry
+      if (insertedItemIds.length > 0 && orderId) {
+        try {
+          await supabase.from('order_items').delete().in('id', insertedItemIds);
+          const { data: remainingItems } = await supabase.from('order_items').select('quantity, unit_price').eq('order_id', orderId);
+          const subtotal = (remainingItems || []).reduce((sum: number, it: any) => sum + (it.quantity * it.unit_price), 0);
+          await supabase.from('orders').update({ subtotal, final_amount: subtotal }).eq('id', orderId);
+        } catch {
+          // Best effort rollback
+        }
+      }
+
+      // Revert confirmed state in Redis with 7200s TTL so members can retry
+      cart.confirmed = false;
+      await redis.setex(key, 7200, JSON.stringify(cart));
+      throw error;
     }
-    const orderId = table.current_order_id;
-
-    const itemsToInsert = cart.cart_items.map((item: any) => ({
-      order_id: orderId,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      modifiers: item.modifiers,
-      kitchen_status: 'QUEUED',
-      added_by_customer_id: item.added_by_customer_id
-    }));
-
-    const { error: insertError } = await supabase.from('order_items').insert(itemsToInsert);
-    if (insertError) {
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khi ghi nhận order');
-    }
-
-    // Recalculate Subtotal? (handled partially by OrderService but let's call it just in case if OrderService does not auto-recalc in submitKitchen)
-    // Actually submitKitchen doesn't recalc subtotal. We should do it here or OrderService should do it.
-    // OrderService has a private method `calculateOrderSubtotal`, we can't call it. 
-    // It's better to update subtotal manually here.
-    const { data: items } = await supabase.from('order_items').select('quantity, unit_price').eq('order_id', orderId);
-    if (items) {
-      const subtotal = items.reduce((sum: number, it: any) => sum + (it.quantity * it.unit_price), 0);
-      await supabase.from('orders').update({ subtotal, final_amount: subtotal }).eq('id', orderId);
-    }
-
-    // Call submitKitchen from OrderService
-    await this.orderService.submitKitchen(user, accessToken, orderId);
-
-    // Optional: Delete session after successful submit
-    await redis.del(key);
-
-    // Emit final empty/confirmed state — REALTIME_EVENTS.md #2.4
-    this.realtimeGateway.emitGroupOrderCartUpdated(user.tenant_id, tableId, {
-      table_id: tableId,
-      cart_items: [],
-      cart_total: 0,
-      confirmed: true
-    });
-
-    return { message: 'Đã chốt order nhóm thành công' };
   }
 }

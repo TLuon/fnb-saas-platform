@@ -1,4 +1,5 @@
 import { IsIn, IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 export class PayOrderDto {
   @IsString()
@@ -7,7 +8,7 @@ export class PayOrderDto {
   payment_method: string;
 
   @IsOptional()
-  @IsString()
+  @IsUuidLoose()
   coffee_pass_subscription_id?: string;
 
   @IsOptional()

@@ -1,7 +1,8 @@
-import { IsUUID, IsNotEmpty } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 export class JoinGroupOrderDto {
-  @IsUUID()
+  @IsUuidLoose()
   @IsNotEmpty()
   table_id: string;
 }

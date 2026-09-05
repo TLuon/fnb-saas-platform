@@ -60,7 +60,7 @@
 |---|---|---|---|
 | POST | `/reservations/lock` | CUSTOMER | Khóa tạm bàn 10 phút bằng Redis `SET NX EX` với token sở hữu, đồng thời chuyển bàn `AVAILABLE → PENDING_LOCK`; trả `reservation_code` dạng `RES_XXXXX`. Lỗi `ERR_2002_TABLE_LOCKED` nếu đã bị khóa |
 | POST | `/reservations/:code/generate-qr` | CUSTOMER | Sinh chuỗi VietQR chứa `reservation_code` + số tiền cọc |
-| POST | `/reservations/webhook/mock-payment` | Public (mock) | Chỉ dùng demo; phải có rate limit và mock signature/secret ở server. Tạo `payment_transactions`, đối chiếu `reservation_code` → nếu khớp: `tables.status = RESERVED`, giải phóng lock, bắn `table_status_changed`; nếu không khớp nội dung: tạo `unmatched_transactions` (`ERR_3002_PAYMENT_CONTENT_MISMATCH`) |
+| POST | `/reservations/webhook/mock-payment` hoặc `/reservations/webhook/mock-payment/:tenantId` | Public (mock) | Chỉ dùng demo; phải có rate limit và header `x-webhook-secret` (bắt buộc trong production). Hỗ trợ truyền tenantId qua path param, query `?tenant_id=`, body, hoặc header `x-tenant-id`. Tạo `payment_transactions`, đối chiếu `reservation_code` → nếu khớp: `tables.status = RESERVED`, giải phóng lock, bắn `table_status_changed`; nếu không khớp nội dung: tạo `unmatched_transactions` (`ERR_3002_PAYMENT_CONTENT_MISMATCH`). Đảm bảo database-level idempotency chống duplicate webhook |
 | DELETE | `/reservations/:code` | CUSTOMER | Chỉ chủ token được hủy đặt bàn trước khi thanh toán; giải phóng lock bằng compare-and-delete, chuyển `PENDING_LOCK → AVAILABLE` |
 
 ## 6. Order / POS Module (`/orders`)

@@ -1,8 +1,9 @@
-import { IsUUID, IsNotEmpty } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 /** API_CONTRACT.md mục 10 — POST /support/unmatched/:id/propose */
 export class ProposeMatchDto {
-  @IsUUID()
+  @IsUuidLoose()
   @IsNotEmpty()
   customer_id: string;
 }

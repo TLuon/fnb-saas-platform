@@ -27,7 +27,12 @@ export class WalletService {
   }
 
   async topup(user: AuthenticatedUser, accessToken: string, dto: TopupDto) {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_MOCK_WALLET_TOPUP !== 'true') {
+      throw new AppException('ERR_1002_FORBIDDEN_ROLE', 'Tính năng nạp tiền mock bị vô hiệu hóa trong môi trường Production');
+    }
+
     const supabase = this.supabaseService.forUser(accessToken);
+    const supabaseAdmin = this.supabaseService.admin();
     
     const { data: customer } = await supabase.from('customers').select('id').eq('auth_user_id', user.sub).single();
     if (!customer) throw new AppException('ERR_1001_UNAUTHORIZED', 'Customer không tồn tại');
@@ -39,7 +44,7 @@ export class WalletService {
     const newBalance = Number(wallet.main_balance) + amount;
     
     // Concurrency / Race Condition check using Optimistic Locking pattern with standard UPDATE
-    const { data: updatedWallet, error: updateError } = await supabase
+    const { data: updatedWallet, error: updateError } = await supabaseAdmin
       .from('wallets')
       .update({ main_balance: newBalance })
       .eq('id', wallet.id)
@@ -50,8 +55,8 @@ export class WalletService {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Conflict số dư, nạp tiền thất bại');
     }
 
-    // Insert wallet_transactions
-    await supabase.from('wallet_transactions').insert({
+    // Insert wallet_transactions via admin client for financial integrity
+    await supabaseAdmin.from('wallet_transactions').insert({
       wallet_id: wallet.id,
       type: 'TOPUP',
       balance_type: 'MAIN',
@@ -60,7 +65,6 @@ export class WalletService {
     });
 
     // Insert audit log
-    const supabaseAdmin = this.supabaseService.admin();
     await supabaseAdmin.from('audit_logs').insert({
       tenant_id: user.tenant_id,
       actor_user_id: user.sub,
@@ -162,8 +166,10 @@ export class WalletService {
     const newPromoBalance = promoBalance - promoDeducted;
     const newMainBalance = mainBalance - mainDeducted;
 
-    // Optimistic lock approach
-    const { data: updatedWallet, error: updateError } = await supabase
+    const supabaseAdmin = this.supabaseService.admin();
+
+    // Optimistic lock approach via supabaseAdmin to prevent RLS denial on financial table writes
+    const { data: updatedWallet, error: updateError } = await supabaseAdmin
       .from('wallets')
       .update({ promo_balance: newPromoBalance, main_balance: newMainBalance })
       .eq('id', wallet.id)
@@ -175,9 +181,9 @@ export class WalletService {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Conflict số dư, thanh toán thất bại');
     }
 
-    // Record transactions
+    // Record transactions via supabaseAdmin
     if (promoDeducted > 0) {
-      await supabase.from('wallet_transactions').insert({
+      await supabaseAdmin.from('wallet_transactions').insert({
         wallet_id: wallet.id,
         order_id: orderId,
         type: 'PAYMENT',
@@ -188,7 +194,7 @@ export class WalletService {
     }
 
     if (mainDeducted > 0) {
-      await supabase.from('wallet_transactions').insert({
+      await supabaseAdmin.from('wallet_transactions').insert({
         wallet_id: wallet.id,
         order_id: orderId,
         type: 'PAYMENT',

@@ -1,8 +1,9 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 /** API_CONTRACT.md mục 10 — POST /support/csat */
 export class SubmitCsatDto {
-  @IsUUID()
+  @IsUuidLoose()
   @IsNotEmpty()
   order_id: string;
 
