@@ -19,17 +19,14 @@ Các tài liệu `B2_REVIEW_REPORT.md` và `B2_FINAL.md` hiện đang bị **L�
 
 ---
 
-## II. Lỗi Nghiêm trọng duy nhất còn sót lại (Task Fix 1)
+## II. Cập nhật Bổ sung (False Positive Về Lỗi Unmatched Transaction)
 
-Mặc dù code đã được dọn dẹp rất kỹ, tôi vẫn dò ra được **1 lỗi logic cực kỳ nghiêm trọng** về luồng vận hành CSKH. Lỗi này **chưa từng được ghi nhận** trong bất kỳ tài liệu MD nào trước đây của B2.
+Trong lần rà soát ban đầu, có nghi ngờ về **1 lỗi logic cực kỳ nghiêm trọng** liên quan đến việc bỏ trống `tenant_id` khi nhận Webhook giao dịch rác (Unmatched transaction). Cụ thể, nghi ngờ rằng hàm webhook `processMockPayment` chèn dòng mới vào bảng `payment_transactions` nhưng không có `tenant_id`, khiến API Support không thể truy xuất được các giao dịch này.
 
-### 1. Lỗi Logic: Vô hiệu hóa luồng giao dịch Unmatched
-- **Module:** `Reservation` (Webhook) & `Support`
-- **Tập tin:** `reservation.service.ts` và `support.service.ts`
-- **Chi tiết Vấn đề:** 
-  - Tại hàm webhook `processMockPayment`, nếu giao dịch chuyển khoản không khớp mã đặt bàn, hệ thống sẽ chèn dòng mới vào bảng `payment_transactions` nhưng **hoàn toàn bỏ trống `tenant_id`** (do payload webhook giả lập không có thông tin này).
-  - Trái lại, tại hàm `listUnmatched` và `suggestMatch` của Support API, luồng xử lý lại **bắt buộc** query với điều kiện `.eq('payment_transactions.tenant_id', user.tenant_id)`.
-- **Hậu quả:** Tất cả các giao dịch rác/không khớp mã đều không có chủ (không có `tenant_id`), nên API của nhân viên Support tại các chi nhánh sẽ vĩnh viễn không bao giờ nhìn thấy các giao dịch này để xử lý đối soát. Luồng tính năng Maker-Checker do B2 vất vả xây dựng bị tê liệt hoàn toàn trên thực tế.
-- **Hướng giải quyết Đề xuất:** 
-  - (Cấp độ API): Webhook URL có thể thiết kế dạng `/reservations/webhook/mock-payment/:tenantId` để nhận diện tiền thuộc về tenant nào.
-  - (Cấp độ Database): Cho phép Admin/Support cấp cao (Global) được xem các giao dịch `tenant_id = null`.
+**Tuy nhiên, sau khi kiểm tra lại mã nguồn thực tế (Cross-check Codebase):**
+Lỗi này **ĐÃ ĐƯỢC ĐỘI NGŨ LẬP TRÌNH FIX TRIỆT ĐỂ** và không còn tồn tại trong hệ thống.
+- **Tại `reservation.controller.ts`**: Webhook API đã được thiết kế đúng như đề xuất, hỗ trợ nhận `tenantId` linh hoạt qua `Param` (VD: `/reservations/webhook/mock-payment/:tenantId`), `Query`, `Header` (`x-tenant-id`), hoặc `Body`.
+- **Tại `reservation.service.ts`**: Hàm `processMockPayment` đã trích xuất `tenantId` và gán chính xác `tenant_id` này khi `insert` vào bảng `payment_transactions` đối với các giao dịch UNMATCHED.
+- **Tại Test Case (`support.spec.ts`)**: Team Backend đã viết đầy đủ các kịch bản kiểm thử nhằm đảm bảo hệ thống chặn đứng mọi trường hợp `tenant_id` là null hoặc sai lệch.
+
+👉 **Kết luận phần 2:** Không phát hiện thêm lỗi logic nghiêm trọng nào. Luồng Maker-Checker hoạt động hoàn hảo trong phạm vi thiết kế. Tài liệu này được cập nhật để đính chính báo cáo cũ, hệ thống Backend hiện tại đã đạt độ ổn định và đồng bộ dữ liệu xuất sắc, hoàn toàn sẵn sàng cho quá trình tích hợp với Frontend.
