@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createApiClient } from './api-client';
+import { AxiosError } from 'axios';
 
 describe('createApiClient', () => {
   it('should create an axios instance with the provided baseURL', () => {
@@ -32,17 +33,24 @@ describe('createApiClient', () => {
     });
 
     client.defaults.adapter = async (config) => {
-      const error: any = new Error('Request failed with status code 401');
-      error.isAxiosError = true;
-      error.response = {
-        status: 401,
-        data: {
-          error: {
-            code: 'ERR_1001_UNAUTHORIZED',
-            message: 'Thiếu hoặc sai JWT'
+      const error = new AxiosError(
+        'Request failed with status code 401',
+        'ERR_BAD_REQUEST',
+        config,
+        {},
+        {
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config: config,
+          data: {
+            error: {
+              code: 'ERR_1001_UNAUTHORIZED',
+              message: 'Thiếu hoặc sai JWT'
+            }
           }
         }
-      };
+      );
       throw error;
     };
 

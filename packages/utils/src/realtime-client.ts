@@ -5,6 +5,8 @@ export interface RealtimeClientConfig {
   supabaseUrl: string;
   supabaseKey: string;
   socketUrl: string;
+  /** JWT token for Socket.IO auth handshake */
+  token?: string;
 }
 
 export class RealtimeClient {
@@ -14,7 +16,8 @@ export class RealtimeClient {
   constructor(config: RealtimeClientConfig) {
     this.supabase = createClient(config.supabaseUrl, config.supabaseKey);
     this.socket = io(config.socketUrl, {
-      autoConnect: false // Connect manually when needed
+      autoConnect: false,
+      ...(config.token ? { auth: { token: `Bearer ${config.token}` } } : {})
     });
   }
 
@@ -27,3 +30,4 @@ export class RealtimeClient {
     this.supabase.removeAllChannels();
   }
 }
+
