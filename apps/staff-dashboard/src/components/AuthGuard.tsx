@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { hasRole } from '@fnb/utils';
+import React from 'react';
+import { useAuthStore } from '../store/authStore';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -7,21 +7,12 @@ interface AuthGuardProps {
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requiredRole }) => {
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const { currentUser } = useAuthStore();
 
-  useEffect(() => {
-    // Vite dashboard dùng localStorage để lưu JWT
-    const token = localStorage.getItem('jwt');
-    if (!token) {
-      setAuthorized(false);
-      return;
-    }
-    setAuthorized(hasRole(token, requiredRole));
-  }, [requiredRole]);
+  // OWNER has access to everything
+  const authorized = currentUser.role === requiredRole || currentUser.role === 'OWNER';
 
-  if (authorized === null) return <div className="p-4">Đang kiểm tra quyền...</div>;
-
-  if (authorized === false) {
+  if (!authorized) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--color-brand-neutral)]">
         <div className="p-6 max-w-sm w-full bg-[var(--color-brand-secondary)] text-[var(--color-brand-neutral)] rounded-xl shadow-md text-center">

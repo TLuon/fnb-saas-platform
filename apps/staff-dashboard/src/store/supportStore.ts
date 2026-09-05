@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAuthStore } from './authStore';
 
 export type TxStatus = 'UNMATCHED' | 'PENDING_APPROVAL' | 'RESOLVED';
 
@@ -13,50 +14,80 @@ export interface UnmatchedTransaction {
 
 interface SupportStore {
   transactions: UnmatchedTransaction[];
-  addTransaction: (tx: UnmatchedTransaction) => void;
-  propose: (txId: string, customerId: string, makerId: string) => void;
-  approve: (txId: string, checkerId: string) => void;
+  fetchTransactions: () => Promise<void>;
+  propose: (txId: string, customerId: string, makerId: string) => Promise<void>;
+  approve: (txId: string, checkerId: string) => Promise<void>;
 }
 
 export const useSupportStore = create<SupportStore>((set, get) => ({
-  transactions: [
-    {
-      id: 'tx-001',
-      amount: 150000,
-      content: 'Nguyen Van A chuyen tien ban 5',
-      status: 'UNMATCHED',
-      makerId: null,
-      proposedCustomerId: null
-    },
-    {
-      id: 'tx-002',
-      amount: 75000,
-      content: 'Tra da',
-      status: 'PENDING_APPROVAL',
-      makerId: 'support-1',
-      proposedCustomerId: 'C001'
+  transactions: [],
+  
+  fetchTransactions: async () => {
+    try {
+      const token = useAuthStore.getState().accessToken;
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/support/unmatched`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ transactions: data });
+      }
+    } catch (e) {
+      console.error('Failed to fetch transactions', e);
     }
-  ],
-  addTransaction: (tx) => set(state => ({ transactions: [...state.transactions, tx] })),
-  propose: (txId, customerId, makerId) => set(state => ({
-    transactions: state.transactions.map(tx => 
-      tx.id === txId 
-        ? { ...tx, status: 'PENDING_APPROVAL', proposedCustomerId: customerId, makerId } 
-        : tx
-    )
-  })),
-  approve: (txId, checkerId) => set((state) => {
-    const tx = state.transactions.find(t => t.id === txId);
-    if (!tx) return state;
+  },
+
+  propose: async (txId, customerId, makerId) => {
+    // Optimistic update
+    set(state => ({
+      transactions: state.transactions.map(tx => 
+        tx.id === txId 
+          ? { ...tx, status: 'PENDING_APPROVAL', proposedCustomerId: customerId, makerId } 
+          : tx
+      )
+    }));
+
+    try {
+      const token = useAuthStore.getState().accessToken;
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/support/unmatched/${txId}/propose`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ customerId })
+      });
+      if (!res.ok) throw new Error('API Failed');
+    } catch (e) {
+      // Revert on failure (simple reload for now)
+      get().fetchTransactions();
+    }
+  },
+
+  approve: async (txId, checkerId) => {
+    const tx = get().transactions.find(t => t.id === txId);
+    if (!tx) return;
     
     if (tx.makerId === checkerId) {
       throw new Error('ERR_6002_SELF_APPROVAL');
     }
 
-    return {
+    // Optimistic update
+    set((state) => ({
       transactions: state.transactions.map(t => 
         t.id === txId ? { ...t, status: 'RESOLVED' } : t
       )
-    };
-  })
+    }));
+
+    try {
+      const token = useAuthStore.getState().accessToken;
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/support/unmatched/${txId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('API Failed');
+    } catch (e) {
+      get().fetchTransactions();
+    }
+  }
 }));

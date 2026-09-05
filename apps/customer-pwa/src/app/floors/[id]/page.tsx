@@ -16,8 +16,8 @@ const INITIAL_TABLES: FloorTable[] = [
   { id: 'T06', name: 'Bàn 6', status: 'PENDING_LOCK' },
 ];
 
-export default function FloorPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = React.use(params);
+export default function FloorPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const [tables, setTables] = useState<FloorTable[]>(INITIAL_TABLES);
   const [lockingTable, setLockingTable] = useState<string | null>(null);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);

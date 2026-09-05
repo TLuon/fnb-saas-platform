@@ -31,25 +31,27 @@ export function Header() {
           </div>
           <ChevronDown size={16} className="text-gray-400" />
           
-          <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-100 shadow-lg rounded-xl overflow-hidden hidden group-hover:block z-50">
-            <button 
-              onClick={() => switchUser('owner-1', 'Chủ Quán', 'OWNER')}
-              className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
-            >
-              Chủ Quán (OWNER)
-            </button>
-            <button 
-              onClick={() => switchUser('support-1', 'Nhân viên Hỗ trợ 1', 'SUPPORT')}
-              className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
-            >
-              Hỗ trợ 1 (Maker/Checker)
-            </button>
-            <button 
-              onClick={() => switchUser('support-2', 'Nhân viên Hỗ trợ 2', 'SUPPORT')}
-              className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
-            >
-              Hỗ trợ 2 (Maker/Checker)
-            </button>
+          <div className="absolute top-full right-0 pt-2 w-48 hidden group-hover:block z-50">
+            <div className="bg-white border border-gray-100 shadow-lg rounded-xl overflow-hidden">
+              <button 
+                onClick={() => switchUser('owner-1', 'Chủ Quán', 'OWNER')}
+                className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
+              >
+                Chủ Quán (OWNER)
+              </button>
+              <button 
+                onClick={() => switchUser('support-1', 'Nhân viên Hỗ trợ 1', 'SUPPORT')}
+                className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
+              >
+                Hỗ trợ 1 (Maker/Checker)
+              </button>
+              <button 
+                onClick={() => switchUser('support-2', 'Nhân viên Hỗ trợ 2', 'SUPPORT')}
+                className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
+              >
+                Hỗ trợ 2 (Maker/Checker)
+              </button>
+            </div>
           </div>
         </div>
       </div>
