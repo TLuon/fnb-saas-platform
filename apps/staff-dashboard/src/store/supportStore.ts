@@ -45,20 +45,18 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
         : tx
     )
   })),
-  approve: (txId, checkerId) => {
-    const tx = get().transactions.find(t => t.id === txId);
-    if (!tx) return;
+  approve: (txId, checkerId) => set((state) => {
+    const tx = state.transactions.find(t => t.id === txId);
+    if (!tx) return state;
     
     if (tx.makerId === checkerId) {
       throw new Error('ERR_6002_SELF_APPROVAL');
     }
 
-    set(state => ({
+    return {
       transactions: state.transactions.map(t => 
-        t.id === txId 
-          ? { ...t, status: 'RESOLVED' } 
-          : t
+        t.id === txId ? { ...t, status: 'RESOLVED' } : t
       )
-    }));
-  }
+    };
+  })
 }));

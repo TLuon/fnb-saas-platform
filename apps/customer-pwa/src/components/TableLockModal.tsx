@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCountdown } from '../hooks/useCountdown';
 import { VietQRDeposit } from './VietQRDeposit';
 
@@ -13,6 +13,13 @@ interface Props {
 
 export function TableLockModal({ tableId, lockedUntil, onCancel, onSuccess, onTimeout }: Props) {
   const remaining = useCountdown(lockedUntil, onTimeout);
+  const [reservationCode, setReservationCode] = useState('');
+
+  useEffect(() => {
+    if (lockedUntil) {
+      setReservationCode(`RES-${tableId}-${Date.now().toString().slice(-4)}`);
+    }
+  }, [lockedUntil, tableId]);
 
   if (!lockedUntil) return null;
 
@@ -36,7 +43,7 @@ export function TableLockModal({ tableId, lockedUntil, onCancel, onSuccess, onTi
         <div className="p-6 overflow-y-auto bg-white m-4 rounded-xl shadow-sm border border-[#FED8B1]">
           <VietQRDeposit 
             amount={50000} 
-            reservationCode={`RES-${tableId}-${Date.now().toString().slice(-4)}`}
+            reservationCode={reservationCode || `RES-${tableId}`}
             onMockSuccess={onSuccess}
           />
         </div>

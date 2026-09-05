@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CountdownTimer } from '@fnb/utils';
 
 export function useCountdown(targetTimestamp: number | null, onComplete: () => void) {
   const [remaining, setRemaining] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     if (!targetTimestamp) {
@@ -14,7 +19,7 @@ export function useCountdown(targetTimestamp: number | null, onComplete: () => v
     setRemaining(diffSeconds);
 
     if (diffSeconds <= 0) {
-      onComplete();
+      onCompleteRef.current();
       return;
     }
 
@@ -23,14 +28,14 @@ export function useCountdown(targetTimestamp: number | null, onComplete: () => v
       (rem) => setRemaining(rem),
       () => {
         setRemaining(0);
-        onComplete();
+        onCompleteRef.current();
       }
     );
 
     timer.start();
 
     return () => timer.stop();
-  }, [targetTimestamp, onComplete]);
+  }, [targetTimestamp]);
 
   return remaining;
 }

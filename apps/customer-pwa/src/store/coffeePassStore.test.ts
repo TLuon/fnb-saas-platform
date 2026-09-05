@@ -11,14 +11,15 @@ describe('useCoffeePassStore', () => {
     store.buyPass({ id: 'pass1', name: 'Gói 10 ly', totalLimit: 10, remaining: 10 });
     
     expect(useCoffeePassStore.getState().activePasses).toHaveLength(1);
-    expect(useCoffeePassStore.getState().activePasses[0].id).toBe('pass1');
+    expect(useCoffeePassStore.getState().activePasses[0].id).toBeDefined();
   });
 
   it('should use a pass ticket', () => {
     const store = useCoffeePassStore.getState();
     store.buyPass({ id: 'pass1', name: 'Gói 10 ly', totalLimit: 10, remaining: 10 });
     
-    const success = useCoffeePassStore.getState().useTicket('pass1');
+    const passId = useCoffeePassStore.getState().activePasses[0].id;
+    const success = useCoffeePassStore.getState().useTicket(passId);
     expect(success).toBe(true);
     expect(useCoffeePassStore.getState().activePasses[0].remaining).toBe(9);
   });
@@ -27,7 +28,8 @@ describe('useCoffeePassStore', () => {
     const store = useCoffeePassStore.getState();
     store.buyPass({ id: 'pass1', name: 'Gói 1 ly', totalLimit: 1, remaining: 0 });
     
-    const success = useCoffeePassStore.getState().useTicket('pass1');
+    const passId = useCoffeePassStore.getState().activePasses[0].id;
+    const success = useCoffeePassStore.getState().useTicket(passId);
     expect(success).toBe(false);
     expect(useCoffeePassStore.getState().activePasses[0].remaining).toBe(0);
   });

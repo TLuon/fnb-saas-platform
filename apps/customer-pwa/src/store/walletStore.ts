@@ -30,7 +30,7 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
   topUp: (amount, description) => set((state) => ({
     mainBalance: state.mainBalance + amount,
     history: [{
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       amount,
       type: 'TOP_UP',
       description,
@@ -60,7 +60,7 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
       mainBalance: newMain,
       promoBalance: newPromo,
       history: [{
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         amount: -amount,
         type: 'PAYMENT',
         description,

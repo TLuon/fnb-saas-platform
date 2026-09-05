@@ -3,8 +3,8 @@
  * Do not use for real security.
  */
 export function generateTOTP(secret: string): string {
-  const window = Math.floor(Date.now() / 30000);
-  const str = `${secret}-${window}-salt`;
+  const timeWindow = Math.floor(Date.now() / 30000);
+  const str = `${secret}-${timeWindow}-salt`;
   
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {

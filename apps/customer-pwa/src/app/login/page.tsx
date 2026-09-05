@@ -18,7 +18,8 @@ export default function LoginPage() {
     }
     
     // Mock login success - giả lập API và gán cookie cho middleware đi qua
-    document.cookie = `jwt=mock_customer_token; path=/`;
+    const payload = btoa(JSON.stringify({ role_app: 'CUSTOMER', exp: Math.floor(Date.now() / 1000) + 86400 })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    document.cookie = `jwt=header.${payload}.signature; path=/`;
     showInfo('Đăng nhập thành công');
     router.push('/floors/1');
   };

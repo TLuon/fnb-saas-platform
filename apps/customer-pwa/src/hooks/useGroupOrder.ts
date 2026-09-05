@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { RealtimeClient } from '@fnb/utils';
 import { GroupOrderController } from '../store/GroupOrderController';
 import { useGroupCartStore } from '../store/groupCartStore';
@@ -7,18 +7,19 @@ import { createApiClient } from '@fnb/utils';
 
 /** Đọc JWT từ cookie (set bởi login flow) */
 function getTokenFromCookie(): string | null {
+  if (typeof document === 'undefined') return null;
   const match = document.cookie.match(/(?:^|;\s*)jwt=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-const apiClient = createApiClient({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
-  getToken: () => getTokenFromCookie(),
-});
-
 export function useGroupOrder(tableId: string | null) {
   const setItems = useGroupCartStore(state => state.setItems);
   const { showInfo, showError } = useToast();
+
+  const apiClient = useMemo(() => createApiClient({
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+    getToken: () => getTokenFromCookie(),
+  }), []);
 
   useEffect(() => {
     if (!tableId) return;

@@ -17,7 +17,7 @@ export const useCoffeePassStore = create<CoffeePassStore>((set, get) => ({
   activePasses: [],
   
   buyPass: (pass) => set((state) => ({
-    activePasses: [...state.activePasses, pass]
+    activePasses: [...state.activePasses, { ...pass, id: crypto.randomUUID() }]
   })),
 
   useTicket: (passId) => {

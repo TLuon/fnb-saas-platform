@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { TableStatus } from '@fnb/utils';
 import { TableLockModal } from '../../../components/TableLockModal';
 import { useToast } from '../../../components/ToastProvider';
@@ -35,32 +35,32 @@ export default function FloorPage({ params }: { params: Promise<{ id: string }> 
     setTables(prev => prev.map(t => t.id === table.id ? { ...t, status: 'PENDING_LOCK' } : t));
   };
 
-  const handleCancelLock = () => {
+  const handleCancelLock = useCallback(() => {
     if (lockingTable) {
       setTables(prev => prev.map(t => t.id === lockingTable ? { ...t, status: 'AVAILABLE' } : t));
     }
     setLockingTable(null);
     setLockedUntil(null);
     showInfo('Đã hủy giữ bàn');
-  };
+  }, [lockingTable, showInfo]);
 
-  const handleTimeout = () => {
+  const handleTimeout = useCallback(() => {
     if (lockingTable) {
       setTables(prev => prev.map(t => t.id === lockingTable ? { ...t, status: 'AVAILABLE' } : t));
     }
     setLockingTable(null);
     setLockedUntil(null);
     showError('Hết thời gian giữ bàn');
-  };
+  }, [lockingTable, showError]);
 
-  const handleSuccess = () => {
+  const handleSuccess = useCallback(() => {
     if (lockingTable) {
       setTables(prev => prev.map(t => t.id === lockingTable ? { ...t, status: 'RESERVED' } : t));
     }
     setLockingTable(null);
     setLockedUntil(null);
     showInfo('Thanh toán thành công. Bàn đã được đặt!');
-  };
+  }, [lockingTable, showInfo]);
 
   return (
     <div className="min-h-screen bg-[var(--color-brand-neutral)] p-6">
@@ -74,13 +74,15 @@ export default function FloorPage({ params }: { params: Promise<{ id: string }> 
 
       <FloorMapDynamic tables={tables} onTableClick={handleTableClick} />
 
-      <TableLockModal 
-        tableId={lockingTable!}
-        lockedUntil={lockedUntil}
-        onCancel={handleCancelLock}
-        onSuccess={handleSuccess}
-        onTimeout={handleTimeout}
-      />
+      {lockingTable && (
+        <TableLockModal 
+          tableId={lockingTable}
+          lockedUntil={lockedUntil}
+          onCancel={handleCancelLock}
+          onSuccess={handleSuccess}
+          onTimeout={handleTimeout}
+        />
+      )}
     </div>
   );
 }
