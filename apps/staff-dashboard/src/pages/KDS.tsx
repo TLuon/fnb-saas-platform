@@ -91,9 +91,10 @@ export default function KDS() {
 
   useEffect(() => {
     const client = new RealtimeClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321',
-      supabaseKey: import.meta.env.VITE_SUPABASE_KEY || 'dummy-key',
-      socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000',
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'https://ioekhkpzrpuivzzannvn.supabase.co',
+      supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_36iHq3qBFqoisdD4tGTXeA_238_YgDa',
+      socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001',
+      token: accessToken,
     });
 
     client.connect();
@@ -122,7 +123,7 @@ export default function KDS() {
       client.socket.off('kds_item_status_changed');
       client.disconnect();
     };
-  }, []);
+  }, [accessToken]);
 
   const changeStatus = async (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => {
     const originalItem = items.find(i => i.id === itemId);
@@ -135,7 +136,8 @@ export default function KDS() {
     );
     
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/orders/${orderId}/items/${itemId}/kitchen-status`, {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/orders/${orderId}/items/${itemId}/kitchen-status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',

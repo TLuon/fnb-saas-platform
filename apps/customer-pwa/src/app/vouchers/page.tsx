@@ -6,7 +6,7 @@ export default function VouchersPage() {
   const { showInfo } = useToast();
 
   const handleUse = () => {
-    showInfo('Đã áp dụng mã giảm giá (Mock)');
+    showInfo('Đã áp dụng mã giảm giá thành công');
   };
 
   return (

@@ -11,7 +11,9 @@ export interface Product {
   name: string;
   price: number;
   categoryId: string;
+  category_id?: string;
   active: boolean;
+  is_active?: boolean;
 }
 
 interface MenuStore {
@@ -30,19 +32,35 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   fetchMenu: async () => {
     try {
       const token = useAuthStore.getState().accessToken;
-      const headers = { 'Authorization': `Bearer ${token}` };
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
       
       const [catRes, prodRes] = await Promise.all([
-        fetch(`${baseUrl}/menu/categories`, { headers }),
-        fetch(`${baseUrl}/menu/products`, { headers })
+        fetch(`${baseUrl}/categories`, { headers }),
+        fetch(`${baseUrl}/products`, { headers })
       ]);
       
       if (catRes.ok && prodRes.ok) {
-        set({
-          categories: await catRes.json(),
-          products: await prodRes.json()
-        });
+        const rawCategories = await catRes.json();
+        const rawProducts = await prodRes.json();
+
+        const categories: Category[] = Array.isArray(rawCategories) ? rawCategories : [];
+        const products: Product[] = Array.isArray(rawProducts)
+          ? rawProducts.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              categoryId: p.category_id || p.categoryId || '',
+              category_id: p.category_id || p.categoryId || '',
+              active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
+              is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
+            }))
+          : [];
+
+        set({ categories, products });
       }
     } catch (e) {
       console.error('Failed to fetch menu', e);
@@ -50,12 +68,10 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   addCategory: async (c) => {
-    // Implement API call if needed, here just basic optimistic update for now
     set(state => ({ categories: [...state.categories, c] }));
   },
   
   addProduct: async (p) => {
-    // Implement API call if needed, here just basic optimistic update for now
     set(state => ({ products: [...state.products, p] }));
   },
 
@@ -64,29 +80,33 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
     if (!p) return;
     const newStatus = !p.active;
 
-    // Optimistic
+    // Optimistic update
     set(state => ({
-      products: state.products.map(p => 
-        p.id === id ? { ...p, active: newStatus } : p
+      products: state.products.map(item =>
+        item.id === id ? { ...item, active: newStatus, is_active: newStatus } : item
       )
     }));
 
     try {
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/menu/products/${id}`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/products/${id}`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ active: newStatus })
+        headers,
+        body: JSON.stringify({ is_active: newStatus })
       });
       if (!res.ok) throw new Error('API failed');
     } catch (e) {
       // Revert
       set(state => ({
-        products: state.products.map(p => 
-          p.id === id ? { ...p, active: !newStatus } : p
+        products: state.products.map(item =>
+          item.id === id ? { ...item, active: !newStatus, is_active: !newStatus } : item
         )
       }));
     }

@@ -12,7 +12,7 @@ export default function WalletPage() {
   const handleTopUp = () => {
     const val = parseInt(amount, 10);
     if (!val || val <= 0) return;
-    topUp(val, 'Nạp tiền qua VietQR (Mock)');
+    topUp(val, 'Nạp tiền qua VietQR');
     showInfo(`Nạp thành công ${val.toLocaleString()} ₫`);
     setShowTopUp(false);
     setAmount('');

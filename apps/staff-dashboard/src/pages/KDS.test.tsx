@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import KDS from './KDS';
@@ -10,11 +11,13 @@ vi.mock('@fnb/utils', () => {
     off: vi.fn(),
   };
   return {
-    RealtimeClient: vi.fn().mockImplementation(() => ({
-      connect: vi.fn(),
-      disconnect: vi.fn(),
-      socket: mockSocket,
-    })),
+    RealtimeClient: vi.fn().mockImplementation(function() {
+      return {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        socket: mockSocket,
+      };
+    }),
   };
 });
 

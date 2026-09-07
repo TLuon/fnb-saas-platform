@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useSupportStore } from './supportStore';
+import { useAuthStore } from './authStore';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -7,6 +8,7 @@ vi.stubGlobal('fetch', mockFetch);
 describe('useSupportStore', () => {
   beforeEach(() => {
     useSupportStore.setState({ transactions: [] });
+    useAuthStore.setState({ accessToken: 'mock-token' });
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,
@@ -54,7 +56,7 @@ describe('useSupportStore', () => {
 
   it('Checker cannot approve their own proposal (optimistic check)', async () => {
     useSupportStore.setState({
-      transactions: [{ id: 'tx1', amount: 50000, content: 'Chuyen tien tra dao', status: 'PENDING_APPROVAL', makerId: 'support-1', proposedCustomerId: 'C001' }]
+      transactions: [{ id: 'tx1', amount: 50000, content: 'Chuyen tien tra dao', status: 'PENDING_APPROVAL', makerId: 'maker1', proposedCustomerId: 'C001' }]
     });
     
     await expect(useSupportStore.getState().approve('tx1', 'maker1')).rejects.toThrow('ERR_6002_SELF_APPROVAL');

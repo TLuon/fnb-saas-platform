@@ -17,7 +17,7 @@ export function useGroupOrder(tableId: string | null) {
   const { showInfo, showError } = useToast();
 
   const apiClient = useMemo(() => createApiClient({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1',
     getToken: () => getTokenFromCookie(),
   }), []);
 
@@ -31,9 +31,9 @@ export function useGroupOrder(tableId: string | null) {
     }
 
     const client = new RealtimeClient({
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-      socketUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ioekhkpzrpuivzzannvn.supabase.co',
+      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_36iHq3qBFqoisdD4tGTXeA_238_YgDa',
+      socketUrl: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001',
       token,
     });
 
