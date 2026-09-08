@@ -30,17 +30,18 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data?.access_token) {
-        throw new Error(data?.message || 'Email hoặc mật khẩu không chính xác');
+      const resJson = await res.json();
+      const payload = resJson?.data ?? resJson;
+      if (!res.ok || !payload?.access_token) {
+        throw new Error(resJson?.error?.message || payload?.message || 'Email hoặc mật khẩu không chính xác');
       }
 
       // Store valid JWT token
-      const token = data.access_token;
+      const token = payload.access_token;
       document.cookie = `jwt=${encodeURIComponent(token)}; path=/; max-age=86400`;
       localStorage.setItem('access_token', token);
-      if (data.refresh_token) {
-        localStorage.setItem('refresh_token', data.refresh_token);
+      if (payload.refresh_token) {
+        localStorage.setItem('refresh_token', payload.refresh_token);
       }
 
       showInfo('Đăng nhập thành công');

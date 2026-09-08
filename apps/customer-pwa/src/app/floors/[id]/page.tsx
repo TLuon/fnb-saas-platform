@@ -38,8 +38,9 @@ export default function FloorPage({ params }: { params: { id: string } }) {
         const branchId = '22222222-2222-2222-2222-222222222222';
         const floorRes = await fetch(`${baseUrl}/floors?branch_id=${branchId}`, { headers });
         if (floorRes.ok) {
-          const floors = await floorRes.json();
-          if (Array.isArray(floors) && floors.length > 0) {
+          const rawFloors = await floorRes.json();
+          const floors = Array.isArray(rawFloors) ? rawFloors : (rawFloors?.data ?? []);
+          if (floors.length > 0) {
             targetFloorId = floors[0].id;
           }
         }
@@ -47,25 +48,17 @@ export default function FloorPage({ params }: { params: { id: string } }) {
 
       const res = await fetch(`${baseUrl}/floors/${targetFloorId}/tables`, { headers });
       if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const mapped: FloorTable[] = data.map((t: any) => ({
-            id: t.id,
-            name: t.table_code || `Bàn ${t.id.slice(0, 3)}`,
-            status: t.status || 'AVAILABLE',
-          }));
-          setTables(mapped);
-          return;
-        }
+        const rawTables = await res.json();
+        const tablesList = Array.isArray(rawTables) ? rawTables : (rawTables?.data ?? []);
+        const mapped: FloorTable[] = tablesList.map((t: any) => ({
+          id: t.id,
+          name: t.table_code || `Bàn ${t.id.slice(0, 3)}`,
+          status: t.status || 'AVAILABLE',
+        }));
+        setTables(mapped);
+      } else {
+        setTables([]);
       }
-
-      // Fallback if empty
-      setTables([
-        { id: 'T01', name: 'Bàn B01', status: 'AVAILABLE' },
-        { id: 'T02', name: 'Bàn B02', status: 'AVAILABLE' },
-        { id: 'T03', name: 'Bàn B03', status: 'OCCUPIED' },
-        { id: 'T04', name: 'Bàn B04', status: 'AVAILABLE' },
-      ]);
     } catch (err: any) {
       console.error('Failed to load tables', err);
       showError('Không thể tải sơ đồ bàn từ máy chủ');
@@ -103,19 +96,21 @@ export default function FloorPage({ params }: { params: { id: string } }) {
       });
 
       if (lockRes.ok) {
-        const lockData = await lockRes.json();
+        const rawLock = await lockRes.json();
+        const lockData = rawLock?.data ?? rawLock;
         setReservationCode(lockData.reservation_code || '');
       } else {
-        setReservationCode(`RES_${table.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4)}_${Date.now().toString().slice(-4)}`);
+        const errJson = await lockRes.json().catch(() => null);
+        showError(errJson?.error?.message || errJson?.message || 'Không thể giữ bàn');
+        return;
       }
-    } catch (err) {
-      setReservationCode(`RES_${table.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4)}_${Date.now().toString().slice(-4)}`);
-    }
 
-    setLockingTable(table.id);
-    setLockedUntil(Date.now() + 600 * 1000); // 10 minutes from now
-    
-    setTables(prev => prev.map(t => t.id === table.id ? { ...t, status: 'PENDING_LOCK' } : t));
+      setLockingTable(table.id);
+      setLockedUntil(Date.now() + 600 * 1000); // 10 minutes from now
+      setTables(prev => prev.map(t => t.id === table.id ? { ...t, status: 'PENDING_LOCK' } : t));
+    } catch (err: any) {
+      showError('Không thể kết nối đến máy chủ giữ bàn');
+    }
   };
 
   const handleCancelLock = useCallback(async () => {

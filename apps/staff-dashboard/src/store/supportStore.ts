@@ -12,9 +12,17 @@ export interface UnmatchedTransaction {
   proposedCustomerId: string | null;
 }
 
+export interface SuggestedMatch {
+  customer_id: string;
+  full_name: string;
+  similarity: number;
+  phone?: string;
+}
+
 interface SupportStore {
   transactions: UnmatchedTransaction[];
   fetchTransactions: () => Promise<void>;
+  suggestMatch: (txId: string) => Promise<SuggestedMatch[]>;
   propose: (txId: string, customerId: string, makerId: string) => Promise<void>;
   approve: (txId: string, checkerId: string) => Promise<void>;
 }
@@ -35,7 +43,8 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
       });
       if (res.ok) {
         const resJson = await res.json();
-        const list = Array.isArray(resJson) ? resJson : (resJson.data || []);
+        const payload = resJson?.data ?? resJson;
+        const list = Array.isArray(payload) ? payload : [];
         const mapped: UnmatchedTransaction[] = list.map((tx: any) => ({
           id: tx.id,
           amount: tx.amount ?? tx.payment_transactions?.amount ?? 0,
@@ -48,6 +57,27 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to fetch transactions', e);
+    }
+  },
+
+  suggestMatch: async (txId: string) => {
+    try {
+      const token = useAuthStore.getState().accessToken;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/suggest`, { headers });
+      if (res.ok) {
+        const resJson = await res.json();
+        const payload = resJson?.data ?? resJson;
+        return payload.suggestions ?? [];
+      }
+      return [];
+    } catch (e) {
+      console.error('Failed to suggest match', e);
+      return [];
     }
   },
 

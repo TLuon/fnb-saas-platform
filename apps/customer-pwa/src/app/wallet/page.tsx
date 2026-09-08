@@ -1,21 +1,38 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWalletStore } from '../../store/walletStore';
 import { useToast } from '../../components/ToastProvider';
 
 export default function WalletPage() {
-  const { mainBalance, promoBalance, history, getTotalBalance, topUp } = useWalletStore();
-  const { showInfo } = useToast();
+  const { mainBalance, promoBalance, history, getTotalBalance, fetchWallet, fetchHistory, topUpApi } = useWalletStore();
+  const { showInfo, showError } = useToast();
   const [showTopUp, setShowTopUp] = useState(false);
   const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleTopUp = () => {
+  useEffect(() => {
+    fetchWallet();
+    fetchHistory();
+  }, [fetchWallet, fetchHistory]);
+
+  const handleTopUp = async () => {
     const val = parseInt(amount, 10);
-    if (!val || val <= 0) return;
-    topUp(val, 'Nạp tiền qua VietQR');
-    showInfo(`Nạp thành công ${val.toLocaleString()} ₫`);
-    setShowTopUp(false);
-    setAmount('');
+    if (!val || val <= 0) {
+      showError('Vui lòng nhập số tiền hợp lệ');
+      return;
+    }
+
+    setLoading(true);
+    const result = await topUpApi(val);
+    setLoading(false);
+
+    if (result.success) {
+      showInfo(`Nạp thành công ${val.toLocaleString('vi-VN')} ₫`);
+      setShowTopUp(false);
+      setAmount('');
+    } else {
+      showError(result.error || 'Nạp tiền thất bại');
+    }
   };
 
   return (

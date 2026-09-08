@@ -2,7 +2,7 @@ import { Bell, Search, User, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
 export function Header() {
-  const { currentUser, switchUser } = useAuthStore();
+  const { currentUser } = useAuthStore();
 
   return (
     <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 shadow-sm">
@@ -23,8 +23,12 @@ export function Header() {
         
         <div className="flex items-center gap-3 border-l pl-6 border-gray-200 group relative cursor-pointer">
           <div className="text-right hidden md:block">
-            <p className="text-sm font-bold text-[var(--color-brand-primary)]">{currentUser.name}</p>
-            <p className="text-xs text-[var(--color-brand-secondary)] font-medium">{currentUser.role}</p>
+            <p className="text-sm font-bold text-[var(--color-brand-primary)]">
+              {currentUser.name || currentUser.email || 'Nhân viên'}
+            </p>
+            <p className="text-xs text-[var(--color-brand-secondary)] font-medium">
+              {currentUser.role || 'Đang đăng nhập'}
+            </p>
           </div>
           <div className="w-10 h-10 bg-[var(--color-brand-accent)] text-[var(--color-brand-primary)] rounded-full flex items-center justify-center font-bold">
             <User size={20} />
@@ -32,24 +36,18 @@ export function Header() {
           <ChevronDown size={16} className="text-gray-400" />
           
           <div className="absolute top-full right-0 pt-2 w-48 hidden group-hover:block z-50">
-            <div className="bg-white border border-gray-100 shadow-lg rounded-xl overflow-hidden">
+            <div className="bg-white border border-gray-100 shadow-lg rounded-xl overflow-hidden p-1">
+              <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-400">
+                {currentUser.email || 'Tài khoản nội bộ'}
+              </div>
               <button 
-                onClick={() => switchUser('owner-1', 'Chủ Quán', 'OWNER')}
-                className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
+                onClick={() => {
+                  useAuthStore.getState().logout();
+                  window.location.href = '/login';
+                }}
+                className="w-full text-left px-4 py-2.5 hover:bg-red-50 text-sm text-red-600 font-medium rounded-lg transition"
               >
-                Chủ Quán (OWNER)
-              </button>
-              <button 
-                onClick={() => switchUser('support-1', 'Nhân viên Hỗ trợ 1', 'SUPPORT')}
-                className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
-              >
-                Hỗ trợ 1 (Maker/Checker)
-              </button>
-              <button 
-                onClick={() => switchUser('support-2', 'Nhân viên Hỗ trợ 2', 'SUPPORT')}
-                className="w-full text-left px-4 py-3 hover:bg-[var(--color-brand-neutral)] text-sm text-[var(--color-brand-primary)] font-medium"
-              >
-                Hỗ trợ 2 (Maker/Checker)
+                Đăng xuất
               </button>
             </div>
           </div>

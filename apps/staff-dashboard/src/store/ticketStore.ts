@@ -32,7 +32,8 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
       const res = await fetch(`${baseUrl}/support/tickets`, { headers });
       if (res.ok) {
         const json = await res.json();
-        const list = Array.isArray(json) ? json : (json.data || []);
+        const payload = json?.data ?? json;
+        const list = Array.isArray(payload) ? payload : [];
         set({
           tickets: list.map((t: any) => ({
             id: t.id,

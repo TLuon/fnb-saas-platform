@@ -48,29 +48,28 @@ export default function MenuPage() {
           throw new Error('Không thể tải thực đơn từ máy chủ');
         }
 
-        const categories = await catRes.json();
-        const products = await prodRes.json();
+        const rawCategories = await catRes.json();
+        const rawProducts = await prodRes.json();
+
+        const catData = Array.isArray(rawCategories) ? rawCategories : (rawCategories?.data ?? []);
+        const prodData = Array.isArray(rawProducts) ? rawProducts : (rawProducts?.data ?? []);
 
         const categoryMap: Record<string, string> = {};
-        if (Array.isArray(categories)) {
-          categories.forEach((c: any) => {
-            categoryMap[c.id] = c.name;
-          });
-        }
+        catData.forEach((c: any) => {
+          categoryMap[c.id] = c.name;
+        });
 
-        if (Array.isArray(products)) {
-          const items: MenuItem[] = products
-            .filter((p: any) => p.is_active !== false)
-            .map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              price: p.price,
-              category: categoryMap[p.category_id] || 'Khác',
-              categoryId: p.category_id,
-              is_active: p.is_active,
-            }));
-          setMenuItems(items);
-        }
+        const items: MenuItem[] = prodData
+          .filter((p: any) => p.is_active !== false)
+          .map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            price: Number(p.price || 0),
+            category: categoryMap[p.category_id || p.categoryId] || 'Khác',
+            categoryId: p.category_id || p.categoryId,
+            is_active: p.is_active,
+          }));
+        setMenuItems(items);
       } catch (err: any) {
         console.error('Lỗi khi nạp menu', err);
         showError(err.message || 'Không thể nạp dữ liệu thực đơn');

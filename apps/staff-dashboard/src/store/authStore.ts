@@ -35,7 +35,7 @@ const getStoredUser = (): UserProfile => {
       }
     }
   }
-  return { id: '0c3fb91c-e243-4230-8f14-5f644b626172', name: 'Nguyễn Văn Chủ', role: 'OWNER' };
+  return { id: '', name: '', role: '' };
 };
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -70,21 +70,25 @@ export const useAuthStore = create<AuthStore>((set) => ({
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data?.access_token) {
-        return { success: false, error: data?.message || 'Đăng nhập thất bại' };
+      const resJson = await res.json();
+      const payload = resJson?.data ?? resJson;
+      if (!res.ok || !payload?.access_token) {
+        return {
+          success: false,
+          error: resJson?.error?.message || payload?.message || 'Đăng nhập thất bại',
+        };
       }
 
-      const token = data.access_token;
+      const token = payload.access_token;
       if (typeof window !== 'undefined') {
         localStorage.setItem('access_token', token);
       }
 
       // Fetch user profile from /auth/me
       let userProfile: UserProfile = {
-        id: 'owner-id',
+        id: '',
         name: email,
-        role: 'OWNER',
+        role: 'STAFF',
         email,
       };
 
@@ -93,11 +97,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
           headers: { Authorization: `Bearer ${token}` },
         });
         if (meRes.ok) {
-          const meData = await meRes.json();
+          const rawMe = await meRes.json();
+          const meData = rawMe?.data ?? rawMe;
           userProfile = {
-            id: meData.sub || meData.profile?.id || 'user-id',
+            id: meData.sub || meData.profile?.id || meData.id || 'user-id',
             name: meData.profile?.full_name || meData.email || email,
-            role: meData.role_app || 'STAFF',
+            role: meData.role_app || meData.role || 'STAFF',
             email: meData.email || email,
             branch_id: meData.branch_id || meData.profile?.branch_id,
           };

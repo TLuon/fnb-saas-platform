@@ -1,9 +1,14 @@
+import { useEffect } from 'react';
 import { Plus, Edit2, ShieldAlert } from 'lucide-react';
 import { useStaffStore } from '../store/staffStore';
 import type { StaffMember } from '../store/staffStore';
 
 export default function StaffManagement() {
-  const { staff, toggleStaff } = useStaffStore();
+  const { staff, toggleStaff, fetchStaff } = useStaffStore();
+
+  useEffect(() => {
+    fetchStaff();
+  }, [fetchStaff]);
 
   return (
     <div className="space-y-6">
@@ -29,7 +34,14 @@ export default function StaffManagement() {
             </tr>
           </thead>
           <tbody>
-            {staff.map((s: StaffMember) => (
+            {staff.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="p-8 text-center text-gray-400">
+                  Chưa có nhân viên nào trong chi nhánh này.
+                </td>
+              </tr>
+            ) : (
+              staff.map((s: StaffMember) => (
               <tr key={s.id} className="border-b border-gray-50 hover:bg-[var(--color-brand-accent)]/20 transition">
                 <td className="p-4 font-medium text-[var(--color-brand-primary)]">{s.name}</td>
                 <td className="p-4">
@@ -65,7 +77,7 @@ export default function StaffManagement() {
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>

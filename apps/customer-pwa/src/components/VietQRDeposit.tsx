@@ -36,9 +36,10 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
         });
 
         if (res.ok) {
-          const data = await res.json();
-          if (data.qr_string) setQrString(data.qr_string);
-          if (data.qr_image) setQrImage(data.qr_image);
+          const resJson = await res.json();
+          const payload = resJson?.data ?? resJson;
+          if (payload.qr_string) setQrString(payload.qr_string);
+          if (payload.qr_image) setQrImage(payload.qr_image);
         } else {
           setQrString(`VIETQR|${reservationCode}|${amount}`);
         }

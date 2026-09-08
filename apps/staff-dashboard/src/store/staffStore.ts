@@ -35,16 +35,17 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
       });
       if (res.ok) {
         const rawStaff = await res.json();
-        const staff: StaffMember[] = Array.isArray(rawStaff)
-          ? rawStaff.map((s: any) => ({
-              id: s.id,
-              name: s.full_name || s.name || 'Nhân viên',
-              role: s.role,
-              active: s.is_active !== undefined ? s.is_active : (s.active !== undefined ? s.active : true),
-              phone: s.phone,
-              branch_id: s.branch_id,
-            }))
-          : [];
+        const rawList = Array.isArray(rawStaff)
+          ? rawStaff
+          : (rawStaff.data ?? []);
+        const staff: StaffMember[] = rawList.map((s: any) => ({
+          id: s.id,
+          name: s.full_name || s.name || 'Nhân viên',
+          role: s.role,
+          active: s.is_active !== undefined ? s.is_active : (s.active !== undefined ? s.active : true),
+          phone: s.phone,
+          branch_id: s.branch_id,
+        }));
         set({ staff });
       }
     } catch (e) {

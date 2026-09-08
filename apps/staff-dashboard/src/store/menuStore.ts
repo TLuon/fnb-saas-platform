@@ -28,87 +28,209 @@ interface MenuStore {
 export const useMenuStore = create<MenuStore>((set, get) => ({
   categories: [],
   products: [],
-  
+
   fetchMenu: async () => {
     try {
       const token = useAuthStore.getState().accessToken;
+
       const headers: Record<string, string> = {};
+
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers.Authorization = `Bearer ${token}`;
       }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      
+
+      const baseUrl =
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:3001/api/v1';
+
       const [catRes, prodRes] = await Promise.all([
         fetch(`${baseUrl}/categories`, { headers }),
-        fetch(`${baseUrl}/products`, { headers })
+        fetch(`${baseUrl}/products`, { headers }),
       ]);
-      
-      if (catRes.ok && prodRes.ok) {
-        const rawCategories = await catRes.json();
-        const rawProducts = await prodRes.json();
 
-        const categories: Category[] = Array.isArray(rawCategories) ? rawCategories : [];
-        const products: Product[] = Array.isArray(rawProducts)
-          ? rawProducts.map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              price: p.price,
-              categoryId: p.category_id || p.categoryId || '',
-              category_id: p.category_id || p.categoryId || '',
-              active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
-              is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
-            }))
-          : [];
-
-        set({ categories, products });
+      if (!catRes.ok) {
+        throw new Error(
+          `Categories API failed: ${catRes.status}`,
+        );
       }
-    } catch (e) {
-      console.error('Failed to fetch menu', e);
+
+      if (!prodRes.ok) {
+        throw new Error(
+          `Products API failed: ${prodRes.status}`,
+        );
+      }
+
+      const rawCategories = await catRes.json();
+      const rawProducts = await prodRes.json();
+
+      // Backend trả { success, data, error }
+      const categoryData = Array.isArray(rawCategories)
+        ? rawCategories
+        : rawCategories.data ?? [];
+
+      const productData = Array.isArray(rawProducts)
+        ? rawProducts
+        : rawProducts.data ?? [];
+
+      const categories: Category[] = categoryData.map(
+        (c: any) => ({
+          id: c.id,
+          name: c.name,
+        }),
+      );
+
+      const products: Product[] = productData.map(
+        (p: any) => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price ?? 0),
+
+          categoryId:
+            p.category_id ??
+            p.categoryId ??
+            '',
+
+          category_id:
+            p.category_id ??
+            p.categoryId ??
+            '',
+
+          active:
+            p.is_active !== undefined
+              ? p.is_active
+              : p.active !== undefined
+                ? p.active
+                : true,
+
+          is_active:
+            p.is_active !== undefined
+              ? p.is_active
+              : p.active !== undefined
+                ? p.active
+                : true,
+        }),
+      );
+
+      set({
+        categories,
+        products,
+      });
+
+      console.log('MENU LOADED:', {
+        categories,
+        products,
+      });
+    } catch (error) {
+      console.error(
+        'Failed to fetch menu:',
+        error,
+      );
+
+      set({
+        categories: [],
+        products: [],
+      });
     }
   },
 
-  addCategory: async (c) => {
-    set(state => ({ categories: [...state.categories, c] }));
+  addCategory: async (category) => {
+    set((state) => ({
+      categories: [
+        ...state.categories,
+        category,
+      ],
+    }));
   },
-  
-  addProduct: async (p) => {
-    set(state => ({ products: [...state.products, p] }));
+
+  addProduct: async (product) => {
+    set((state) => ({
+      products: [
+        ...state.products,
+        product,
+      ],
+    }));
   },
 
   toggleProduct: async (id) => {
-    const p = get().products.find(p => p.id === id);
-    if (!p) return;
-    const newStatus = !p.active;
+    const product = get().products.find(
+      (p) => p.id === id,
+    );
+
+    if (!product) {
+      return;
+    }
+
+    const newStatus = !product.active;
 
     // Optimistic update
-    set(state => ({
-      products: state.products.map(item =>
-        item.id === id ? { ...item, active: newStatus, is_active: newStatus } : item
-      )
+    set((state) => ({
+      products: state.products.map(
+        (item) =>
+          item.id === id
+            ? {
+                ...item,
+                active: newStatus,
+                is_active: newStatus,
+              }
+            : item,
+      ),
     }));
 
     try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {
+      const token =
+        useAuthStore.getState().accessToken;
+
+      const headers: Record<
+        string,
+        string
+      > = {
         'Content-Type': 'application/json',
       };
+
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers.Authorization =
+          `Bearer ${token}`;
       }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/products/${id}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ is_active: newStatus })
-      });
-      if (!res.ok) throw new Error('API failed');
-    } catch (e) {
-      // Revert
-      set(state => ({
-        products: state.products.map(item =>
-          item.id === id ? { ...item, active: !newStatus, is_active: !newStatus } : item
-        )
+
+      const baseUrl =
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:3001/api/v1';
+
+      const response = await fetch(
+        `${baseUrl}/products/${id}`,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            is_active: newStatus,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Product update failed: ${response.status}`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        'Failed to toggle product:',
+        error,
+      );
+
+      // rollback optimistic update
+      set((state) => ({
+        products: state.products.map(
+          (item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  active: !newStatus,
+                  is_active: !newStatus,
+                }
+              : item,
+        ),
       }));
     }
-  }
+  },
 }));
