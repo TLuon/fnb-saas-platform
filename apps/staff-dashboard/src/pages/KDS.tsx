@@ -91,9 +91,10 @@ export default function KDS() {
 
   useEffect(() => {
     const client = new RealtimeClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321',
-      supabaseKey: import.meta.env.VITE_SUPABASE_KEY || 'dummy-key',
-      socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000',
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'https://ioekhkpzrpuivzzannvn.supabase.co',
+      supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_36iHq3qBFqoisdD4tGTXeA_238_YgDa',
+      socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001',
+      token: accessToken,
     });
 
     client.connect();
@@ -101,9 +102,9 @@ export default function KDS() {
     client.socket.on('kds_new_ticket', (ticket: any) => {
       const createdAt = ticket.createdAt ? new Date(ticket.createdAt).getTime() : Date.now();
       const newItems = (ticket.items || []).map((item: any) => ({
-        id: item.id || Math.random().toString(36).substr(2, 9),
-        orderId: ticket.orderId,
-        name: item.name,
+        id: item.order_item_id || item.id || Math.random().toString(36).substr(2, 9),
+        orderId: ticket.order_id || ticket.orderId || '',
+        name: item.product_name || item.name || 'Món',
         quantity: item.quantity,
         kitchen_status: item.kitchen_status || 'QUEUED',
         createdAt
@@ -112,8 +113,9 @@ export default function KDS() {
     });
 
     client.socket.on('kds_item_status_changed', (data: any) => {
+      const targetId = data.order_item_id || data.itemId;
       setItems((prev) => prev.map(item => 
-        item.id === data.itemId ? { ...item, kitchen_status: data.kitchen_status } : item
+        item.id === targetId ? { ...item, kitchen_status: data.kitchen_status } : item
       ));
     });
 
@@ -122,7 +124,7 @@ export default function KDS() {
       client.socket.off('kds_item_status_changed');
       client.disconnect();
     };
-  }, []);
+  }, [accessToken]);
 
   const changeStatus = async (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => {
     const originalItem = items.find(i => i.id === itemId);
@@ -135,7 +137,8 @@ export default function KDS() {
     );
     
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/orders/${orderId}/items/${itemId}/kitchen-status`, {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/orders/${orderId}/items/${itemId}/kitchen-status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',

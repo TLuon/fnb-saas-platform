@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTicketStore } from '../store/ticketStore';
 import { Star, MessageSquareWarning, Gift, CheckCircle } from 'lucide-react';
 
 export default function SupportTickets() {
-  const { tickets, resolveTicket } = useTicketStore();
+  const { tickets, resolveTicket, fetchTickets } = useTicketStore();
   const [showVoucherModal, setShowVoucherModal] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchTickets();
+  }, [fetchTickets]);
 
   const handleSendVoucher = (txId: string) => {
     resolveTicket(txId, 'CSAT-APOLOGY-50K');
@@ -21,7 +25,12 @@ export default function SupportTickets() {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {tickets.map(tk => (
+        {tickets.length === 0 ? (
+          <div className="p-12 text-center bg-white rounded-3xl border border-gray-100 shadow-sm text-gray-400">
+            Hiện không có khiếu nại CSAT nào cần xử lý.
+          </div>
+        ) : (
+          tickets.map(tk => (
           <div key={tk.id} className={`p-6 rounded-3xl shadow-sm border ${tk.status === 'OPEN' ? 'bg-white border-red-200' : 'bg-gray-50 border-gray-200'}`}>
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center gap-3">
@@ -68,7 +77,7 @@ export default function SupportTickets() {
               )}
             </div>
           </div>
-        ))}
+        )))}
       </div>
 
       {showVoucherModal && (

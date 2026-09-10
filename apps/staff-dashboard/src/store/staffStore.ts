@@ -8,11 +8,13 @@ export interface StaffMember {
   name: string;
   role: Role;
   active: boolean;
+  phone?: string;
+  branch_id?: string;
 }
 
 interface StaffStore {
   staff: StaffMember[];
-  fetchStaff: () => Promise<void>;
+  fetchStaff: (branchId?: string) => Promise<void>;
   addStaff: (s: StaffMember) => Promise<void>;
   toggleStaff: (id: string) => Promise<void>;
 }
@@ -20,14 +22,31 @@ interface StaffStore {
 export const useStaffStore = create<StaffStore>((set, get) => ({
   staff: [],
   
-  fetchStaff: async () => {
+  fetchStaff: async (branchId = '22222222-2222-2222-2222-222222222222') => {
     try {
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/staff`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/staff?branch_id=${branchId}`, {
+        headers,
       });
       if (res.ok) {
-        set({ staff: await res.json() });
+        const rawStaff = await res.json();
+        const rawList = Array.isArray(rawStaff)
+          ? rawStaff
+          : (rawStaff.data ?? []);
+        const staff: StaffMember[] = rawList.map((s: any) => ({
+          id: s.id,
+          name: s.full_name || s.name || 'Nhân viên',
+          role: s.role,
+          active: s.is_active !== undefined ? s.is_active : (s.active !== undefined ? s.active : true),
+          phone: s.phone,
+          branch_id: s.branch_id,
+        }));
+        set({ staff });
       }
     } catch (e) {
       console.error('Failed to fetch staff', e);
@@ -51,11 +70,18 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
 
     try {
       const token = useAuthStore.getState().accessToken;
-      // Assuming deactivated uses a specific endpoint based on previous backend findings
-      const endpoint = newStatus ? `/staff/${id}/activate` : `/staff/${id}/deactivate`;
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${endpoint}`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const endpoint = newStatus ? `/staff/${id}` : `/staff/${id}/deactivate`;
+      const res = await fetch(`${baseUrl}${endpoint}`, {
         method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers,
+        ...(newStatus ? { body: JSON.stringify({ is_active: true }) } : {}),
       });
       if (!res.ok) throw new Error('API failed');
     } catch (e) {

@@ -12,9 +12,17 @@ export interface UnmatchedTransaction {
   proposedCustomerId: string | null;
 }
 
+export interface SuggestedMatch {
+  customer_id: string;
+  full_name: string;
+  similarity: number;
+  phone?: string;
+}
+
 interface SupportStore {
   transactions: UnmatchedTransaction[];
   fetchTransactions: () => Promise<void>;
+  suggestMatch: (txId: string) => Promise<SuggestedMatch[]>;
   propose: (txId: string, customerId: string, makerId: string) => Promise<void>;
   approve: (txId: string, checkerId: string) => Promise<void>;
 }
@@ -25,15 +33,51 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
   fetchTransactions: async () => {
     try {
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/support/unmatched`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/support/unmatched`, {
+        headers
       });
       if (res.ok) {
-        const data = await res.json();
-        set({ transactions: data });
+        const resJson = await res.json();
+        const payload = resJson?.data ?? resJson;
+        const list = Array.isArray(payload) ? payload : [];
+        const mapped: UnmatchedTransaction[] = list.map((tx: any) => ({
+          id: tx.id,
+          amount: tx.amount ?? tx.payment_transactions?.amount ?? 0,
+          content: tx.content ?? tx.payment_transactions?.raw_transfer_content ?? '',
+          status: tx.status === 'PENDING' ? 'UNMATCHED' : (tx.status === 'PROPOSED' ? 'PENDING_APPROVAL' : (tx.status || 'UNMATCHED')),
+          makerId: tx.maker_user_id ?? tx.makerId ?? null,
+          proposedCustomerId: tx.suggested_customer_id ?? tx.proposedCustomerId ?? null,
+        }));
+        set({ transactions: mapped });
       }
     } catch (e) {
       console.error('Failed to fetch transactions', e);
+    }
+  },
+
+  suggestMatch: async (txId: string) => {
+    try {
+      const token = useAuthStore.getState().accessToken;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/suggest`, { headers });
+      if (res.ok) {
+        const resJson = await res.json();
+        const payload = resJson?.data ?? resJson;
+        return payload.suggestions ?? [];
+      }
+      return [];
+    } catch (e) {
+      console.error('Failed to suggest match', e);
+      return [];
     }
   },
 
@@ -49,17 +93,21 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
 
     try {
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/support/unmatched/${txId}/propose`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/propose`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ customerId })
+        headers,
+        body: JSON.stringify({ customer_id: customerId })
       });
       if (!res.ok) throw new Error('API Failed');
     } catch (e) {
-      // Revert on failure (simple reload for now)
+      // Revert on failure
       get().fetchTransactions();
     }
   },
@@ -81,9 +129,14 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
 
     try {
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/support/unmatched/${txId}/approve`, {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/approve`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers,
       });
       if (!res.ok) throw new Error('API Failed');
     } catch (e) {

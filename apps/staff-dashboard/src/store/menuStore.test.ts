@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useMenuStore } from './menuStore';
+import { useAuthStore } from './authStore';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -7,6 +8,7 @@ vi.stubGlobal('fetch', mockFetch);
 describe('useMenuStore', () => {
   beforeEach(() => {
     useMenuStore.setState({ categories: [], products: [] });
+    useAuthStore.setState({ accessToken: 'mock-token' });
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,
@@ -30,7 +32,7 @@ describe('useMenuStore', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/menu/categories'),
+      expect.stringContaining('/categories'),
       expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer mock-token' }) })
     );
 
@@ -48,7 +50,7 @@ describe('useMenuStore', () => {
     await useMenuStore.getState().toggleProduct('p1');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/menu/products/p1'),
+      expect.stringContaining('/products/p1'),
       expect.objectContaining({ method: 'PATCH' })
     );
 
