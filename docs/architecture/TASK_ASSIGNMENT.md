@@ -1,21 +1,21 @@
-# TASK_ASSIGNMENT.md — Phân Công Nhóm 4 Người (Bản Gốc — Chia Theo Vai Trò)
+# TASK_ASSIGNMENT.md — Phân Công Nhóm 4 Người (Tham Chiếu Nghiệp Vụ)
 
 > **Cập nhật:** nhóm đã đổi cách chia người thực tế sang **2 nửa FE/BE** (1 DB Lead dùng chung cho cả team) — xem `PLAN_BE.md` và `PLAN_FE.md` để biết ai làm gì. File này **vẫn giữ giá trị tham chiếu** cho việc *module nào thuộc nghiệp vụ nào* (dùng khi đọc `API_CONTRACT.md`/`REALTIME_EVENTS.md`), không còn dùng để phân người trực tiếp.
 
-> Nguyên tắc phân công (bản gốc, nay chỉ mang tính tham chiếu nghiệp vụ): mỗi "vai trò" dưới đây tương ứng 1 nhóm module trọn vẹn (từ DB liên quan → API → giao diện tương ứng) theo đúng 4 vai trò định nghĩa tại `SPEC.md` mục 2.
+> File này chỉ tham chiếu nghiệp vụ. Phân công triển khai chính thức nằm ở `docs/team-assignments/`, `PLAN_BE.md` và `PLAN_FE.md`.
 
 ## Tổng quan theo vai trò nghiệp vụ
 
 | Vai trò nghiệp vụ | Module backend (`API_CONTRACT.md`) | Giao diện (FE) |
 |---|---|---|
-| Owner/Manager | Floor & Table, CDP/Reporting | Staff Dashboard: Floor Editor, Analytics Dashboard |
+| Owner | Floor & Table, CDP/Reporting | Staff Dashboard: Floor Editor, Analytics Dashboard |
 | Staff/Cashier | Order/POS, KDS status | Staff Dashboard: Live Floor Map, POS Order Screen, KDS |
 | Customer | Reservation & Payment, Group-Order, Wallet & Coffee Pass | Customer PWA: toàn bộ |
 | Support/CSKH | Support Module (Maker-Checker, Ticket) | Staff Dashboard: Support Board |
 
 ## Chi tiết theo vai trò
 
-### Vai trò: Owner/Manager
+### Vai trò: Owner
 **Bảng DB sở hữu chính:** `branches`, `floors`, `tables`, `categories`, `products`, `users` (STAFF/SUPPORT), CDP-related fields của `customers`
 **Việc cần làm:**
 1. Floor Editor: CRUD tầng/bàn, kéo-thả tọa độ (`pos_x`, `pos_y`) trên Canvas/SVG
@@ -53,7 +53,7 @@
 ## Điểm phụ thuộc chéo cần lưu ý (theo `REALTIME_EVENTS.md` mục 4)
 
 - **A → B:** A dựng sơ đồ bàn trước, B cần API `GET /floors/:id/tables` sẵn để build Live Floor Map — A nên hoàn thành Floor CRUD (không cần UI đẹp) sớm nhất trong tuần đầu.
-- **B → C:** C cần bảng `products`/`categories` (do A tạo) và cần order đã được B tạo (check-in) tồn tại trước khi Group-Order có `order_id` để ghi vào.
+- **B → C:** C cần bảng `products`/`categories` (do B1 tạo) và cần order đã được Staff tạo khi check-in tồn tại trước khi Group-Order có `order_id` để ghi vào.
 - **A & B → D:** D cần `orders`, `payment_transactions` đã có dữ liệu thật để test luồng tra soát — nên dùng seed data (`SETUP.md` mục 9) thay vì chờ A/B code xong.
 - **Tất cả → CODING_CONVENTION.md:** thống nhất trước khi code, đặc biệt phần Guard/DTO/Response envelope, để tránh việc tích hợp cuối kỳ bị lệch format.
 

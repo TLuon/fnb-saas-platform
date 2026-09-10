@@ -43,6 +43,14 @@
 | PATCH | `/products/:id` | OWNER | Sửa món (giá, tên, `default_modifiers`, `is_active`) |
 | DELETE | `/products/:id` | OWNER | Vô hiệu hóa món (soft-delete qua `is_active = false` — không xóa cứng vì `order_items` đã tham chiếu `product_id`) |
 
+## 3A. Public Catalog (`/public/catalog`)
+
+| Method | Endpoint | Role | Mô tả |
+|---|---|---|---|
+| GET | `/public/catalog?tenant_subdomain=&branch_id=` | Public | Khách vãng lai xem category/product active. Không trả dữ liệu quản trị và không có quyền ghi. |
+
+> Customer PWA dùng endpoint public này trước khi đăng nhập. Các endpoint `/categories` và `/products` vẫn là endpoint authenticated cho OWNER/STAFF/CUSTOMER.
+
 ## 4. Staff Management (`/staff`)
 
 > Module mới bổ sung — `SPEC.md` xác định Owner có quyền "phân quyền nhân sự" nhưng trước đây chưa có endpoint nào cho việc này (tài khoản STAFF/SUPPORT chỉ được tạo qua seed data).
