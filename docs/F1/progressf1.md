@@ -1,95 +1,173 @@
-# Báo Cáo Tiến Độ (Progress) & Kiểm Thử - Vai Trò F1
-
-Tài liệu này dùng để theo dõi tiến độ thực hiện các nhiệm vụ của đội F1, ghi nhận các lỗi đã xử lý, kết quả kiểm thử liên kết hệ thống, và các lưu ý quan trọng trong quá trình tích hợp. Khi bắt đầu hoặc hoàn thành một công việc, hãy cập nhật trạng thái tại đây.
-
----
+# Báo Cáo Tiến Độ (Progress) - Vai Trò F1
 
 ## 1. Tổng Quan Tiến Độ
 
 | Nhóm Nhiệm Vụ | Tổng số Task | Đang làm (`In-progress`) | Hoàn thành (`Completed`) | Tỷ lệ hoàn thành |
 |---|---|---|---|---|
-| **1. Tích hợp & Sửa lỗi Handoff** | 4 | 0 | 4 | 100% |
-| **2. Màn hình KDS Dashboard** | 4 | 0 | 4 | 100% |
-| **3. Backend Core & API (NestJS)**| 4 | 0 | 4 | 100% |
-| **4. Kiểm thử & Bàn giao tổng thể**| 3 | 0 | 3 | 100% |
-| **Tổng cộng** | **15** | **0** | **15** | **100%** |
-
-*Trạng thái cập nhật gần nhất:* `2026-09-05` (Hoàn thành lộ trình F1).
+| **P0 - Nền tảng frontend vận hành** | 12 | 0 | 0 | 0% |
+| **P1 - Component Floor Map dùng chung** | 20 | 0 | 1 | 5% |
+| **P2 - Floor Editor cho Owner/Admin** | 17 | 0 | 1 | 6% |
+| **P3 - Live Floor Map** | 13 | 0 | 1 | 8% |
+| **P4 - POS Order Screen** | 20 | 0 | 1 | 5% |
+| **P5 - KDS Kitchen và KDS Bar** | 18 | 0 | 2 | 11% |
+| **P6 - Test, performance và bàn giao F2** | 15 | 0 | 0 | 0% |
+| **Các Nhiệm vụ bổ sung** | 8 | 0 | 1 | 13% |
 
 ---
 
 ## 2. Nhật Ký Chi Tiết Tiến Độ Nhiệm Vụ
 
-### Mục 1: Tích hợp & Sửa lỗi Handoff từ F2
-- [x] **1.1. FloorMap Canvas Integration:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Đã hoàn thiện FloorMapCanvas, thay thế CSS Grid cũ, hỗ trợ hit-test và zoom/pan mượt mà.
-- [x] **1.2. Realtime Auth Token:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Đã đọc JWT từ cookie truyền vào realtimeClient thay vì dùng mock.
-- [x] **1.3. Maker-Checker UI Validation:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Nút Phê duyệt đã bị disable nếu makerId trùng với user đăng nhập.
-- [x] **1.4. Group-Order Reconnect Real Snapshot:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Đã có logic listen socket reconnect để fetch cart mới từ backend.
+### P0 - Nền tảng frontend vận hành
+- [ ] Xác nhận API thật và bỏ phụ thuộc mock server trong happy path.
+- [ ] Dùng API client chung do F2 sở hữu với base URL từ env.
+- [ ] Tự gắn Bearer token.
+- [ ] Xử lý 401, 403, 422, 500 theo `error.code`.
+- [ ] Tạo loading skeleton.
+- [ ] Tạo empty state.
+- [ ] Tạo error state có retry.
+- [ ] Tạo reconnect state cho Socket.IO/Supabase Realtime.
+- [ ] Lấy current user/role/branch từ auth provider chung do F2 bàn giao.
+- [ ] Không dùng `mock-token` hoặc `switchUser` trong luồng thật.
+- [ ] Tạo permission helper cho route/action vận hành.
+- [ ] Thống nhất layout shell với F2.
 
-### Mục 2: Phát triển Màn hình KDS (Kitchen Display System - Staff Dashboard)
-- [x] **2.1. Khởi tạo trang KDS:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Đã tạo KDS.tsx và phân quyền AuthGuard đầy đủ.
-- [x] **2.2. Kết nối `realtimeClient` lắng nghe Order mới:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Lắng nghe sự kiện new_order từ gateway thành công.
-- [x] **2.3. Xây dựng giao diện Kanban 3 cột:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Thiết kế UI Kanban và elapsed timer.
-- [x] **2.4. Thao tác chuyển trạng thái đơn hàng:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Các nút thao tác state chuyển động có thêm Rollback Optimistic UI.
+### P1 - Component Floor Map dùng chung
+- [x] Tạo file `packages/ui-shared/src/FloorMapCanvas.tsx`
+- [x] Nhận danh sách table từ API.
+- [x] Dùng `pos_x`, `pos_y`, `width`, `height`, `shape`.
+- [x] Render `circle`, `rectangle`, `square` nếu contract có.
+- [x] Render label `table_code`/name.
+- [x] Render capacity khi context cần.
+- [x] Render màu status thống nhất.
+- [x] Click table.
+- [x] Chọn table.
+- [x] Drag table khi `editable = true`.
+- [x] Không drag khi `editable = false`.
+- [x] Pan canvas.
+- [x] Zoom canvas.
+- [x] Pointer/touch support tối thiểu cho tablet.
+- [x] Không nhầm click với drag.
+- [x] Stable canvas dimension.
+- [x] Không layout shift khi loading.
+- [x] Expose callback `onTableMove`, `onTableSelect`, `onTableClick`.
+- [x] Có legend status.
+- [x] Có accessibility label hoặc table list fallback.
 
-### Mục 3: Phát triển Backend Core & API (NestJS - `apps/api`)
-- [x] **3.1. Group-Order Service (Redis/Socket.IO):** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Đã ứng dụng Redis WATCH để lock tránh race condition.
-- [x] **3.2. KDS Event Publisher:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* KitchenGateway xử lý các order realtime.
-- [x] **3.3. Payment & Webhook Mock:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* PaymentController xử lý động payload từ webhook.
-- [x] **3.4. Maker-Checker API Guard:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Đã bắt lỗi 6002 nếu tự duyệt và đăng ký trên AppModule.
+### P2 - Floor Editor cho Owner/Admin
+- [x] Tạo file `apps/staff-dashboard/src/pages/FloorEditor.tsx`
+- [x] Chọn floor.
+- [x] Load table thật.
+- [x] Kéo thả table.
+- [x] Thay đổi position.
+- [x] Thay đổi width/height.
+- [x] Thay đổi shape.
+- [x] Đổi table code/name.
+- [x] Đổi capacity.
+- [x] Tạo table mới.
+- [ ] Xóa/deactivate table theo API rule.
+- [x] Lưu từng table hoặc batch save.
+- [x] Hiển thị lỗi từng update.
+- [x] Dirty state.
+- [ ] Reset thay đổi chưa lưu.
+- [ ] Prevent overlap hoặc cảnh báo overlap.
+- [x] Reload sau save để chứng minh dữ liệu persist.
 
-### Mục 4: Kiểm thử & Bàn giao tổng thể (Integration & Testing)
-- [x] **4.1. Unit Test & Integration Test cho API:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Test chạy thành công trên Node.js môi trường giả lập, coverage qua yêu cầu.
-- [x] **4.2. Chạy thử nghiệm End-to-End toàn luồng:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* Khách -> Giỏ chung -> Thanh toán -> KDS đều qua.
-- [x] **4.3. Báo cáo tổng thể & Bàn giao đồ án:** 
-  *   *Trạng thái:* `Completed`
-  *   *Ghi chú:* F1 đã ghi báo cáo Walkthrough (walkthrough.md).
+### P3 - Live Floor Map
+- [x] Tạo file `apps/staff-dashboard/src/pages/LiveFloorMap.tsx`
+- [x] Chọn branch/floor.
+- [x] Load snapshot từ `GET /floors/:id/tables`.
+- [x] Subscribe `tables:{branch_id}`.
+- [x] Update status không cần F5.
+- [x] Hiển thị order đang mở nếu API trả về.
+- [x] Click bàn để mở POS hoặc detail.
+- [x] Staff được đổi status hợp lệ.
+- [x] Owner xem layout nhưng không nhất thiết đổi status.
+- [x] Reconnect: gọi snapshot trước rồi tiếp tục diff.
+- [x] Hiển thị last updated.
+- [x] Hiển thị connection state.
+- [ ] Không lộ bàn branch khác.
+
+### P4 - POS Order Screen
+- [x] Tạo file `apps/staff-dashboard/src/pages/POS.tsx`
+- [x] Chọn bàn.
+- [x] Check-in bàn qua `POST /orders`.
+- [x] Tải category/product thật (hoặc mock nếu chưa có API).
+- [x] Lọc category.
+- [x] Tìm product.
+- [x] Thêm product.
+- [ ] Chọn modifier.
+- [x] Tăng/giảm quantity.
+- [x] Xóa item.
+- [ ] Ghi chú cho bếp.
+- [ ] Gọi `POST /orders/:id/items`.
+- [ ] Sửa item bằng `PATCH /orders/:id/items/:itemId`.
+- [x] Submit kitchen.
+- [x] Hiển thị subtotal/discount/final amount do backend trả.
+- [x] Thanh toán theo quyền.
+- [x] Hiển thị lỗi hết món, order khóa, payment fail.
+- [x] Không tự tính/ghi đè total cuối cùng.
+- [x] Không cho submit order rỗng.
+- [ ] Xem order hiện tại khi reload.
+
+### P5 - KDS Kitchen và KDS Bar
+- [x] Tạo file `apps/staff-dashboard/src/pages/KDSKitchen.tsx`
+- [x] Tạo file `apps/staff-dashboard/src/pages/KDSBar.tsx`
+- [x] Load ticket snapshot.
+- [x] Gọi `GET /api/v1/orders/kds?branch_id=&station=&status=` khi mở trang và sau reconnect.
+- [x] Subscribe `kds:{branch_id}`.
+- [x] Lọc đúng station.
+- [x] Hiển thị order code/table.
+- [x] Hiển thị items, quantity, modifier, note.
+- [x] Hiển thị thời gian chờ.
+- [x] Chuyển queued -> preparing.
+- [x] Chuyển preparing -> ready.
+- [x] Chuyển ready -> served.
+- [ ] Hủy item nếu API cho phép.
+- [x] Emit API status update.
+- [x] Reconnect fetch lại queue.
+- [ ] Không duplicate ticket.
+- [x] Highlight ticket quá lâu.
+- [ ] Có sound/visual notification nếu phù hợp.
+
+### P6 - Test, performance và bàn giao F2
+- [ ] Test canvas click vs drag.
+- [ ] Test zoom/pan.
+- [ ] Test 20-30 bàn.
+- [ ] Test tablet width.
+- [ ] Test reconnect realtime.
+- [ ] Test status event cũ đến sau event mới.
+- [ ] Test permission không cho role sai vào route.
+- [ ] Test POS reload khi order đang mở.
+- [ ] Test double click submit kitchen.
+- [ ] Test KDS duplicate event.
+- [ ] Test empty/error/loading.
+- [ ] Viết usage guide cho FloorMap component.
+- [ ] Bàn giao event payload cho F2.
+- [ ] Bàn giao color/status mapping cho F2.
+- [ ] Review integration với F2 ở customer floor map và support board.
+
+### Các Nhiệm vụ bổ sung (Shift, Takeaway, Inventory)
+- [x] Tạo file `apps/staff-dashboard/src/pages/ShiftManagement.tsx`
+- [x] Quản lý Ca làm việc: Màn hình "Mở ca".
+- [x] Quản lý Ca làm việc: Màn hình "Đóng ca" trên POS.
+- [x] Đơn mang đi: Giao diện POS - Nút chuyển đổi (Toggle) giữa "Dine-in" và "Takeaway".
+- [x] Đơn mang đi: Bỏ qua bước chọn bàn ở mode Takeaway.
+- [x] Đơn mang đi: KDS phân biệt đơn tại bàn và đơn mang đi.
+- [x] Đơn mang đi: Tab "Đơn Online/Mang đi" riêng trên giao diện POS (Đồng bộ Gap 1).
+- [ ] Inventory: Lắng nghe event `product_out_of_stock` qua socket (Đồng bộ Gap 3).
 
 ---
 
 ## 3. Nhật Ký Sửa Lỗi (Diagnose & Bug-Fix Log)
 
-*Phần này dành cho F1 ghi lại các lỗi kỹ thuật phát sinh trong quá trình làm việc và cách khắc phục.*
-
 | Mã Lỗi / Triệu Chứng | Nguyên nhân | Cách khắc phục | Người sửa |
 |---|---|---|---|
 | *VD: Lệch múi giờ hiển thị trên KDS* | *Database lưu UTC nhưng Client parse giờ Local không đồng bộ* | *Sử dụng thư viện `dayjs` bọc lại định dạng trước khi render* | *B2* |
-| | | | |
 | | | | |
 
 ---
 
 ## 4. Kết Quả Kiểm Thử Tích Hợp (Integration Testing Results)
-
-*Ghi lại bằng chứng (Evidence) kiểm thử thành công các luồng tích hợp cốt lõi.*
 
 1.  **Luồng Group-Order (Merge Giỏ hàng & Reconnect):**
     *   *Phương pháp thử:* Unit Test bằng Jest & giả lập Redis Client, reconnect logic trên FE.

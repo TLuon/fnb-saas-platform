@@ -4,3 +4,4 @@ export * from './auth';
 export * from './theme';
 export * from './countdown';
 export * from './totp';
+export * from './floor-mapper';
