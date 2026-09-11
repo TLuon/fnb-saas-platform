@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
+import { useAuthStore } from './authStore.ts';
 
 export type Role = 'OWNER' | 'STAFF' | 'SUPPORT';
 
@@ -15,7 +15,9 @@ export interface StaffMember {
 interface StaffStore {
   staff: StaffMember[];
   fetchStaff: (branchId?: string) => Promise<void>;
-  addStaff: (s: StaffMember) => Promise<void>;
+  createStaff: (s: Partial<StaffMember>) => Promise<any>;
+  updateStaff: (id: string, data: Partial<StaffMember>) => Promise<void>;
+  deactivateStaff: (id: string) => Promise<void>;
   toggleStaff: (id: string) => Promise<void>;
 }
 
@@ -53,8 +55,72 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
     }
   },
 
-  addStaff: async (s) => {
-    set(state => ({ staff: [...state.staff, s] }));
+  createStaff: async (staffData) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/staff`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(staffData)
+    });
+    
+    if (!res.ok) {
+      throw new Error('Create staff failed');
+    }
+    
+    const newStaffRaw = await res.json();
+    const finalData = newStaffRaw.data || newStaffRaw;
+    
+    set(state => ({ staff: [...state.staff, {
+      id: finalData.id,
+      name: finalData.full_name || finalData.name || 'Nhân viên mới',
+      role: finalData.role,
+      active: finalData.is_active ?? true,
+      phone: finalData.phone,
+      branch_id: finalData.branch_id
+    }] }));
+    
+    return finalData; // Can return temporary_password
+  },
+
+  updateStaff: async (id, data) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/staff/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(data)
+    });
+    
+    if (!res.ok) throw new Error('Update staff failed');
+    
+    set(state => ({
+      staff: state.staff.map(x => x.id === id ? { ...x, ...data } : x)
+    }));
+  },
+
+  deactivateStaff: async (id) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/staff/${id}/deactivate`, {
+      method: 'PATCH',
+      headers
+    });
+    
+    if (!res.ok) throw new Error('Deactivate staff failed');
+    
+    set(state => ({
+      staff: state.staff.map(x => x.id === id ? { ...x, active: false } : x)
+    }));
   },
 
   toggleStaff: async (id) => {
@@ -73,9 +139,8 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      if (token) headers.Authorization = `Bearer ${token}`;
+      
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
       const endpoint = newStatus ? `/staff/${id}` : `/staff/${id}/deactivate`;
       const res = await fetch(`${baseUrl}${endpoint}`, {

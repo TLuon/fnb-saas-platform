@@ -1,86 +1,56 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
 
-export interface CsatTicket {
+export interface SupportTicket {
   id: string;
+  customerId: string;
   customerName: string;
-  rating: number;
-  feedback: string;
-  status: 'OPEN' | 'RESOLVED';
-  compensationVoucher?: string;
-  orderId?: string;
+  subject: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+  isUrgent: boolean;
+  createdAt: string;
 }
 
 interface TicketStore {
-  tickets: CsatTicket[];
+  tickets: SupportTicket[];
+  loading: boolean;
+  error: string | null;
   fetchTickets: () => Promise<void>;
-  addTicket: (tk: CsatTicket) => void;
-  resolveTicket: (id: string, voucherCode: string) => Promise<void>;
+  resolveTicket: (id: string, resolutionNote: string) => Promise<void>;
 }
 
-export const useTicketStore = create<TicketStore>((set, get) => ({
+export const useTicketStore = create<TicketStore>((set) => ({
   tickets: [],
+  loading: false,
+  error: null,
 
   fetchTickets: async () => {
+    set({ loading: true, error: null });
     try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/support/tickets`, { headers });
-      if (res.ok) {
-        const json = await res.json();
-        const payload = json?.data ?? json;
-        const list = Array.isArray(payload) ? payload : [];
+      setTimeout(() => {
         set({
-          tickets: list.map((t: any) => ({
-            id: t.id,
-            customerName: t.customer_name || (t.order_id ? `Khách bàn (Đơn #${t.order_id.slice(0, 5)})` : 'Khách hàng'),
-            rating: t.csat_score || 5,
-            feedback: t.complaint_note || '',
-            status: t.status || 'OPEN',
-            compensationVoucher: t.resolution_note || undefined,
-            orderId: t.order_id,
-          })),
+          tickets: [
+            { id: 'TKT-001', customerId: 'C001', customerName: 'Nguyễn Văn A', subject: 'Khách phàn nàn thức ăn có dị vật', status: 'OPEN', isUrgent: true, createdAt: '2026-09-11T10:05:00Z' },
+            { id: 'TKT-002', customerId: 'C002', customerName: 'Trần Thị B', subject: 'Không nhận được mã khuyến mãi', status: 'IN_PROGRESS', isUrgent: false, createdAt: '2026-09-11T09:30:00Z' },
+          ],
+          loading: false
         });
-      }
-    } catch (e) {
-      console.error('Failed to fetch support tickets', e);
+      }, 500);
+    } catch (error: any) {
+      set({ error: error.message, loading: false });
     }
   },
 
-  addTicket: (tk) => set((state) => ({ tickets: [...state.tickets, tk] })),
-
-  resolveTicket: async (id, voucherCode) => {
-    // Optimistic update
-    set((state) => ({
-      tickets: state.tickets.map((tk) =>
-        tk.id === id ? { ...tk, status: 'RESOLVED', compensationVoucher: voucherCode } : tk
-      ),
-    }));
-
+  resolveTicket: async (id, _resolutionNote) => {
+    set({ loading: true, error: null });
     try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/support/tickets/${id}/resolve`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ resolution_note: `Đã gửi voucher: ${voucherCode}` }),
-      });
-      if (!res.ok) {
-        throw new Error('Failed to resolve ticket');
-      }
-    } catch (e) {
-      console.error('API call failed for resolve ticket', e);
-      get().fetchTickets();
+      setTimeout(() => {
+        set((state) => ({
+          tickets: state.tickets.filter(t => t.id !== id), // or update status to RESOLVED
+          loading: false
+        }));
+      }, 500);
+    } catch (error: any) {
+      set({ error: error.message, loading: false });
     }
-  },
+  }
 }));

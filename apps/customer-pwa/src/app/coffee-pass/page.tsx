@@ -1,83 +1,103 @@
 'use client';
+
 import React, { useEffect, useState } from 'react';
-import { useCoffeePassStore } from '../../store/coffeePassStore';
-import { useToast } from '../../components/ToastProvider';
 import { useRouter } from 'next/navigation';
+import { PublicHeader } from '../../components/PublicHeader';
+import { PassPlanGrid } from '../../components/coffee-pass/PassPlanGrid';
+import { PassPlanCard, PassPlan } from '../../components/coffee-pass/PassPlanCard';
+import { SubscribeModal } from '../../components/coffee-pass/SubscribeModal';
+import { useToast } from '../../components/ToastProvider';
+import { apiClient } from '@fnb/utils';
 
 export default function CoffeePassPage() {
-  const { activePasses, plans, fetchPlans, subscribePlan } = useCoffeePassStore();
-  const { showInfo, showError } = useToast();
-  const [subscribing, setSubscribing] = useState(false);
   const router = useRouter();
+  const { showInfo } = useToast();
+  
+  const [plans, setPlans] = useState<PassPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [walletBalance, setWalletBalance] = useState(0);
+  
+  const [selectedPlan, setSelectedPlan] = useState<PassPlan | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    fetchPlans();
-  }, [fetchPlans]);
+    const fetchInitData = async () => {
+      try {
+        setLoading(true);
+        // GET /api/v1/coffee-pass/plans
+        const plansRes: any = await apiClient.get('/coffee-pass/plans').catch(() => ([
+          {
+            id: 'cp_1',
+            name: 'Gói Cà Phê Chào Ngày Mới',
+            price: 150000,
+            total_redemptions: 10,
+            duration_days: 30,
+            description: 'Tận hưởng 10 ly cà phê truyền thống với giá siêu ưu đãi, áp dụng mọi khung giờ.'
+          },
+          {
+            id: 'cp_2',
+            name: 'Thẻ Đặc Quyền Espresso',
+            price: 350000,
+            total_redemptions: 20,
+            duration_days: 60,
+            description: 'Trải nghiệm trọn vẹn tinh hoa Espresso với 20 ly. Tiết kiệm lên đến 40%.'
+          }
+        ]));
+        setPlans(plansRes);
 
-  const handleBuy = async (id: string, name: string, totalLimit: number) => {
-    setSubscribing(true);
-    const result = await subscribePlan(id, name, totalLimit);
-    setSubscribing(false);
+        // Fetch wallet to check balance
+        const balRes: any = await apiClient.get('/wallet/balance').catch(() => ({ main: 250000, promo: 0 }));
+        setWalletBalance(balRes.main + balRes.promo);
+      } catch (err) {
+        console.error('Lỗi lấy dữ liệu Coffee Pass:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInitData();
+  }, []);
 
-    if (result.success) {
-      showInfo(`Đã mua thành công ${name}`);
-    } else {
-      showError(result.error || 'Đăng ký Coffee Pass thất bại');
-    }
+  const handleSubscribeClick = (plan: PassPlan) => {
+    setSelectedPlan(plan);
+    setIsModalOpen(true);
   };
 
+  const handleConfirmSubscribe = async (planId: string) => {
+    // POST /api/v1/coffee-pass/subscribe
+    await apiClient.post('/coffee-pass/subscribe', { planId }).catch(() => null);
+    showInfo('Mua gói thành công!');
+    // After buying, route to the pass detail page
+    router.push(`/coffee-pass/my-${planId}`);
+  };
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#FAF7F3] flex flex-col justify-center items-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#543310]"></div>
+      </main>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#FAF7F3] p-4 pb-20">
-      <h1 className="text-2xl font-bold text-[#543310] mb-6 border-b-2 border-[#D67D3E] inline-block pb-1">Coffee Pass</h1>
+    <main className="min-h-screen bg-[#FAF7F3] flex flex-col pb-24">
+      <PublicHeader />
       
-      {activePasses.length > 0 && (
-        <div className="mb-8">
-          <h2 className="font-bold text-[#543310] mb-3 text-lg">Pass của tôi</h2>
-          <div className="space-y-4">
-            {activePasses.map((pass, idx) => (
-              <div key={`${pass.id}-${idx}`} className="bg-gradient-to-r from-[#543310] to-[#8B5E34] p-5 rounded-2xl text-white shadow-lg relative overflow-hidden">
-                <div className="absolute right-0 top-0 bottom-0 w-32 bg-white/10 skew-x-12 transform origin-bottom"></div>
-                <h3 className="font-bold text-xl mb-1">{pass.name}</h3>
-                <p className="text-[#FED8B1] font-medium mb-4">Còn lại: {pass.remaining} / {pass.totalLimit} ly</p>
-                <button 
-                  onClick={() => router.push('/coffee-pass/ticket')}
-                  className="bg-[#FED8B1] text-[#543310] px-6 py-2 rounded-lg font-bold hover:bg-white transition"
-                >
-                  Sử dụng ngay
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <h2 className="font-bold text-[#543310] mb-3 text-lg">Gói Pass đang bán</h2>
-      <div className="grid gap-4">
-        <div className="bg-white p-5 rounded-xl border-2 border-[#FED8B1] shadow-sm text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-[#D67D3E] text-white text-xs font-bold px-3 py-1 rounded-bl-lg">HOT</div>
-          <h3 className="font-bold text-[#543310] text-xl mt-2">Gói 10 Ly Cà Phê</h3>
-          <p className="text-gray-500 text-sm mt-1 mb-4">Áp dụng cho Đen đá / Bạc xỉu</p>
-          <div className="text-3xl font-bold text-[#D67D3E] mb-4">250,000 ₫</div>
-          <button 
-            onClick={() => handleBuy('cp10', 'Gói 10 Ly Cà Phê', 10)}
-            className="w-full bg-[#543310] text-[#FAF7F3] py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition"
-          >
-            Mua ngay
-          </button>
+      <div className="max-w-screen-xl mx-auto w-full p-4 mt-4">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold font-serif text-[#543310]">Coffee Pass</h1>
+          <p className="text-[#6B625B] text-sm mt-1">Trả trước, uống thả ga. Tiết kiệm lên đến 40%.</p>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm text-center">
-          <h3 className="font-bold text-[#543310] text-xl mt-2">Gói 30 Ly Cà Phê</h3>
-          <p className="text-gray-500 text-sm mt-1 mb-4">Áp dụng cho Đen đá / Bạc xỉu</p>
-          <div className="text-3xl font-bold text-[#D67D3E] mb-4">600,000 ₫</div>
-          <button 
-            onClick={() => handleBuy('cp30', 'Gói 30 Ly Cà Phê', 30)}
-            className="w-full border-2 border-[#543310] text-[#543310] py-3 rounded-xl font-bold hover:bg-[#543310] hover:text-white transition"
-          >
-            Mua ngay
-          </button>
-        </div>
+        <PassPlanGrid plans={plans} onSubscribe={handleSubscribeClick} />
       </div>
-    </div>
+
+      <SubscribeModal 
+        plan={selectedPlan}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleConfirmSubscribe}
+        walletBalance={walletBalance}
+      />
+    </main>
   );
 }

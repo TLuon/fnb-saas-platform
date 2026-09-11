@@ -81,7 +81,7 @@ const Column = ({ title, status, items, now, changeStatus, markOutOfStock }: {
 export default function KDS() {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [now, setNow] = useState(Date.now());
-  const accessToken = useAuthStore((state) => state.accessToken);
+  const accessToken = useAuthStore((state: any) => state.accessToken);
 
   useEffect(() => {
     // Timer for Elapsed Time

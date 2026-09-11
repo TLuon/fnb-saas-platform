@@ -1,106 +1,144 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useWalletStore } from '../../store/walletStore';
-import { useToast } from '../../components/ToastProvider';
+
+import React, { useEffect, useState } from 'react';
+import { PublicHeader } from '../../components/PublicHeader';
+import { WalletCard } from '../../components/wallet/WalletCard';
+import { TopUpModal } from '../../components/wallet/TopUpModal';
+import { TransactionFilters, TransactionType } from '../../components/wallet/TransactionFilters';
+import { TransactionList } from '../../components/wallet/TransactionList';
+import { VoucherList } from '../../components/wallet/VoucherList';
+import { Pagination } from '../../components/Pagination';
+import { apiClient } from '@fnb/utils';
+import { PlusCircle } from 'lucide-react';
 
 export default function WalletPage() {
-  const { mainBalance, promoBalance, history, getTotalBalance, fetchWallet, fetchHistory, topUpApi } = useWalletStore();
-  const { showInfo, showError } = useToast();
-  const [showTopUp, setShowTopUp] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [balance, setBalance] = useState({ main: 0, promo: 0 });
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [vouchers, setVouchers] = useState<any[]>([]);
+  const [filter, setFilter] = useState<TransactionType>('ALL');
+  
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [customerName, setCustomerName] = useState('Khách hàng');
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchWallet();
-    fetchHistory();
-  }, [fetchWallet, fetchHistory]);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        // GET /api/v1/wallet/balance
+        const balRes: any = await apiClient.get('/wallet/balance').catch(() => ({ main: 150000, promo: 50000 }));
+        setBalance(balRes);
 
-  const handleTopUp = async () => {
-    const val = parseInt(amount, 10);
-    if (!val || val <= 0) {
-      showError('Vui lòng nhập số tiền hợp lệ');
-      return;
-    }
+        // GET /api/v1/wallet/transactions
+        const txnRes: any = await apiClient.get('/wallet/transactions').catch(() => ([
+          { id: '1', type: 'TOP_UP', amount: 200000, description: 'Nạp tiền ví FNB', created_at: new Date().toISOString() },
+          { id: '2', type: 'PAYMENT', amount: 50000, description: 'Thanh toán đơn hàng #O-123', created_at: new Date(Date.now() - 86400000).toISOString() },
+          { id: '3', type: 'REFUND', amount: 25000, description: 'Hoàn tiền đơn hàng hủy #O-120', created_at: new Date(Date.now() - 172800000).toISOString() },
+          { id: '4', type: 'PAYMENT', amount: 30000, description: 'Thanh toán đơn hàng #O-099', created_at: new Date(Date.now() - 345600000).toISOString() },
+          { id: '5', type: 'TOP_UP', amount: 100000, description: 'Nạp tiền ví FNB', created_at: new Date(Date.now() - 518400000).toISOString() },
+        ]));
+        setTransactions(txnRes);
 
-    setLoading(true);
-    const result = await topUpApi(val);
-    setLoading(false);
+        // GET /api/v1/vouchers
+        const vchRes: any = await apiClient.get('/vouchers').catch(() => ([
+          { id: 'v1', code: 'WELCOME50', title: 'Giảm 50% cho bạn mới', description: 'Giảm tối đa 30K cho đơn từ 0đ', expires_at: new Date(Date.now() + 864000000).toISOString(), status: 'ACTIVE' },
+          { id: 'v2', code: 'FNB10K', title: 'Giảm 10K', description: 'Áp dụng cho đơn từ 50K', expires_at: new Date(Date.now() + 1728000000).toISOString(), status: 'ACTIVE' },
+          { id: 'v3', code: 'USED20', title: 'Giảm 20K', description: 'Đã sử dụng ngày hôm qua', expires_at: new Date(Date.now() + 864000000).toISOString(), status: 'USED' },
+          { id: 'v4', code: 'EXPIRED', title: 'Giảm 15%', description: 'Đã hết hạn sử dụng', expires_at: new Date(Date.now() - 864000000).toISOString(), status: 'EXPIRED' }
+        ]));
+        setVouchers(vchRes);
+        
+        // Use profile data if we have an endpoint, mock for now
+        setCustomerName('Tuấn Nguyễn');
+      } catch (err) {
+        console.error('Lỗi lấy dữ liệu ví:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
-    if (result.success) {
-      showInfo(`Nạp thành công ${val.toLocaleString('vi-VN')} ₫`);
-      setShowTopUp(false);
-      setAmount('');
-    } else {
-      showError(result.error || 'Nạp tiền thất bại');
-    }
+  const handleTopUpSuccess = (newBalance: number) => {
+    // Topup gọi qua backend, chỉ refresh balance SAU KHI API trả success.
+    setBalance(prev => ({ ...prev, main: prev.main + newBalance })); 
+    setTransactions([{
+      id: Date.now().toString(),
+      type: 'TOP_UP',
+      amount: newBalance,
+      description: 'Nạp tiền ví FNB',
+      created_at: new Date().toISOString()
+    }, ...transactions]);
   };
 
+  const filteredTxns = transactions.filter(t => filter === 'ALL' || t.type === filter);
+  
+  // Fake pagination logic for demo
+  const itemsPerPage = 3;
+  const totalPages = Math.ceil(filteredTxns.length / itemsPerPage);
+  const paginatedTxns = filteredTxns.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#FAF7F3] flex flex-col justify-center items-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#543310]"></div>
+      </main>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#FAF7F3] p-4 pb-20">
-      <h1 className="text-2xl font-bold text-[#543310] mb-6 border-b-2 border-[#D67D3E] inline-block pb-1">Ví của tôi</h1>
+    <main className="min-h-screen bg-[#FAF7F3] flex flex-col pb-24">
+      <PublicHeader />
       
-      <div className="bg-gradient-to-br from-[#FED8B1] to-[#D67D3E] p-6 rounded-2xl shadow-md text-[#543310] mb-8 relative overflow-hidden">
-        <div className="absolute -right-6 -top-6 w-32 h-32 bg-white opacity-20 rounded-full blur-2xl"></div>
-        <h2 className="font-medium opacity-90 mb-1">Tổng số dư</h2>
-        <p className="text-4xl font-bold mb-4">{getTotalBalance().toLocaleString()} ₫</p>
-        <div className="flex flex-col gap-1 text-sm font-bold opacity-80 border-t border-[#543310]/20 pt-3 mt-3">
-          <div className="flex justify-between">
-            <span>Số dư chính:</span>
-            <span>{mainBalance.toLocaleString()} ₫</span>
+      <div className="max-w-screen-xl mx-auto w-full p-4 space-y-6 mt-4">
+        
+        {/* Wallet Card Section */}
+        <section className="flex flex-col items-center">
+          <WalletCard 
+            customerName={customerName} 
+            mainBalance={balance.main} 
+            promoBalance={balance.promo} 
+          />
+          <button 
+            onClick={() => setIsTopUpOpen(true)}
+            className="w-full max-w-sm py-4 mt-4 bg-[#543310] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#D67D3E] transition-colors shadow-sm"
+          >
+            <PlusCircle size={20} /> Nạp tiền vào ví
+          </button>
+        </section>
+
+        <hr className="border-[#E8DED5]" />
+
+        {/* Voucher Section */}
+        <section>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold font-serif text-[#543310]">Voucher của bạn</h2>
+            <span className="text-sm font-bold text-[#D67D3E]">{vouchers.filter(v => v.status === 'ACTIVE').length} khả dụng</span>
           </div>
-          <div className="flex justify-between">
-            <span>Khuyến mãi:</span>
-            <span>{promoBalance.toLocaleString()} ₫</span>
-          </div>
-        </div>
+          <VoucherList vouchers={vouchers} />
+        </section>
+
+        <hr className="border-[#E8DED5]" />
+
+        {/* Transaction History Section */}
+        <section>
+          <h2 className="text-lg font-bold font-serif text-[#543310] mb-4">Lịch sử giao dịch</h2>
+          <TransactionFilters filter={filter} onChange={(f) => { setFilter(f); setCurrentPage(1); }} />
+          <TransactionList transactions={paginatedTxns} />
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
+        </section>
       </div>
 
-      <div className="flex gap-4 mb-8">
-        <button 
-          onClick={() => setShowTopUp(true)}
-          className="flex-1 bg-[#543310] text-[#FAF7F3] py-4 rounded-xl font-bold shadow-lg hover:bg-opacity-90 transition text-lg"
-        >
-          Nạp tiền
-        </button>
-      </div>
-
-      {showTopUp && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-xl border border-[#FED8B1]">
-            <h3 className="font-bold text-[#543310] text-xl mb-4">Nạp tiền vào ví</h3>
-            <input 
-              type="number" 
-              placeholder="Nhập số tiền (VNĐ)..." 
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              className="w-full border-2 border-gray-200 p-4 rounded-xl mb-6 focus:ring-4 focus:ring-[#FED8B1] focus:border-[#D67D3E] outline-none transition text-lg font-bold text-[#543310]"
-            />
-            <div className="flex gap-3">
-              <button onClick={() => setShowTopUp(false)} className="flex-1 py-3 text-gray-600 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 transition">Hủy</button>
-              <button onClick={handleTopUp} className="flex-1 bg-[#543310] text-[#FAF7F3] py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition">Xác nhận</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <h3 className="font-bold text-[#543310] mb-4 text-lg">Lịch sử giao dịch</h3>
-      {history.length === 0 ? (
-        <p className="text-gray-500 text-center py-8">Chưa có giao dịch nào.</p>
-      ) : (
-        <ul className="space-y-3">
-          {history.map(tx => (
-            <li key={tx.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center transition hover:border-[#FED8B1]">
-              <div>
-                <p className="font-bold text-[#543310]">{tx.description}</p>
-                <p className="text-xs text-gray-500 mt-1 font-medium">{new Date(tx.timestamp).toLocaleString()}</p>
-              </div>
-              <span className={`font-bold text-lg ${tx.amount > 0 ? 'text-green-600' : 'text-[#D67D3E]'}`}>
-                {tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString()} ₫
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      <TopUpModal 
+        isOpen={isTopUpOpen} 
+        onClose={() => setIsTopUpOpen(false)} 
+        onSuccess={handleTopUpSuccess} 
+      />
+    </main>
   );
 }

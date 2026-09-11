@@ -1,109 +1,119 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useCartStore } from '../../store/cartStore';
-import { useGroupCartStore } from '../../store/groupCartStore';
-import { useGroupOrder } from '../../hooks/useGroupOrder';
-import { useRouter } from 'next/navigation';
-import { useToast } from '../../components/ToastProvider';
+import React, { useEffect, useState } from 'react';
+import { useCartStore } from '../../stores/cartStore';
+import { CartHeader } from '../../components/cart/CartHeader';
+import { CartItemRow } from '../../components/cart/CartItemRow';
+import { OrderNoteField } from '../../components/cart/OrderNoteField';
+import { BranchTableSummary } from '../../components/cart/BranchTableSummary';
+import { PriceSummary } from '../../components/cart/PriceSummary';
+import { EmptyCartState } from '../../components/cart/EmptyCartState';
+import { CheckoutButton } from '../../components/cart/CheckoutButton';
+import { useAuthGuard } from '../../hooks/useAuthGuard';
+import { LoginRequiredModal } from '../../components/LoginRequiredModal';
+import { apiClient } from '@fnb/utils';
 
 export default function CartPage() {
-  const [activeTab, setActiveTab] = useState<'personal' | 'group'>('personal');
-  const personalItems = useCartStore(state => state.items);
-  const personalTotal = useCartStore(state => state.totalPrice());
-  const removeItem = useCartStore(state => state.removeItem);
+  const { showLoginModal, setShowLoginModal, requireAuth } = useAuthGuard();
   
-  const groupItems = useGroupCartStore(state => state.items);
-  const groupTotal = groupItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const items = useCartStore(state => state.items);
+  const orderNote = useCartStore(state => state.orderNote);
+  const updateQuantity = useCartStore(state => state.updateQuantity);
+  const removeItem = useCartStore(state => state.removeItem);
+  const setOrderNote = useCartStore(state => state.setOrderNote);
+  const getSubtotal = useCartStore(state => state.getSubtotal);
+  const getTotalItems = useCartStore(state => state.getTotalItems);
 
-  const router = useRouter();
-  const { showInfo } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
-  useGroupOrder('1');
+  useEffect(() => {
+    setIsMounted(true);
+    // Ideally requireAuth(() => {}) here if cart should be completely hidden for guests
+    // But typically we let them see the cart, and block on checkout.
+  }, []);
 
-  const handleCheckout = () => {
-    if (activeTab === 'personal' && personalItems.length === 0) return;
-    if (activeTab === 'group' && groupItems.length === 0) return;
-    router.push('/checkout');
-  };
+  // Simulate checking availability with backend on cart load
+  useEffect(() => {
+    if (!isMounted || items.length === 0) return;
+    
+    const checkAvailability = async () => {
+      try {
+        setCheckingAvailability(true);
+        // Call API to check product availability if backend supports it
+        // e.g. const res = await apiClient.post('/cart/verify', { items: items.map(i => i.productId) });
+        // Update items in store if some are inactive
+      } catch (err) {
+        console.error('Failed to verify cart items', err);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+    
+    checkAvailability();
+  }, [isMounted]); // intentional dependency, verify once when loaded
 
-  const handleSyncToGroup = () => {
-    showInfo('Đã đồng bộ món của bạn lên giỏ hàng chung');
-  };
+  if (!isMounted) return null;
 
-  const displayItems = activeTab === 'personal' ? personalItems : groupItems;
-  const displayTotal = activeTab === 'personal' ? personalTotal : groupTotal;
+  if (items.length === 0) {
+    return (
+      <main className="min-h-screen bg-[#FAF7F3] flex flex-col">
+        <CartHeader />
+        <div className="flex-1 flex flex-col pt-10">
+          <EmptyCartState />
+        </div>
+      </main>
+    );
+  }
+
+  const subtotal = getSubtotal();
+  const hasInactiveItem = items.some(item => item.isAvailable === false);
+  const isCheckoutDisabled = items.length === 0 || hasInactiveItem || checkingAvailability;
 
   return (
-    <div className="min-h-screen bg-[#FAF7F3] p-4 flex flex-col">
-      <h1 className="text-2xl font-bold text-[#543310] mb-4 border-b-2 border-[#D67D3E] inline-block pb-1">Giỏ hàng</h1>
+    <main className="min-h-screen bg-[#FAF7F3] flex flex-col">
+      <CartHeader />
       
-      <div className="flex bg-white rounded-lg p-1 mb-6 shadow-sm border border-[#FED8B1]">
-        <button 
-          className={`flex-1 py-2 font-medium rounded-md transition ${activeTab === 'personal' ? 'bg-[#543310] text-[#FAF7F3]' : 'text-gray-500'}`}
-          onClick={() => setActiveTab('personal')}
-        >
-          Cá nhân
-        </button>
-        <button 
-          className={`flex-1 py-2 font-medium rounded-md transition ${activeTab === 'group' ? 'bg-[#543310] text-[#FAF7F3]' : 'text-gray-500'}`}
-          onClick={() => setActiveTab('group')}
-        >
-          Nhóm (Bàn 1)
-        </button>
-      </div>
+      <div className="flex-1 max-w-screen-xl mx-auto w-full p-4 space-y-6 pb-32">
+        <BranchTableSummary 
+          branchName="FNB Bến Thành" 
+          orderType="DINE_IN" 
+          tableName="T1-01" 
+        />
 
-      <div className="flex-1 overflow-y-auto pb-40">
-        {displayItems.length === 0 ? (
-          <p className="text-center text-gray-500 mt-10">Giỏ hàng trống.</p>
-        ) : (
-          <ul className="space-y-4">
-            {displayItems.map((item, idx) => (
-              <li key={`${item.id}-${idx}`} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-[#543310]">{item.name} <span className="text-sm font-normal text-gray-500">x{item.quantity}</span></h3>
-                  <p className="text-[#D67D3E] font-medium">{(item.price * item.quantity).toLocaleString()} ₫</p>
-                  {activeTab === 'group' && item.addedBy && (
-                    <p className="text-xs mt-2 text-[#543310] font-bold bg-[#FED8B1] inline-block px-2 py-1 rounded-md">
-                      Bởi: {item.addedBy}
-                    </p>
-                  )}
-                </div>
-                {activeTab === 'personal' && (
-                  <button onClick={() => removeItem(item.id)} className="text-red-500 text-sm font-medium p-2 hover:bg-red-50 rounded">
-                    Xóa
-                  </button>
-                )}
-              </li>
+        <div className="space-y-4">
+          <h2 className="text-sm font-bold text-[#6B625B] uppercase tracking-wider">Món đã chọn</h2>
+          <div className="space-y-3">
+            {items.map(item => (
+              <CartItemRow 
+                key={item.id}
+                item={item}
+                onUpdateQuantity={updateQuantity}
+                onRemove={removeItem}
+              />
             ))}
-          </ul>
-        )}
+          </div>
+        </div>
+
+        <OrderNoteField note={orderNote} onChange={setOrderNote} />
+
+        <div className="space-y-4">
+          <h2 className="text-sm font-bold text-[#6B625B] uppercase tracking-wider">Thanh toán</h2>
+          <PriceSummary subtotal={subtotal} discount={0} />
+        </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.1)] z-50">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-gray-600 font-medium">Tổng cộng:</span>
-          <span className="font-bold text-2xl text-[#543310]">{displayTotal.toLocaleString()} ₫</span>
-        </div>
-        
-        <div className="flex gap-3">
-          {activeTab === 'personal' && (
-            <button 
-              onClick={handleSyncToGroup}
-              className="flex-1 bg-[#FED8B1] text-[#543310] py-3 rounded-lg font-bold hover:bg-[#D67D3E] hover:text-white transition"
-            >
-              Gửi vào chung
-            </button>
-          )}
-          <button 
-            onClick={handleCheckout}
-            disabled={displayItems.length === 0}
-            className="flex-1 bg-[#543310] text-[#FAF7F3] py-3 rounded-lg font-bold hover:bg-opacity-90 transition disabled:opacity-50"
-          >
-            Thanh toán {activeTab === 'group' ? 'Nhóm' : ''}
-          </button>
-        </div>
-      </div>
-    </div>
+      <CheckoutButton 
+        isDisabled={isCheckoutDisabled}
+        itemCount={getTotalItems()}
+        totalAmount={subtotal}
+      />
+
+      <LoginRequiredModal 
+        isOpen={showLoginModal} 
+        onClose={() => setShowLoginModal(false)} 
+        returnUrl="/checkout" 
+      />
+    </main>
   );
 }

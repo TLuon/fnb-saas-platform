@@ -1,86 +1,143 @@
-import { useEffect } from 'react';
-import { Plus, Edit2, ShieldAlert } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
 import { useStaffStore } from '../store/staffStore';
-import type { StaffMember } from '../store/staffStore';
+import type { StaffMember, Role } from '../store/staffStore';
+import { StaffToolbar } from '../components/staff/StaffToolbar';
+import { StaffTable } from '../components/staff/StaffTable';
+import { StaffFormModal } from '../components/staff/StaffFormModal';
+import { TemporaryCredentialModal } from '../components/staff/TemporaryCredentialModal';
+import { DeactivateConfirmModal } from '../components/staff/DeactivateConfirmModal';
 
 export default function StaffManagement() {
-  const { staff, toggleStaff, fetchStaff } = useStaffStore();
+  const { staff, fetchStaff, createStaff, updateStaff, deactivateStaff } = useStaffStore();
+  const [loading, setLoading] = useState(true);
+
+  // Filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<Role | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+
+  // Modal state
+  const [isFormOpen, setFormOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+
+  const [tempCredentialState, setTempCredentialState] = useState<{
+    isOpen: boolean;
+    name: string;
+    password?: string;
+  }>({ isOpen: false, name: '' });
+
+  const [deactivateState, setDeactivateState] = useState<{
+    isOpen: boolean;
+    staff: StaffMember | null;
+  }>({ isOpen: false, staff: null });
 
   useEffect(() => {
-    fetchStaff();
+    const init = async () => {
+      await fetchStaff();
+      setLoading(false);
+    };
+    init();
   }, [fetchStaff]);
 
+  const filteredStaff = useMemo(() => {
+    return staff.filter(s => {
+      if (roleFilter !== 'ALL' && s.role !== roleFilter) return false;
+      
+      const isActive = s.active;
+      if (statusFilter === 'ACTIVE' && !isActive) return false;
+      if (statusFilter === 'INACTIVE' && isActive) return false;
+
+      if (searchTerm) {
+        const query = searchTerm.toLowerCase();
+        const matchName = s.name.toLowerCase().includes(query);
+        const matchPhone = s.phone?.includes(query);
+        if (!matchName && !matchPhone) return false;
+      }
+      return true;
+    });
+  }, [staff, roleFilter, statusFilter, searchTerm]);
+
+  const totalActiveOwners = useMemo(() => {
+    return staff.filter(s => s.role === 'OWNER' && s.active).length;
+  }, [staff]);
+
+  const handleFormSubmit = async (data: Partial<StaffMember>) => {
+    if (editingStaff) {
+      await updateStaff(editingStaff.id, data);
+      setFormOpen(false);
+    } else {
+      const result = await createStaff(data);
+      setFormOpen(false);
+      setTempCredentialState({
+        isOpen: true,
+        name: result.full_name || result.name || data.name || 'Nhân viên',
+        password: result.temporary_password
+      });
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (deactivateState.staff) {
+      await deactivateStaff(deactivateState.staff.id);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-brand-primary)]"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-4xl font-black font-serif text-[var(--color-brand-primary)]">Quản lý Nhân sự</h2>
-          <p className="text-gray-500 mt-2">Phân quyền và quản lý tài khoản nhân viên</p>
-        </div>
-        <button className="bg-[var(--color-brand-primary)] text-[var(--color-brand-neutral)] px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:bg-[var(--color-brand-secondary)] transition shadow-md">
-          <Plus size={20} />
-          Thêm Nhân Viên
-        </button>
+    <div className="flex flex-col h-full space-y-6 animate-fade-in">
+      <div>
+        <h2 className="text-4xl font-black font-serif text-[var(--color-brand-primary)]">
+          Quản lý Nhân sự
+        </h2>
+        <p className="text-gray-500 mt-2">
+          Phân quyền, cấp tài khoản và quản lý trạng thái nhân viên
+        </p>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[var(--color-brand-secondary)] text-white">
-              <th className="p-4 font-semibold">Tên nhân viên</th>
-              <th className="p-4 font-semibold">Cấp bậc</th>
-              <th className="p-4 font-semibold text-center">Trạng thái</th>
-              <th className="p-4 font-semibold text-right">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {staff.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="p-8 text-center text-gray-400">
-                  Chưa có nhân viên nào trong chi nhánh này.
-                </td>
-              </tr>
-            ) : (
-              staff.map((s: StaffMember) => (
-              <tr key={s.id} className="border-b border-gray-50 hover:bg-[var(--color-brand-accent)]/20 transition">
-                <td className="p-4 font-medium text-[var(--color-brand-primary)]">{s.name}</td>
-                <td className="p-4">
-                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                    s.role === 'OWNER' ? 'bg-[var(--color-brand-primary)] text-white' : 
-                    s.role === 'SUPPORT' ? 'bg-[var(--color-brand-secondary)] text-white' : 
-                    'bg-[var(--color-brand-accent)] text-[var(--color-brand-primary)]'
-                  }`}>
-                    {s.role}
-                  </span>
-                </td>
-                <td className="p-4 text-center">
-                  <button 
-                    onClick={() => {
-                      if (s.role !== 'OWNER') toggleStaff(s.id);
-                    }}
-                    disabled={s.role === 'OWNER'}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      s.active ? 'bg-[var(--color-brand-primary)]' : 'bg-gray-300'
-                    } ${s.role === 'OWNER' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      s.active ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
-                </td>
-                <td className="p-4 flex justify-end gap-2">
-                  <button className="p-2 text-gray-400 hover:text-[var(--color-brand-primary)] transition bg-gray-50 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 shadow-sm">
-                    <Edit2 size={16} />
-                  </button>
-                  <button className="p-2 text-gray-400 hover:text-red-500 transition bg-gray-50 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 shadow-sm" disabled={s.role === 'OWNER'}>
-                    <ShieldAlert size={16} />
-                  </button>
-                </td>
-              </tr>
-            )))}
-          </tbody>
-        </table>
-      </div>
+      <StaffToolbar 
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        roleFilter={roleFilter}
+        setRoleFilter={setRoleFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        onAddStaff={() => { setEditingStaff(null); setFormOpen(true); }}
+      />
+
+      <StaffTable 
+        staff={filteredStaff}
+        onEditStaff={(s) => { setEditingStaff(s); setFormOpen(true); }}
+        onDeactivateStaff={(s) => setDeactivateState({ isOpen: true, staff: s })}
+      />
+
+      <StaffFormModal 
+        isOpen={isFormOpen}
+        onClose={() => setFormOpen(false)}
+        onSubmit={handleFormSubmit}
+        initialData={editingStaff}
+      />
+
+      <TemporaryCredentialModal 
+        isOpen={tempCredentialState.isOpen}
+        onClose={() => setTempCredentialState({ isOpen: false, name: '' })}
+        staffName={tempCredentialState.name}
+        temporaryPassword={tempCredentialState.password}
+      />
+
+      <DeactivateConfirmModal 
+        isOpen={deactivateState.isOpen}
+        onClose={() => setDeactivateState({ isOpen: false, staff: null })}
+        onConfirm={handleDeactivate}
+        staff={deactivateState.staff}
+        totalActiveOwners={totalActiveOwners}
+      />
     </div>
   );
 }

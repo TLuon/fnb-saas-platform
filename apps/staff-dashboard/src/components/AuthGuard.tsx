@@ -1,6 +1,7 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
+import { Navigate, useLocation } from 'react-router-dom';
+import { authStore } from '@fnb/utils';
+import { useStore } from 'zustand';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -8,28 +9,40 @@ interface AuthGuardProps {
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requiredRole }) => {
-  const { currentUser, accessToken, logout } = useAuthStore();
+  const accessToken = useStore(authStore, state => state.accessToken);
+  const role = useStore(authStore, state => state.role);
+  const location = useLocation();
 
   if (!accessToken) {
     return <Navigate to="/login" replace />;
   }
 
-  // OWNER has access to everything
-  const authorized = currentUser.role === requiredRole || currentUser.role === 'OWNER';
+  // Determine access based on role
+  let authorized = false;
+
+  if (role === 'OWNER') {
+    authorized = true; // OWNER has access to all routes
+  } else if (role === 'SUPPORT') {
+    // SUPPORT can only access routes under /support
+    authorized = location.pathname.startsWith('/support');
+  } else if (role === 'STAFF') {
+    // STAFF can only access operation routes like /kds
+    authorized = requiredRole === 'STAFF'; 
+  }
 
   if (!authorized) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[var(--color-brand-neutral)]">
-        <div className="p-8 max-w-sm w-full bg-white rounded-3xl shadow-lg text-center border border-gray-100">
-          <h2 className="text-xl font-bold mb-2 text-[var(--color-brand-primary)]">Truy cập bị từ chối</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            Tài khoản của bạn ({currentUser.role || 'Không xác định'}) không có quyền truy cập trang này ({requiredRole}).
+      <div className="flex h-screen items-center justify-center bg-[#FAF7F3]">
+        <div className="p-8 max-w-sm w-full bg-white rounded-xl shadow-sm text-center border border-[#E8DED5]">
+          <h2 className="text-xl font-bold mb-4 text-[#B42318]">403 - Truy cập bị từ chối</h2>
+          <p className="text-[#6B625B] text-sm mb-6">
+            Tài khoản của bạn ({role || 'Không xác định'}) không có quyền truy cập trang này.
           </p>
           <button
-            onClick={logout}
-            className="w-full bg-[var(--color-brand-primary)] text-white py-2.5 rounded-xl font-bold hover:bg-[var(--color-brand-secondary)] transition text-sm"
+            onClick={() => authStore.getState().clearAuth()}
+            className="w-full bg-[#543310] text-white py-2.5 rounded hover:bg-[#D67D3E] transition-colors font-medium"
           >
-            Đăng xuất / Đổi tài khoản
+            Đăng xuất / Quay lại
           </button>
         </div>
       </div>

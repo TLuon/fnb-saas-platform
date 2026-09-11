@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
-import { Coffee, Users, BarChart3, UsersRound, Settings, ClipboardList, MessageSquareWarning, UtensilsCrossed } from 'lucide-react';
-import { useAuthStore } from '../store/authStore';
+import { Coffee, Users, BarChart3, UsersRound, Settings, ClipboardList, MessageSquareWarning, UtensilsCrossed, Clock, Package } from 'lucide-react';
+import { useAuthStore } from '../store/authStore.ts';
 
 export function Sidebar() {
   const { currentUser } = useAuthStore();
@@ -10,6 +10,8 @@ export function Sidebar() {
     { to: '/staff-management', icon: <Users size={20} />, label: 'Quản lý Nhân sự' },
     { to: '/analytics', icon: <BarChart3 size={20} />, label: 'Báo cáo Doanh thu' },
     { to: '/cdp', icon: <UsersRound size={20} />, label: 'Hồ sơ Khách hàng' },
+    { to: '/shifts', icon: <Clock size={20} />, label: 'Quản lý Ca làm việc' },
+    { to: '/inventory', icon: <Package size={20} />, label: 'Kho & Định lượng' },
     { to: '/kds', icon: <UtensilsCrossed size={20} />, label: 'Màn hình Bếp (KDS)' },
   ];
 
@@ -22,11 +24,15 @@ export function Sidebar() {
     { to: '/kds', icon: <UtensilsCrossed size={20} />, label: 'Màn hình Bếp (KDS)' },
   ];
 
-  const links = currentUser.role === 'OWNER' 
+  const links = currentUser?.role === 'OWNER' 
     ? ownerLinks 
-    : currentUser.role === 'SUPPORT' 
+    : currentUser?.role === 'SUPPORT' 
       ? supportLinks 
-      : staffLinks;
+      : currentUser?.role === 'STAFF'
+        ? staffLinks
+        : [];
+
+  if (!currentUser) return null;
 
   return (
     <aside className="w-64 bg-[var(--color-brand-neutral)] text-[var(--color-brand-primary)] flex flex-col h-screen border-r border-gray-200 shadow-sm relative z-10">

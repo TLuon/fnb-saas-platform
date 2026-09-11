@@ -23,3 +23,12 @@ body {
   mask-repeat: no-repeat;
   mask-position: left center, right center;
 }
+
+/* Hide scrollbar for CategoryTabBar */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

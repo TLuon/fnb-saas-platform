@@ -1,146 +1,173 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
-
-export type TxStatus = 'UNMATCHED' | 'PENDING_APPROVAL' | 'RESOLVED';
+import { useAuthStore } from './authStore.ts';
 
 export interface UnmatchedTransaction {
   id: string;
+  bankRef: string;
   amount: number;
+  date: string;
   content: string;
-  status: TxStatus;
-  makerId: string | null;
-  proposedCustomerId: string | null;
+  status: 'PENDING' | 'PROPOSED' | 'RESOLVED';
+  makerId?: string | null;
+  proposedCustomerId?: string | null;
+  checkerId?: string | null;
 }
 
-export interface SuggestedMatch {
-  customer_id: string;
-  full_name: string;
-  similarity: number;
-  phone?: string;
+export interface Candidate {
+  id: string;
+  name: string;
+  phone: string;
+  expectedAmount: number;
+  confidenceScore: number;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  actor: string;
+  timestamp: string;
 }
 
 interface SupportStore {
-  transactions: UnmatchedTransaction[];
-  fetchTransactions: () => Promise<void>;
-  suggestMatch: (txId: string) => Promise<SuggestedMatch[]>;
-  propose: (txId: string, customerId: string, makerId: string) => Promise<void>;
-  approve: (txId: string, checkerId: string) => Promise<void>;
+  unmatchedTransactions: UnmatchedTransaction[];
+  candidates: Record<string, Candidate[]>; // map from transactionId to candidates
+  auditLogs: Record<string, AuditLog[]>;
+  loading: boolean;
+  error: string | null;
+  socketConnected: boolean;
+
+  fetchUnmatched: () => Promise<void>;
+  fetchCandidates: (id: string) => Promise<void>;
+  fetchAuditLogs: (id: string) => Promise<void>;
+  proposeMatch: (id: string, customerId: string) => Promise<void>;
+  approveMatch: (id: string) => Promise<void>;
+  rejectMatch: (id: string) => Promise<void>;
+  simulateSocketEvent: (event: string, data: any) => void;
 }
 
 export const useSupportStore = create<SupportStore>((set, get) => ({
-  transactions: [],
-  
-  fetchTransactions: async () => {
+  unmatchedTransactions: [],
+  candidates: {},
+  auditLogs: {},
+  loading: false,
+  error: null,
+  socketConnected: true,
+
+  fetchUnmatched: async () => {
+    set({ loading: true, error: null });
     try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/support/unmatched`, {
-        headers
-      });
-      if (res.ok) {
-        const resJson = await res.json();
-        const payload = resJson?.data ?? resJson;
-        const list = Array.isArray(payload) ? payload : [];
-        const mapped: UnmatchedTransaction[] = list.map((tx: any) => ({
-          id: tx.id,
-          amount: tx.amount ?? tx.payment_transactions?.amount ?? 0,
-          content: tx.content ?? tx.payment_transactions?.raw_transfer_content ?? '',
-          status: tx.status === 'PENDING' ? 'UNMATCHED' : (tx.status === 'PROPOSED' ? 'PENDING_APPROVAL' : (tx.status || 'UNMATCHED')),
-          makerId: tx.maker_user_id ?? tx.makerId ?? null,
-          proposedCustomerId: tx.suggested_customer_id ?? tx.proposedCustomerId ?? null,
-        }));
-        set({ transactions: mapped });
-      }
-    } catch (e) {
-      console.error('Failed to fetch transactions', e);
+      // Mock data
+      setTimeout(() => {
+        set({
+          unmatchedTransactions: [
+            { id: 'TXN-001', bankRef: 'MB-123456', amount: 85000, date: '2026-09-11T10:00:00Z', content: 'Thanh toan cf', status: 'PENDING' },
+            { id: 'TXN-002', bankRef: 'VCB-98765', amount: 150000, date: '2026-09-11T10:15:00Z', content: 'CAFE', status: 'PROPOSED', makerId: 'STAFF-1', proposedCustomerId: 'C001' },
+          ],
+          loading: false
+        });
+      }, 500);
+    } catch (error: any) {
+      set({ error: error.message, loading: false });
     }
   },
 
-  suggestMatch: async (txId: string) => {
-    try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/suggest`, { headers });
-      if (res.ok) {
-        const resJson = await res.json();
-        const payload = resJson?.data ?? resJson;
-        return payload.suggestions ?? [];
-      }
-      return [];
-    } catch (e) {
-      console.error('Failed to suggest match', e);
-      return [];
-    }
-  },
-
-  propose: async (txId, customerId, makerId) => {
-    // Optimistic update
-    set(state => ({
-      transactions: state.transactions.map(tx => 
-        tx.id === txId 
-          ? { ...tx, status: 'PENDING_APPROVAL', proposedCustomerId: customerId, makerId } 
-          : tx
-      )
-    }));
-
-    try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/propose`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ customer_id: customerId })
-      });
-      if (!res.ok) throw new Error('API Failed');
-    } catch (e) {
-      // Revert on failure
-      get().fetchTransactions();
-    }
-  },
-
-  approve: async (txId, checkerId) => {
-    const tx = get().transactions.find(t => t.id === txId);
-    if (!tx) return;
-    
-    if (tx.makerId === checkerId) {
-      throw new Error('ERR_6002_SELF_APPROVAL');
-    }
-
-    // Optimistic update
+  fetchCandidates: async (id) => {
+    // Mock
     set((state) => ({
-      transactions: state.transactions.map(t => 
-        t.id === txId ? { ...t, status: 'RESOLVED' } : t
-      )
-    }));
-
-    try {
-      const token = useAuthStore.getState().accessToken;
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      candidates: {
+        ...state.candidates,
+        [id]: [
+          { id: 'C001', name: 'Nguyễn Văn A', phone: '0901234567', expectedAmount: 85000, confidenceScore: 95 },
+          { id: 'C002', name: 'Lê Văn C', phone: '0912233445', expectedAmount: 80000, confidenceScore: 60 }
+        ]
       }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/support/unmatched/${txId}/approve`, {
-        method: 'POST',
-        headers,
-      });
-      if (!res.ok) throw new Error('API Failed');
-    } catch (e) {
-      get().fetchTransactions();
+    }));
+  },
+
+  fetchAuditLogs: async (id) => {
+    // Mock
+    set((state) => ({
+      auditLogs: {
+        ...state.auditLogs,
+        [id]: [
+          { id: 'AL-1', action: 'TRANSACTION_DETECTED', actor: 'System', timestamp: '2026-09-11T10:00:00Z' },
+        ]
+      }
+    }));
+  },
+
+  proposeMatch: async (id, customerId) => {
+    set({ loading: true, error: null });
+    try {
+      const currentUser = useAuthStore.getState().currentUser;
+      if (!currentUser) throw new Error("Chưa đăng nhập");
+
+      // Mock
+      setTimeout(() => {
+        set((state) => ({
+          unmatchedTransactions: state.unmatchedTransactions.map(tx => 
+            tx.id === id ? { ...tx, status: 'PROPOSED', makerId: currentUser.id, proposedCustomerId: customerId } : tx
+          ),
+          auditLogs: {
+            ...state.auditLogs,
+            [id]: [
+              ...(state.auditLogs[id] || []),
+              { id: Date.now().toString(), action: 'PROPOSED', actor: currentUser.name, timestamp: new Date().toISOString() }
+            ]
+          },
+          loading: false
+        }));
+      }, 500);
+    } catch (error: any) {
+      set({ error: error.message, loading: false });
+    }
+  },
+
+  approveMatch: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      const currentUser = useAuthStore.getState().currentUser;
+      const tx = get().unmatchedTransactions.find(t => t.id === id);
+      
+      if (!currentUser) throw new Error("Chưa đăng nhập");
+      if (tx?.makerId === currentUser.id) {
+        throw new Error("ERR_6002_SELF_APPROVAL: Bạn không thể duyệt đề xuất của chính mình!");
+      }
+
+      // Mock success
+      setTimeout(() => {
+        set((state) => ({
+          unmatchedTransactions: state.unmatchedTransactions.filter(t => t.id !== id),
+          loading: false
+        }));
+      }, 500);
+    } catch (error: any) {
+      set({ error: error.message, loading: false });
+    }
+  },
+
+  rejectMatch: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      // Return to PENDING
+      setTimeout(() => {
+        set((state) => ({
+          unmatchedTransactions: state.unmatchedTransactions.map(tx => 
+            tx.id === id ? { ...tx, status: 'PENDING', makerId: null, proposedCustomerId: null } : tx
+          ),
+          loading: false
+        }));
+      }, 500);
+    } catch (error: any) {
+      set({ error: error.message, loading: false });
+    }
+  },
+
+  simulateSocketEvent: (event, data) => {
+    if (event === 'unmatched_transaction_created') {
+      set((state) => ({
+        unmatchedTransactions: [data, ...state.unmatchedTransactions]
+      }));
     }
   }
 }));
