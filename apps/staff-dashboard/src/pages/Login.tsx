@@ -9,7 +9,6 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,21 +21,24 @@ export default function Login() {
     setError('');
     setLoading(true);
 
-    const result = await login(email.trim(), password);
-    setLoading(false);
+    try {
+      // Mock login via Zustand since backend API is not available
+      await useAuthStore.getState().login(email, password);
+      
+      const role = useAuthStore.getState().currentUser?.role || 'STAFF';
 
-    if (!result.success) {
-      setError(result.error || 'Đăng nhập không thành công.');
-      return;
-    }
-
-    const role = useAuthStore.getState().currentUser.role;
-    if (role === 'SUPPORT') {
-      navigate('/support/board');
-    } else if (role === 'STAFF') {
-      navigate('/kds');
-    } else {
-      navigate('/analytics');
+      // Route based on role
+      if (role === 'SUPPORT') {
+        navigate('/support/board');
+      } else if (role === 'STAFF') {
+        navigate('/kds');
+      } else {
+        navigate('/analytics'); // OWNER
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Lỗi kết nối máy chủ');
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ToastProvider } from "../components/ToastProvider";
+import { AuthProvider } from "../components/AuthProvider";
 
 export const metadata: Metadata = {
   title: "F&B Customer PWA",
   description: "Đặt món và Thanh toán dễ dàng",
 };
-
-import { ToastProvider } from "../components/ToastProvider";
 
 export default function RootLayout({
   children,
@@ -24,7 +24,9 @@ export default function RootLayout({
         className="font-sans bg-[var(--color-brand-neutral)] text-[#333] antialiased"
       >
         <ToastProvider>
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </ToastProvider>
       </body>
     </html>

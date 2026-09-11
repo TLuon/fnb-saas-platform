@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../components/ToastProvider';
+import { authStore, apiClient } from '@fnb/utils';
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -18,34 +19,20 @@ export default function LoginPage() {
       return;
     }
 
-    // Backend MVP requires email for login
-    const email = identifier.includes('@') ? identifier.trim() : `${identifier.trim()}@cafe-and-cake.test`;
-
     try {
       setLoading(true);
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      // Backend MVP uses email
+      const payload: any = await apiClient.post('/auth/login', { email: identifier, password });
 
-      const resJson = await res.json();
-      const payload = resJson?.data ?? resJson;
-      if (!res.ok || !payload?.access_token) {
-        throw new Error(resJson?.error?.message || payload?.message || 'Email hoặc mật khẩu không chính xác');
+      if (!payload?.access_token) {
+        throw new Error('Đăng nhập thất bại: Không nhận được token.');
       }
 
-      // Store valid JWT token
-      const token = payload.access_token;
-      document.cookie = `jwt=${encodeURIComponent(token)}; path=/; max-age=86400`;
-      localStorage.setItem('access_token', token);
-      if (payload.refresh_token) {
-        localStorage.setItem('refresh_token', payload.refresh_token);
-      }
+      // Store valid JWT token using Zustand
+      authStore.getState().setTokens(payload.access_token, payload.refresh_token);
 
       showInfo('Đăng nhập thành công');
-      router.push('/menu');
+      router.push('/menu'); // Later will redirect to return URL
     } catch (err: any) {
       console.error('Login error:', err);
       showError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
@@ -56,14 +43,14 @@ export default function LoginPage() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-[#FAF7F3]">
-      <div className="p-8 w-full max-w-sm bg-white rounded-lg shadow-sm border border-gray-100">
-        <h1 className="text-2xl font-bold text-[#543310] mb-6 border-b-2 border-[#D67D3E] pb-2">Đăng Nhập</h1>
+      <div className="p-8 w-full max-w-sm bg-[#FFFFFF] rounded-lg shadow-sm border border-[#E8DED5]">
+        <h1 className="text-2xl font-bold text-[#543310] mb-6 border-b-2 border-[#D67D3E] pb-2 text-center">Đăng Nhập</h1>
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email / Số điện thoại</label>
+            <label className="block text-sm font-medium text-[#222222] mb-1">Email / Số điện thoại</label>
             <input 
               type="text"
-              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
+              className="w-full px-4 py-2 border border-[#E8DED5] rounded focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
               value={identifier}
               onChange={e => setIdentifier(e.target.value)}
               placeholder="customer@example.com"
@@ -72,10 +59,10 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+            <label className="block text-sm font-medium text-[#222222] mb-1">Mật khẩu</label>
             <input 
               type="password" 
-              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
+              className="w-full px-4 py-2 border border-[#E8DED5] rounded focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -86,11 +73,21 @@ export default function LoginPage() {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full mt-4 bg-[#543310] text-[#FAF7F3] font-bold py-3 rounded hover:bg-opacity-90 transition disabled:opacity-50"
+            className="w-full mt-4 bg-[#543310] text-[#FFFFFF] font-bold py-3 rounded hover:bg-[#D67D3E] transition-colors disabled:opacity-50"
           >
             {loading ? 'Đang xác thực...' : 'Đăng Nhập'}
           </button>
         </form>
+        
+        <div className="mt-6 text-center text-sm text-[#6B625B]">
+          Chưa có tài khoản?{' '}
+          <button 
+            onClick={() => router.push('/register')}
+            className="text-[#D67D3E] font-medium hover:underline"
+          >
+            Đăng ký ngay
+          </button>
+        </div>
       </div>
     </div>
   );

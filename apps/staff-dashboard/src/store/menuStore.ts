@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
+import { useAuthStore } from './authStore.ts';
 
 export interface Category {
   id: string;
@@ -20,8 +20,12 @@ interface MenuStore {
   categories: Category[];
   products: Product[];
   fetchMenu: () => Promise<void>;
-  addCategory: (c: Category) => Promise<void>;
-  addProduct: (p: Product) => Promise<void>;
+  addCategory: (c: Omit<Category, 'id'>) => Promise<void>;
+  updateCategory: (id: string, name: string) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  addProduct: (p: Omit<Product, 'id'>) => Promise<void>;
+  updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
   toggleProduct: (id: string) => Promise<void>;
 }
 
@@ -133,21 +137,116 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
     }
   },
 
-  addCategory: async (category) => {
+  addCategory: async (categoryData) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/categories`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(categoryData),
+    });
+    if (!res.ok) throw new Error('Create category failed');
+    const newCat = await res.json();
+    const finalCat = newCat.data || newCat;
+    set((state) => ({ categories: [...state.categories, finalCat] }));
+  },
+
+  updateCategory: async (id, name) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/categories/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error('Update category failed');
     set((state) => ({
-      categories: [
-        ...state.categories,
-        category,
-      ],
+      categories: state.categories.map((c) => (c.id === id ? { ...c, name } : c)),
     }));
   },
 
-  addProduct: async (product) => {
+  deleteCategory: async (id) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/categories/${id}`, { method: 'DELETE', headers });
+    if (!res.ok) throw new Error('Delete category failed');
     set((state) => ({
-      products: [
-        ...state.products,
-        product,
-      ],
+      categories: state.categories.filter((c) => c.id !== id),
+    }));
+  },
+
+  addProduct: async (productData) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const payload = {
+      ...productData,
+      category_id: productData.categoryId,
+    };
+
+    const res = await fetch(`${baseUrl}/products`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Create product failed');
+    const newProd = await res.json();
+    const finalProd = newProd.data || newProd;
+    set((state) => ({ 
+      products: [...state.products, {
+        id: finalProd.id,
+        name: finalProd.name,
+        price: Number(finalProd.price),
+        categoryId: finalProd.category_id || productData.categoryId,
+        active: finalProd.is_active ?? true,
+      }] 
+    }));
+  },
+
+  updateProduct: async (id, data) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const payload: any = { ...data };
+    if (data.categoryId) {
+      payload.category_id = data.categoryId;
+      delete payload.categoryId;
+    }
+
+    const res = await fetch(`${baseUrl}/products/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Update product failed');
+    set((state) => ({
+      products: state.products.map((p) => (p.id === id ? { ...p, ...data } : p)),
+    }));
+  },
+
+  deleteProduct: async (id) => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+
+    const res = await fetch(`${baseUrl}/products/${id}`, { method: 'DELETE', headers });
+    if (!res.ok) throw new Error('Delete product failed');
+    set((state) => ({
+      products: state.products.filter((p) => p.id !== id),
     }));
   },
 
@@ -233,4 +332,4 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
       }));
     }
   },
-}));
+}));
