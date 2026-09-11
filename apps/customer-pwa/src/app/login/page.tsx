@@ -5,23 +5,53 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '../../components/ToastProvider';
 
 export default function LoginPage() {
-  const [phone, setPhone] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { showError, showInfo } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone || !password) {
-      showError('Vui lòng nhập đầy đủ thông tin');
+    if (!identifier || !password) {
+      showError('Vui lòng nhập đầy đủ thông tin đăng nhập');
       return;
     }
-    
-    // Mock login success - giả lập API và gán cookie cho middleware đi qua
-    const payload = btoa(JSON.stringify({ role_app: 'CUSTOMER', exp: Math.floor(Date.now() / 1000) + 86400 })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    document.cookie = `jwt=header.${payload}.signature; path=/`;
-    showInfo('Đăng nhập thành công');
-    router.push('/floors/1');
+
+    // Backend MVP requires email for login
+    const email = identifier.includes('@') ? identifier.trim() : `${identifier.trim()}@cafe-and-cake.test`;
+
+    try {
+      setLoading(true);
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const resJson = await res.json();
+      const payload = resJson?.data ?? resJson;
+      if (!res.ok || !payload?.access_token) {
+        throw new Error(resJson?.error?.message || payload?.message || 'Email hoặc mật khẩu không chính xác');
+      }
+
+      // Store valid JWT token
+      const token = payload.access_token;
+      document.cookie = `jwt=${encodeURIComponent(token)}; path=/; max-age=86400`;
+      localStorage.setItem('access_token', token);
+      if (payload.refresh_token) {
+        localStorage.setItem('refresh_token', payload.refresh_token);
+      }
+
+      showInfo('Đăng nhập thành công');
+      router.push('/menu');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      showError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -30,29 +60,35 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-[#543310] mb-6 border-b-2 border-[#D67D3E] pb-2">Đăng Nhập</h1>
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email / Số điện thoại</label>
             <input 
-              type="tel" 
+              type="text"
               className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              placeholder="09..."
+              value={identifier}
+              onChange={e => setIdentifier(e.target.value)}
+              placeholder="customer@example.com"
+              disabled={loading}
+              required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu / OTP</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
             <input 
               type="password" 
               className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
               value={password}
               onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              disabled={loading}
+              required
             />
           </div>
           <button 
             type="submit" 
-            className="w-full mt-4 bg-[#543310] text-[#FAF7F3] font-bold py-3 rounded hover:bg-opacity-90 transition"
+            disabled={loading}
+            className="w-full mt-4 bg-[#543310] text-[#FAF7F3] font-bold py-3 rounded hover:bg-opacity-90 transition disabled:opacity-50"
           >
-            Đăng Nhập
+            {loading ? 'Đang xác thực...' : 'Đăng Nhập'}
           </button>
         </form>
       </div>

@@ -1,0 +1,4 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "tailwindcss.experimental.configFile": "apps/customer-pwa/package.json"
+}

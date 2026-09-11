@@ -15,8 +15,8 @@
 | | **B1 — DB Lead + Backend** | **B2 — Backend Dev** |
 |---|---|---|
 | Hạ tầng DB | Toàn bộ `ERD.md` (DDL, trigger, function), toàn bộ `RLS_POLICIES.md`, seed data (`SETUP.md` mục 9) | Không đụng schema, chỉ dùng Supabase client theo bảng B1 đã tạo |
-| Module API (`API_CONTRACT.md`) | Auth (`/auth/*`), Floor & Table (`/floors/*`, `/tables/*`), Menu (`/categories/*`, `/products/*`), Staff Management (`/staff/*`), CDP/Reporting (`/cdp/*`, `/reports/*`) | Reservation & Payment (`/reservations/*`), Order/POS + KDS (`/orders/*`), Group-Order (`/group-order/*`), Wallet & Coffee Pass (`/wallet/*`, `/coffee-pass/*`), Support/CSKH (`/support/*`, gồm cả `/support/csat`) |
-| Hạ tầng dùng chung | `common/` (guard, decorator, `ResponseInterceptor`), cấu hình Redis client wrapper (B2 dùng lại) | — |
+| Module API (`API_CONTRACT.md`) | Auth (`/auth/*`), Public Catalog (`/public/catalog`), Floor & Table (`/floors/*`, `/tables/*`), Menu (`/categories/*`, `/products/*`), Staff Management (`/staff/*`), CDP/Reporting (`/cdp/*`, `/reports/*`), payment RPC/migration | Reservation & Payment (`/reservations/*`), Order/POS + KDS (`/orders/*`), Group-Order (`/group-order/*`), Wallet & Coffee Pass (`/wallet/*`, `/coffee-pass/*`), Support/CSKH (`/support/*`, gồm cả `/support/csat`), seed orchestration |
+| Hạ tầng dùng chung | `common/` (guard, decorator, `ResponseInterceptor`), migration/RPC tài chính, cấu hình Supabase | Redis business client, Socket.IO gateway và event payload dùng chung |
 | Điểm khối lượng công việc (ước lượng, 1 = nhẹ, 3 = nặng) | DB infra: 3 + Auth: 1 + Floor: 2 + Menu: 1 + Staff: 1 + CDP: 2 = **10 điểm** | Reservation: 3 + Order/KDS: 2 + Group-Order: 2 + Wallet/CoffeePass: 2 + Support: 3 = **12 điểm**, nhưng B1 làm hạ tầng DB trước nên B2 chỉ code nghiệp vụ thuần, không tốn thời gian dựng infra → tổng effort quy đổi ra thời gian **tương đương nhau** |
 
 > Vì sao B1 có ít module hơn nhưng khối lượng vẫn tương đương: B1 gánh toàn bộ phần hạ tầng (schema, RLS, migration, guard chung) — việc B2 code nhanh được là nhờ dùng lại phần này. Nếu tính cả effort hạ tầng, 2 bên coi như ngang nhau ở đầu-cuối dự án.
@@ -39,6 +39,8 @@
 - Viết và kiểm thử trigger `trg_order_completed`, cập nhật loyalty và membership tier.
 - Đảm bảo các API trả đúng response envelope và error code chuẩn.
 - Review code B2 ở các phần liên quan đến query, tenant isolation và audit log.
+- Tạo public catalog endpoint cho khách vãng lai và chốt chỉ trả product/category active.
+- Tạo RPC `fn_pay_order` để wallet/payment/order completion được atomic; B2 chỉ gọi RPC.
 
 **Đầu ra cần bàn giao:** thư mục migration chạy được theo thứ tự, seed data demo, JWT mẫu, API Auth/Floor/Menu/Staff/CDP/Reports, tài liệu schema cập nhật và checklist kiểm thử RLS.
 
@@ -60,6 +62,9 @@
 - Tích hợp Socket.IO cho KDS, Group-Order và Support Board.
 - Ghi `audit_logs` cho topup, thanh toán, duyệt unmatched transaction và các thao tác tài chính.
 - Không tự thay đổi schema; mọi nhu cầu thêm bảng/cột phải gửi B1 duyệt trước.
+- Chốt MVP không có customer-created order độc lập: Staff check-in và tạo order trước, Customer thêm món nhóm hoặc thanh toán order đã có.
+- Tạo `GET /orders` cho lịch sử Customer và `GET /orders/kds` cho snapshot KDS.
+- Tạo script seed demo server-side: 1 Owner, 10 Staff, 10 Customer và dữ liệu nghiệp vụ mẫu.
 
 **Đầu ra cần bàn giao:** các module API nêu trên, Redis client dùng chung, event payload đúng `REALTIME_EVENTS.md`, DTO/error code đầy đủ và collection Postman/Thunder Client cho các luồng chính.
 
@@ -80,11 +85,11 @@
 
 ### Tuần 3-4 — Nghiệp vụ lõi
 **B1:** Floor & Table CRUD, Menu CRUD (`categories`/`products`), tích hợp Supabase Realtime cho bảng `tables` (đủ để FE F1 bắt đầu subscribe kênh `tables:{branch_id}`)
-**B2:** Reservation lock (Redis TTL 10 phút) + sinh mã VietQR mock + webhook mock-payment; Order/POS CRUD cơ bản + submit-kitchen
+**B2:** Reservation lock (Redis TTL 10 phút) + sinh mã VietQR mock + webhook mock-payment; Order/POS CRUD cơ bản + submit-kitchen; thống nhất flow Staff check-in tạo order
 
 ### Tuần 5-6 — Nghiệp vụ nâng cao & CDP
 **B1:** Trigger `trg_order_completed`, Staff Management (`/staff/*`), CDP endpoints (RFM segmentation, hồ sơ 360), Analytics dashboard
-**B2:** Group-Order session Redis hoàn chỉnh + broadcast; Wallet + Coffee Pass (TOTP); bắt đầu Support module (unmatched queue + fuzzy match)
+**B2:** Group-Order session Redis hoàn chỉnh + broadcast; Wallet + Coffee Pass (TOTP) qua RPC/payment contract của B1; bắt đầu Support module (unmatched queue + fuzzy match); tạo seed orchestration
 
 ### Tuần 7 — Hoàn thiện Support & tích hợp
 **B1:** Hỗ trợ B2 hoàn thiện Maker-Checker (`fn_merge_customer_profiles`, audit log); rà soát lại toàn bộ RLS policy theo role (mục 5 `RLS_POLICIES.md`)

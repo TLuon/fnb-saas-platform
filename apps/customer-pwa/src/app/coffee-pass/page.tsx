@@ -1,17 +1,29 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCoffeePassStore } from '../../store/coffeePassStore';
 import { useToast } from '../../components/ToastProvider';
 import { useRouter } from 'next/navigation';
 
 export default function CoffeePassPage() {
-  const { activePasses, buyPass } = useCoffeePassStore();
-  const { showInfo } = useToast();
+  const { activePasses, plans, fetchPlans, subscribePlan } = useCoffeePassStore();
+  const { showInfo, showError } = useToast();
+  const [subscribing, setSubscribing] = useState(false);
   const router = useRouter();
 
-  const handleBuy = (id: string, name: string, totalLimit: number) => {
-    buyPass({ id, name, totalLimit, remaining: totalLimit });
-    showInfo(`Đã mua thành công ${name}`);
+  useEffect(() => {
+    fetchPlans();
+  }, [fetchPlans]);
+
+  const handleBuy = async (id: string, name: string, totalLimit: number) => {
+    setSubscribing(true);
+    const result = await subscribePlan(id, name, totalLimit);
+    setSubscribing(false);
+
+    if (result.success) {
+      showInfo(`Đã mua thành công ${name}`);
+    } else {
+      showError(result.error || 'Đăng ký Coffee Pass thất bại');
+    }
   };
 
   return (

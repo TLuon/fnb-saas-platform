@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthGuard } from './components/AuthGuard';
 import { Layout } from './components/Layout';
+import Login from './pages/Login';
 import MenuManagement from './pages/MenuManagement';
 import StaffManagement from './pages/StaffManagement';
 import Analytics from './pages/Analytics';
@@ -13,6 +14,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/login" element={<Login />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/analytics" replace />} />
           <Route path="menu-management" element={<AuthGuard requiredRole="OWNER"><MenuManagement /></AuthGuard>} />

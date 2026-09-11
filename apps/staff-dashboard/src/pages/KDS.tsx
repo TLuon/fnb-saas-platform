@@ -1,62 +1,61 @@
 import { useEffect, useState } from 'react';
 import { RealtimeClient } from '@fnb/utils';
+import { useAuthStore } from '../store/authStore';
 
-export interface Order {
+export interface OrderItem {
   id: string;
-  items: Array<{ name: string; quantity: number }>;
-  status: 'PENDING' | 'PREPARING' | 'READY';
+  orderId: string;
+  name: string;
+  quantity: number;
+  kitchen_status: 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
   createdAt: number;
 }
 
-const Column = ({ title, status, orders, now, changeStatus, markOutOfStock }: { 
+const Column = ({ title, status, items, now, changeStatus, markOutOfStock }: { 
   title: string; 
-  status: Order['status'];
-  orders: Order[];
+  status: OrderItem['kitchen_status'];
+  items: OrderItem[];
   now: number;
-  changeStatus: (id: string, newStatus: Order['status']) => void;
-  markOutOfStock: (id: string) => void;
+  changeStatus: (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => void;
+  markOutOfStock: (orderId: string, itemId: string) => void;
 }) => (
   <div className="flex-1 flex flex-col bg-gray-50 rounded-2xl p-4 min-h-[500px]">
     <h3 className="text-xl font-bold font-serif mb-4 text-[var(--color-brand-primary)]">
       {title}
     </h3>
     <div className="space-y-3 flex-1 overflow-y-auto" data-testid={`column-${status}`}>
-      {orders
-        .filter((o) => o.status === status)
+      {items
+        .filter((i) => i.kitchen_status === status)
         .sort((a, b) => a.createdAt - b.createdAt)
-        .map((order) => {
-          const elapsedMins = Math.floor((now - order.createdAt) / 60000);
+        .map((item) => {
+          const elapsedMins = Math.floor((now - item.createdAt) / 60000);
           const isLate = elapsedMins > 15;
           return (
             <div
-              key={order.id}
+              key={item.id}
               className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 transition hover:shadow-md"
-              data-testid={`order-${order.id}`}
+              data-testid={`item-${item.id}`}
             >
               <div className="flex justify-between items-center">
-                <span className="font-bold text-lg text-gray-800">#{order.id.slice(0, 5)}</span>
+                <span className="font-bold text-lg text-gray-800">#{item.orderId.slice(0, 5)}</span>
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${isLate ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-500'}`}>
                   {elapsedMins} phút
                 </span>
               </div>
-              <ul className="text-sm text-gray-600 space-y-1">
-                {order.items.map((item, idx) => (
-                  <li key={idx} className="flex justify-between">
-                    <span><span className="font-bold text-[var(--color-brand-accent)]">{item.quantity}x</span> {item.name}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="text-sm text-gray-800 flex justify-between">
+                <span><span className="font-bold text-[var(--color-brand-accent)]">{item.quantity}x</span> {item.name}</span>
+              </div>
               <div className="mt-4 flex gap-2 justify-end">
-                {status === 'PENDING' && (
+                {status === 'QUEUED' && (
                   <>
                     <button
-                      onClick={() => markOutOfStock(order.id)}
+                      onClick={() => markOutOfStock(item.orderId, item.id)}
                       className="text-xs bg-red-50 text-red-500 px-3 py-2 rounded-lg font-bold hover:bg-red-100 transition"
                     >
                       Báo hết món
                     </button>
                     <button
-                      onClick={() => changeStatus(order.id, 'PREPARING')}
+                      onClick={() => changeStatus(item.orderId, item.id, 'PREPARING')}
                       className="text-xs bg-[var(--color-brand-secondary)] text-white px-4 py-2 rounded-lg font-bold hover:opacity-90 transition flex-1"
                     >
                       Bắt đầu làm
@@ -65,10 +64,10 @@ const Column = ({ title, status, orders, now, changeStatus, markOutOfStock }: {
                 )}
                 {status === 'PREPARING' && (
                   <button
-                    onClick={() => changeStatus(order.id, 'READY')}
+                    onClick={() => changeStatus(item.orderId, item.id, 'READY')}
                     className="text-xs bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:opacity-90 transition flex-1"
                   >
-                    Hoàn thành món
+                    Hoàn thành
                   </button>
                 )}
               </div>
@@ -80,8 +79,9 @@ const Column = ({ title, status, orders, now, changeStatus, markOutOfStock }: {
 );
 
 export default function KDS() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [items, setItems] = useState<OrderItem[]>([]);
   const [now, setNow] = useState(Date.now());
+  const accessToken = useAuthStore((state) => state.accessToken);
 
   useEffect(() => {
     // Timer for Elapsed Time
@@ -91,60 +91,73 @@ export default function KDS() {
 
   useEffect(() => {
     const client = new RealtimeClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321',
-      supabaseKey: import.meta.env.VITE_SUPABASE_KEY || 'dummy-key',
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'https://ioekhkpzrpuivzzannvn.supabase.co',
+      supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_36iHq3qBFqoisdD4tGTXeA_238_YgDa',
       socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001',
+      token: accessToken,
     });
 
     client.connect();
 
-    client.socket.on('new_order', (orderData: any) => {
-      setOrders((prev) => [
-        ...prev,
-        {
-          id: orderData.orderId || orderData.id || Math.random().toString(36).substr(2, 9),
-          items: orderData.items || [],
-          status: 'PENDING',
-          createdAt: orderData.createdAt ? new Date(orderData.createdAt).getTime() : Date.now(),
-        },
-      ]);
+    client.socket.on('kds_new_ticket', (ticket: any) => {
+      const createdAt = ticket.createdAt ? new Date(ticket.createdAt).getTime() : Date.now();
+      const newItems = (ticket.items || []).map((item: any) => ({
+        id: item.order_item_id || item.id || Math.random().toString(36).substr(2, 9),
+        orderId: ticket.order_id || ticket.orderId || '',
+        name: item.product_name || item.name || 'Món',
+        quantity: item.quantity,
+        kitchen_status: item.kitchen_status || 'QUEUED',
+        createdAt
+      }));
+      setItems((prev) => [...prev, ...newItems]);
+    });
+
+    client.socket.on('kds_item_status_changed', (data: any) => {
+      const targetId = data.order_item_id || data.itemId;
+      setItems((prev) => prev.map(item => 
+        item.id === targetId ? { ...item, kitchen_status: data.kitchen_status } : item
+      ));
     });
 
     return () => {
-      client.socket.off('new_order');
+      client.socket.off('kds_new_ticket');
+      client.socket.off('kds_item_status_changed');
       client.disconnect();
     };
-  }, []);
+  }, [accessToken]);
 
-  const changeStatus = async (id: string, newStatus: Order['status']) => {
-    const originalOrder = orders.find(o => o.id === id);
-    if (!originalOrder) return;
-    const oldStatus = originalOrder.status;
+  const changeStatus = async (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => {
+    const originalItem = items.find(i => i.id === itemId);
+    if (!originalItem) return;
+    const oldStatus = originalItem.kitchen_status;
 
     // Optimistic UI Update
-    setOrders((prev) =>
-      prev.map((order) => (order.id === id ? { ...order, status: newStatus } : order))
+    setItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, kitchen_status: newStatus } : item))
     );
     
     try {
-      // Mock API call to PATCH /orders/:orderId/status
-      const res = await fetch(`http://localhost:3001/orders/${id}/status`, {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      const res = await fetch(`${baseUrl}/orders/${orderId}/items/${itemId}/kitchen-status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ kitchen_status: newStatus }),
       });
       if (!res.ok) throw new Error('API failed');
     } catch (e) {
       console.warn("API call failed, rolling back optimistic update");
-      setOrders((prev) =>
-        prev.map((order) => (order.id === id ? { ...order, status: oldStatus } : order))
+      setItems((prev) =>
+        prev.map((item) => (item.id === itemId ? { ...item, kitchen_status: oldStatus } : item))
       );
     }
   };
 
-  const markOutOfStock = async (id: string) => {
-    setOrders((prev) => prev.filter((order) => order.id !== id));
-    // Implementation to call API to cancel order / items...
+  const markOutOfStock = async (_orderId: string, itemId: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== itemId));
+    // Implementation to call API to cancel order item...
   };
 
 
@@ -156,9 +169,9 @@ export default function KDS() {
       </div>
 
       <div className="flex-1 flex gap-6 overflow-hidden pb-4">
-        <Column title="Chờ chế biến" status="PENDING" orders={orders} now={now} changeStatus={changeStatus} markOutOfStock={markOutOfStock} />
-        <Column title="Đang làm" status="PREPARING" orders={orders} now={now} changeStatus={changeStatus} markOutOfStock={markOutOfStock} />
-        <Column title="Hoàn thành" status="READY" orders={orders} now={now} changeStatus={changeStatus} markOutOfStock={markOutOfStock} />
+        <Column title="Chờ chế biến (QUEUED)" status="QUEUED" items={items} now={now} changeStatus={changeStatus} markOutOfStock={markOutOfStock} />
+        <Column title="Đang làm (PREPARING)" status="PREPARING" items={items} now={now} changeStatus={changeStatus} markOutOfStock={markOutOfStock} />
+        <Column title="Hoàn thành (READY)" status="READY" items={items} now={now} changeStatus={changeStatus} markOutOfStock={markOutOfStock} />
       </div>
     </div>
   );
