@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { MenuService } from './menu.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
+import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentAccessToken, CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
@@ -8,10 +9,18 @@ import { UpdateCategoryDto } from './dto/update-category.dto.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
+import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto.js';
 
 @Controller()
 export class MenuController {
   constructor(private readonly menuService: MenuService) {}
+
+  /** B1.md P2.3 — GET /public/catalog?tenant_subdomain=&branch_id= (Public cho khách vãng lai). */
+  @Public()
+  @Get('public/catalog')
+  getPublicCatalog(@Query() query: PublicCatalogQueryDto) {
+    return this.menuService.getPublicCatalog(query.tenant_subdomain, query.branch_id);
+  }
 
   @Roles('OWNER', 'STAFF', 'CUSTOMER')
   @Get('categories')
