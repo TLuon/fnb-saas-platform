@@ -34,6 +34,7 @@
 
 | Method | Endpoint | Role | Mô tả |
 |---|---|---|---|
+| GET | `/public/catalog?tenant_subdomain=&branch_id=` | Public | Danh mục & món ăn active cho khách vãng lai xem qua mã QR, không cần JWT token |
 | GET | `/categories` | OWNER, STAFF, CUSTOMER | Danh sách danh mục món (dùng cho Menu & Giỏ hàng của Customer, và filter theo `kitchen_station` ở POS) |
 | POST | `/categories` | OWNER | Tạo danh mục (`name`, `kitchen_station`: `BAR`\|`KITCHEN`) |
 | PATCH | `/categories/:id` | OWNER | Sửa danh mục |
@@ -42,14 +43,6 @@
 | POST | `/products` | OWNER | Tạo món (`name`, `price`, `category_id`, `default_modifiers`) |
 | PATCH | `/products/:id` | OWNER | Sửa món (giá, tên, `default_modifiers`, `is_active`) |
 | DELETE | `/products/:id` | OWNER | Vô hiệu hóa món (soft-delete qua `is_active = false` — không xóa cứng vì `order_items` đã tham chiếu `product_id`) |
-
-## 3A. Public Catalog (`/public/catalog`)
-
-| Method | Endpoint | Role | Mô tả |
-|---|---|---|---|
-| GET | `/public/catalog?tenant_subdomain=&branch_id=` | Public | Khách vãng lai xem category/product active. Không trả dữ liệu quản trị và không có quyền ghi. |
-
-> Customer PWA dùng endpoint public này trước khi đăng nhập. Các endpoint `/categories` và `/products` vẫn là endpoint authenticated cho OWNER/STAFF/CUSTOMER.
 
 ## 4. Staff Management (`/staff`)
 
@@ -68,7 +61,7 @@
 |---|---|---|---|
 | POST | `/reservations/lock` | CUSTOMER | Khóa tạm bàn 10 phút bằng Redis `SET NX EX` với token sở hữu, đồng thời chuyển bàn `AVAILABLE → PENDING_LOCK`; trả `reservation_code` dạng `RES_XXXXX`. Lỗi `ERR_2002_TABLE_LOCKED` nếu đã bị khóa |
 | POST | `/reservations/:code/generate-qr` | CUSTOMER | Sinh chuỗi VietQR chứa `reservation_code` + số tiền cọc |
-| POST | `/reservations/webhook/mock-payment` hoặc `/reservations/webhook/mock-payment/:tenantId` | Public (mock) | Chỉ dùng demo; phải có rate limit và header `x-webhook-secret` (bắt buộc trong production). Hỗ trợ truyền tenantId qua path param, query `?tenant_id=`, body, hoặc header `x-tenant-id`. Tạo `payment_transactions`, đối chiếu `reservation_code` → nếu khớp: `tables.status = RESERVED`, giải phóng lock, bắn `table_status_changed`; nếu không khớp nội dung: tạo `unmatched_transactions` (`ERR_3002_PAYMENT_CONTENT_MISMATCH`). Đảm bảo database-level idempotency chống duplicate webhook |
+| POST | `/reservations/webhook/mock-payment` | Public (mock) | Chỉ dùng demo; phải có rate limit và mock signature/secret ở server. Tạo `payment_transactions`, đối chiếu `reservation_code` → nếu khớp: `tables.status = RESERVED`, giải phóng lock, bắn `table_status_changed`; nếu không khớp nội dung: tạo `unmatched_transactions` (`ERR_3002_PAYMENT_CONTENT_MISMATCH`) |
 | DELETE | `/reservations/:code` | CUSTOMER | Chỉ chủ token được hủy đặt bàn trước khi thanh toán; giải phóng lock bằng compare-and-delete, chuyển `PENDING_LOCK → AVAILABLE` |
 
 ## 6. Order / POS Module (`/orders`)
@@ -127,7 +120,29 @@
 | POST | `/support/tickets/:id/resolve` | SUPPORT | Đóng ticket, có thể kèm phát `customer_vouchers` |
 | POST | `/support/customers/merge` | SUPPORT | Gọi `fn_merge_customer_profiles(source_id, target_id)` (xem `ERD.md` mục 3.3). Lỗi `ERR_6004_MERGE_SAME_CUSTOMER` nếu `source_id = target_id` |
 
-## 11. Quy ước chung
+## 12. Shift Management (`/shifts`)
+
+| Method | Endpoint | Role | Mô tả |
+|---|---|---|---|
+| POST | `/shifts/open` | OWNER, STAFF | Mở ca làm việc mới (`branch_id`, `starting_cash`, `notes`). Lỗi nếu chi nhánh đang có ca mở |
+| POST | `/shifts/:id/close` | OWNER, STAFF | Đóng ca làm việc (`ending_cash`, `notes`), tính toán đối soát tiền mặt |
+| GET | `/shifts/current?branch_id=` | OWNER, STAFF | Lấy thông tin ca làm việc đang mở của chi nhánh |
+| GET | `/shifts?branch_id=&status=` | OWNER, STAFF | Lịch sử danh sách các ca làm việc |
+
+## 13. Inventory & Recipe Management (`/inventory`)
+
+| Method | Endpoint | Role | Mô tả |
+|---|---|---|---|
+| GET | `/inventory/ingredients` | OWNER, STAFF | Danh sách nguyên vật liệu trong kho |
+| POST | `/inventory/ingredients` | OWNER | Tạo nguyên vật liệu (`name`, `sku`, `unit`, `current_stock`, `cost_per_unit`) |
+| PATCH | `/inventory/ingredients/:id` | OWNER | Cập nhật thông tin nguyên vật liệu |
+| DELETE | `/inventory/ingredients/:id` | OWNER | Xóa nguyên vật liệu (chặn nếu đang được dùng trong công thức món) |
+| GET | `/inventory/recipes/:productId` | OWNER, STAFF | Lấy công thức định lượng của sản phẩm |
+| POST | `/inventory/recipes` | OWNER | Thiết lập định lượng (`product_id`, `ingredient_id`, `amount`) |
+| DELETE | `/inventory/recipes/:productId/ingredients/:ingredientId` | OWNER | Xóa nguyên liệu khỏi công thức món |
+| POST | `/inventory/transactions` | OWNER, STAFF | Ghi phiếu nhập, xuất, điều chỉnh kho (`IMPORT`, `EXPORT`, `ADJUSTMENT`) |
+
+## 14. Quy ước chung
 
 - Phân trang: `?page=1&limit=20`, response có thêm `meta: { total, page, limit }`
 - Toàn bộ endpoint ghi dữ liệu tài chính (`/orders/:id/pay`, `/support/unmatched/:id/approve`, `/wallet/topup`) phải ghi `audit_logs` — xem `ERD.md`

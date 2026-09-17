@@ -293,6 +293,61 @@ CREATE TABLE audit_logs (
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============ SHIFTS (CA LÀM VIỆC) ============
+
+CREATE TABLE shifts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    opened_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    closed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    opened_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at TIMESTAMPTZ,
+    starting_cash NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    ending_cash NUMERIC(15,2),
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============ INVENTORY (QUẢN LÝ KHO & ĐỊNH LƯỢNG) ============
+
+CREATE TABLE ingredients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    sku VARCHAR(50),
+    unit VARCHAR(50) NOT NULL,
+    current_stock NUMERIC(15,3) NOT NULL DEFAULT 0.000,
+    min_stock_alert NUMERIC(15,3) DEFAULT 0.000,
+    cost_per_unit NUMERIC(15,2) DEFAULT 0.00,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE product_recipes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    ingredient_id UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    amount NUMERIC(15,3) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_product_ingredient UNIQUE (product_id, ingredient_id)
+);
+
+CREATE TABLE inventory_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
+    ingredient_id UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'ADJUSTMENT', 'ORDER_CONSUMPTION')),
+    quantity NUMERIC(15,3) NOT NULL,
+    balance_after NUMERIC(15,3) NOT NULL,
+    notes TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ## 3. Triggers & Functions nghiệp vụ cốt lõi
