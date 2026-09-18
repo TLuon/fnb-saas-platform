@@ -15,6 +15,8 @@ import { GroupOrderModule } from './modules/group-order/group-order.module.js';
 import { WalletModule } from './modules/wallet/wallet.module.js';
 import { CoffeePassModule } from './modules/coffee-pass/coffee-pass.module.js';
 import { SupportModule } from './modules/support/support.module.js';
+import { ShiftModule } from './modules/shift/shift.module.js';
+import { InventoryModule } from './modules/inventory/inventory.module.js';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { SupportModule } from './modules/support/support.module.js';
     WalletModule,
     CoffeePassModule,
     SupportModule,
+    ShiftModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}

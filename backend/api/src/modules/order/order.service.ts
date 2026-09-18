@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SupabaseService } from '../../config/supabase.service.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
@@ -7,9 +7,12 @@ import { AddOrderItemDto } from './dto/add-order-item.dto.js';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto.js';
 import { UpdateKitchenStatusDto } from './dto/update-kitchen-status.dto.js';
 import { PayOrderDto } from './dto/pay-order.dto.js';
+import { ListOrdersQueryDto } from './dto/list-orders-query.dto.js';
+import { KdsOrdersQueryDto } from './dto/kds-orders-query.dto.js';
 import { RealtimeGateway } from '../../common/realtime/realtime.gateway.js';
 import { WalletService } from '../wallet/wallet.service.js';
 import { CoffeePassService } from '../coffee-pass/coffee-pass.service.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 
 @Injectable()
 export class OrderService {
@@ -17,7 +20,8 @@ export class OrderService {
     private readonly supabaseService: SupabaseService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly walletService: WalletService,
-    private readonly coffeePassService: CoffeePassService
+    private readonly coffeePassService: CoffeePassService,
+    @Optional() private readonly inventoryService?: InventoryService,
   ) {}
 
   private async calculateOrderSubtotal(supabase: any, orderId: string) {
@@ -46,19 +50,24 @@ export class OrderService {
   }
 
   async createOrder(user: AuthenticatedUser, _accessToken: string, dto: CreateOrderDto) {
-    // NEW-007 FIX: Gọi atomic RPC fn_create_order (migration 007)
+    // NEW-007 & B1-010 FIX: Gọi atomic RPC fn_create_order (migration 007 & 010)
     // Toàn bộ logic kiểm tra bàn, khóa dòng FOR UPDATE, kiểm tra và khấu trừ cọc,
-    // tạo order và cập nhật bàn OCCUPIED diễn ra trong 1 transaction duy nhất,
-    // chống double-credit và double-seating tuyệt đối dưới tải cao
+    // tạo order, tự động mapping ca làm việc OPEN và cập nhật bàn OCCUPIED diễn ra
+    // trong 1 transaction duy nhất tại database layer.
     const orderCode = 'ORD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
     const supabaseAdmin = this.supabaseService.admin();
+
+    const orderType = dto.order_type ?? 'DINE_IN';
+    const tableId = orderType === 'DINE_IN' ? (dto.table_id || null) : null;
 
     const { data: result, error: rpcError } = await supabaseAdmin.rpc('fn_create_order', {
       p_tenant_id:        user.tenant_id,
       p_branch_id:        user.branch_id,
-      p_table_id:         dto.table_id,
+      p_table_id:         tableId,
       p_order_code:       orderCode,
       p_reservation_code: dto.reservation_code || null,
+      p_order_type:       orderType,
+      p_shift_id:         null,
     });
 
     if (rpcError) {
@@ -273,16 +282,60 @@ export class OrderService {
   async updateKitchenStatus(user: AuthenticatedUser, accessToken: string, orderId: string, itemId: string, dto: UpdateKitchenStatusDto) {
     const supabase = this.supabaseService.forUser(accessToken);
 
-    // Retrieve order to get branch_id for emitting event
-    const { data: order } = await supabase
+    // 1. Verify order exists and belongs to tenant
+    const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('branch_id')
+      .select('id, branch_id, status')
       .eq('id', orderId)
       .single();
 
+    if (orderError || !order) {
+      throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
+    }
+
+    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã đóng');
+    }
+
+    // 2. Fetch existing order item to check existence & valid transition
+    const { data: item, error: itemError } = await supabase
+      .from('order_items')
+      .select('id, kitchen_status')
+      .eq('id', itemId)
+      .eq('order_id', orderId)
+      .single();
+
+    if (itemError || !item) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Item không tồn tại trong order này');
+    }
+
+    const currentStatus = item.kitchen_status;
+    const targetStatus = dto.kitchen_status;
+
+    // Idempotent: if already at target status, return success
+    if (currentStatus === targetStatus) {
+      return { message: 'Đã cập nhật trạng thái bếp' };
+    }
+
+    // Validate state transitions: QUEUED -> PREPARING -> READY -> SERVED
+    const validTransitions: Record<string, string[]> = {
+      QUEUED: ['PREPARING'],
+      PREPARING: ['READY'],
+      READY: ['SERVED'],
+      SERVED: [],
+    };
+
+    const allowed = validTransitions[currentStatus] || [];
+    if (!allowed.includes(targetStatus)) {
+      throw new AppException(
+        'ERR_9001_VALIDATION_FAILED',
+        `Chuyển trạng thái bếp không hợp lệ từ ${currentStatus} sang ${targetStatus}`
+      );
+    }
+
     const { error: updateError } = await supabase
       .from('order_items')
-      .update({ kitchen_status: dto.kitchen_status })
+      .update({ kitchen_status: targetStatus })
       .eq('id', itemId)
       .eq('order_id', orderId);
 
@@ -291,10 +344,10 @@ export class OrderService {
     }
 
     // Realtime Emit
-    if (order?.branch_id) {
+    if (order.branch_id) {
       this.realtimeGateway.emitKdsItemStatusChanged(order.branch_id, {
         order_item_id: itemId,
-        kitchen_status: dto.kitchen_status,
+        kitchen_status: targetStatus,
       });
     }
 
@@ -307,7 +360,7 @@ export class OrderService {
     // 1. Check order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status, table_id, final_amount, subtotal')
+      .select('id, status, table_id, final_amount, subtotal, branch_id, shift_id')
       .eq('id', orderId)
       .single();
 
@@ -317,6 +370,37 @@ export class OrderService {
 
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã thanh toán hoặc đã hủy');
+    }
+
+    // 1B. Shift Guard: Kiểm tra chi nhánh phải có ca mở để thanh toán
+    const branchId = order.branch_id || user.branch_id;
+    if (branchId) {
+      const supabaseAdmin = this.supabaseService.admin();
+      const shiftQuery = supabaseAdmin.from('shifts');
+      if (shiftQuery && typeof shiftQuery.select === 'function') {
+        const q = shiftQuery
+          .select('id')
+          .eq('tenant_id', user.tenant_id)
+          .eq('branch_id', branchId)
+          .eq('status', 'OPEN');
+        const { data: activeShift } = typeof q.maybeSingle === 'function' ? await q.maybeSingle() : await q.single();
+
+        if (!activeShift) {
+          throw new AppException(
+            'ERR_9001_VALIDATION_FAILED',
+            'Không thể thanh toán đơn hàng khi chưa mở ca làm việc',
+          );
+        }
+
+        if (!order.shift_id && activeShift.id) {
+          const updateQuery = supabaseAdmin.from('orders');
+          if (typeof updateQuery?.update === 'function') {
+            await updateQuery
+              .update({ shift_id: activeShift.id })
+              .eq('id', orderId);
+          }
+        }
+      }
     }
 
     if (dto.payment_method === 'WALLET') {
@@ -350,6 +434,15 @@ export class OrderService {
         entity_id:    orderId,
         metadata:     { payment_method: 'WALLET', ...rpcResult }
       });
+
+      // Trigger inventory deduction nếu có InventoryService
+      if (this.inventoryService) {
+        try {
+          await this.inventoryService.consumeForCompletedOrder(accessToken, user, orderId);
+        } catch {
+          // B1 Blocker boundary: Không phá vỡ payment đã hoàn tất khi thiếu DB RPC trừ kho
+        }
+      }
 
       return { message: 'Đã thanh toán thành công' };
 
@@ -396,6 +489,15 @@ export class OrderService {
       metadata:     { payment_method: dto.payment_method }
     });
 
+    // Trigger inventory deduction nếu có InventoryService
+    if (this.inventoryService) {
+      try {
+        await this.inventoryService.consumeForCompletedOrder(accessToken, user, orderId);
+      } catch {
+        // B1 Blocker boundary: Không phá vỡ payment đã hoàn tất khi thiếu DB RPC trừ kho
+      }
+    }
+
     return { message: 'Đã thanh toán thành công' };
   }
 
@@ -413,5 +515,188 @@ export class OrderService {
     }
 
     return { order };
+  }
+
+  async listOrders(user: AuthenticatedUser, accessToken: string, query: ListOrdersQueryDto) {
+    if (user.role_app === 'STAFF') {
+      if (!user.branch_id) {
+        throw new AppException('ERR_1001_UNAUTHORIZED', 'Tài khoản nhân viên chưa được gán chi nhánh');
+      }
+      if (query.branch_id && query.branch_id !== user.branch_id) {
+        throw new AppException('ERR_1003_TENANT_MISMATCH', 'Không có quyền truy cập chi nhánh khác');
+      }
+    }
+
+    const supabase = this.supabaseService.forUser(accessToken);
+    const page = query.page && query.page >= 1 ? Math.floor(query.page) : 1;
+    const limit = query.limit && query.limit >= 1 ? Math.min(Math.floor(query.limit), 100) : 20;
+    const offset = (page - 1) * limit;
+
+    let customerId: string | null = null;
+    if (user.role_app === 'CUSTOMER') {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('auth_user_id', user.sub)
+        .eq('tenant_id', user.tenant_id)
+        .maybeSingle();
+
+      if (!customer) {
+        return {
+          data: [],
+          meta: { total: 0, page, limit },
+        };
+      }
+      customerId = customer.id;
+    }
+
+    let queryBuilder = supabase
+      .from('orders')
+      .select('*, order_items(*)', { count: 'exact' })
+      .eq('tenant_id', user.tenant_id);
+
+    // Role scoping
+    if (user.role_app === 'CUSTOMER') {
+      queryBuilder = queryBuilder.eq('customer_id', customerId);
+    } else if (user.role_app === 'STAFF') {
+      queryBuilder = queryBuilder.eq('branch_id', user.branch_id);
+    } else if (user.role_app === 'OWNER') {
+      if (query.branch_id) {
+        queryBuilder = queryBuilder.eq('branch_id', query.branch_id);
+      }
+    }
+
+    if (query.status) {
+      queryBuilder = queryBuilder.eq('status', query.status);
+    }
+
+    if (query.order_type) {
+      queryBuilder = queryBuilder.eq('order_type', query.order_type);
+    }
+
+    queryBuilder = queryBuilder
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    const { data, error, count } = await queryBuilder;
+
+    if (error) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi khi lấy danh sách đơn hàng: ${error.message}`);
+    }
+
+    const items = data ?? [];
+    const total = count ?? 0;
+
+    return {
+      data: items,
+      meta: { total, page, limit },
+    };
+  }
+
+  async getKdsSnapshot(user: AuthenticatedUser, accessToken: string, query: KdsOrdersQueryDto) {
+    if (user.role_app === 'STAFF') {
+      if (!user.branch_id) {
+        throw new AppException('ERR_1001_UNAUTHORIZED', 'Tài khoản nhân viên chưa được gán chi nhánh');
+      }
+      if (query.branch_id && query.branch_id !== user.branch_id) {
+        throw new AppException('ERR_1003_TENANT_MISMATCH', 'Không có quyền truy cập chi nhánh khác');
+      }
+    }
+
+    const branchId = user.role_app === 'STAFF' ? user.branch_id : query.branch_id;
+    if (!branchId) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Thiếu thông tin branch_id');
+    }
+
+    const supabase = this.supabaseService.forUser(accessToken);
+
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        order_code,
+        table_id,
+        order_type,
+        status,
+        created_at,
+        tables ( table_code ),
+        order_items (
+          id,
+          product_name,
+          quantity,
+          modifiers,
+          kitchen_status,
+          created_at,
+          products (
+            categories ( kitchen_station )
+          )
+        )
+      `)
+      .eq('tenant_id', user.tenant_id)
+      .eq('branch_id', branchId)
+      .in('status', ['PENDING', 'IN_PROGRESS'])
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi khi lấy dữ liệu KDS: ${error.message}`);
+    }
+
+    const activeStatuses = query.status
+      ? [query.status]
+      : ['QUEUED', 'PREPARING', 'READY'];
+
+    const kdsItems: Array<{
+      order_id: string;
+      order_code: string;
+      table_id: string | null;
+      table_code: string | null;
+      order_type: string;
+      created_at: string;
+      order_item_id: string;
+      product_name: string;
+      quantity: number;
+      modifiers: any[];
+      kitchen_status: string;
+      station: 'BAR' | 'KITCHEN';
+    }> = [];
+
+    for (const order of orders ?? []) {
+      const tableCode = (order.tables as any)?.table_code ?? null;
+      const rawItems = (order.order_items as any[]) ?? [];
+
+      const sortedItems = [...rawItems].sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeA - timeB;
+      });
+
+      for (const item of sortedItems) {
+        if (!activeStatuses.includes(item.kitchen_status)) {
+          continue;
+        }
+
+        const station = ((item.products as any)?.categories?.kitchen_station || 'KITCHEN') as 'BAR' | 'KITCHEN';
+        if (query.station && station !== query.station) {
+          continue;
+        }
+
+        kdsItems.push({
+          order_id: order.id,
+          order_code: order.order_code,
+          table_id: order.table_id ?? null,
+          table_code: tableCode,
+          order_type: order.order_type ?? 'DINE_IN',
+          created_at: item.created_at || order.created_at,
+          order_item_id: item.id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          modifiers: item.modifiers ?? [],
+          kitchen_status: item.kitchen_status,
+          station: station,
+        });
+      }
+    }
+
+    return kdsItems;
   }
 }

@@ -306,3 +306,363 @@ function buildMatchedInsertPayload(resData: { tenant_id: string }, code: string,
 function validateTenant(tenant: { id: string } | null): boolean {
   return tenant !== null && tenant !== undefined;
 }
+
+// ─── SupportService Implementation Tests ─────────────────────────────────────
+import { vi, beforeEach } from 'vitest';
+import { SupportService } from './support.service.js';
+import { AppException } from '../../common/exceptions/app.exception.js';
+
+describe('SupportService Implementation Tests', () => {
+  let service: SupportService;
+  let mockSupabaseUser: any;
+  let mockSupabaseAdmin: any;
+  let mockRealtimeGateway: any;
+
+  const tenantId = '11111111-1111-1111-1111-111111111111';
+  const orderId = 'order-uuid-1';
+  const customerId = 'cust-uuid-1';
+  const unmatchedId = 'unmatched-uuid-1';
+
+  const customerUser = {
+    sub: 'auth-cust-1',
+    tenant_id: tenantId,
+    branch_id: null,
+    role_app: 'CUSTOMER' as const,
+  };
+
+  const supportMakerUser = {
+    sub: 'auth-support-maker',
+    tenant_id: tenantId,
+    branch_id: null,
+    role_app: 'SUPPORT' as const,
+  };
+
+  const supportCheckerUser = {
+    sub: 'auth-support-checker',
+    tenant_id: tenantId,
+    branch_id: null,
+    role_app: 'SUPPORT' as const,
+  };
+
+  beforeEach(() => {
+    mockSupabaseUser = { from: vi.fn() };
+    mockSupabaseAdmin = { from: vi.fn(), rpc: vi.fn() };
+    mockRealtimeGateway = {
+      emitSupportTicketUrgent: vi.fn(),
+      emitUnmatchedTransactionCreated: vi.fn(),
+    };
+
+    const mockSupabaseService: any = {
+      forUser: () => mockSupabaseUser,
+      admin: () => mockSupabaseAdmin,
+    };
+
+    service = new SupportService(mockSupabaseService, mockRealtimeGateway as any);
+  });
+
+  describe('submitCsat', () => {
+    it('should throw ERR_4001_ORDER_NOT_FOUND when order does not exist in tenant', async () => {
+      mockSupabaseUser.from.mockReturnValue({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
+      });
+
+      await expect(
+        service.submitCsat(customerUser, 'token', { order_id: orderId, score: 5 })
+      ).rejects.toThrow(AppException);
+      try {
+        await service.submitCsat(customerUser, 'token', { order_id: orderId, score: 5 });
+      } catch (err: any) {
+        expect(err.code).toBe('ERR_4001_ORDER_NOT_FOUND');
+      }
+    });
+
+    it('should throw ERR_6005_CSAT_ALREADY_SUBMITTED when order already has a ticket', async () => {
+      mockSupabaseUser.from.mockImplementation((table: string) => {
+        if (table === 'orders') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: orderId, customer_id: customerId, status: 'COMPLETED' }, error: null }),
+          };
+        }
+        if (table === 'support_tickets') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'ticket-1' }, error: null }),
+          };
+        }
+        return {};
+      });
+
+      await expect(
+        service.submitCsat(customerUser, 'token', { order_id: orderId, score: 4 })
+      ).rejects.toThrow(AppException);
+      try {
+        await service.submitCsat(customerUser, 'token', { order_id: orderId, score: 4 });
+      } catch (err: any) {
+        expect(err.code).toBe('ERR_6005_CSAT_ALREADY_SUBMITTED');
+      }
+    });
+
+    it('should create URGENT ticket and emit realtime event when score <= 2', async () => {
+      const insertedTicket = {
+        id: 'ticket-urgent-1',
+        order_id: orderId,
+        priority: 'URGENT',
+        status: 'OPEN',
+      };
+
+      mockSupabaseUser.from.mockImplementation((table: string) => {
+        if (table === 'orders') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: orderId, customer_id: customerId, status: 'COMPLETED' }, error: null }),
+          };
+        }
+        if (table === 'support_tickets') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: insertedTicket, error: null }),
+              }),
+            }),
+          };
+        }
+        return {};
+      });
+
+      const result = await service.submitCsat(customerUser, 'token', {
+        order_id: orderId,
+        score: 1,
+        complaint_note: 'Đồ uống quá nguội',
+      });
+
+      expect(result.message).toContain('thành công');
+      expect(mockRealtimeGateway.emitSupportTicketUrgent).toHaveBeenCalledWith(
+        tenantId,
+        expect.objectContaining({
+          ticket_id: 'ticket-urgent-1',
+          order_id: orderId,
+          csat_score: 1,
+        })
+      );
+    });
+  });
+
+  describe('Maker-Checker: proposeMatch & approveMatch', () => {
+    it('should propose match and set status PROPOSED with maker info and audit log', async () => {
+      mockSupabaseUser.from.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: 'maker-user-id' }, error: null }),
+          };
+        }
+        if (table === 'unmatched_transactions') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: { id: unmatchedId, status: 'PENDING', payment_transactions: { tenant_id: tenantId } },
+              error: null,
+            }),
+            update: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({
+                    data: { id: unmatchedId, status: 'PROPOSED', suggested_customer_id: customerId },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: customerId }, error: null }),
+          };
+        }
+        return {};
+      });
+
+      const auditInsert = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseAdmin.from.mockReturnValue({ insert: auditInsert });
+
+      const result = await service.proposeMatch(supportMakerUser, 'token', unmatchedId, {
+        customer_id: customerId,
+      });
+
+      expect(result.message).toContain('thành công');
+      expect(auditInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenant_id: tenantId,
+          action: 'PROPOSE_CUSTOMER_MATCH',
+          entity_id: unmatchedId,
+        })
+      );
+    });
+
+    it('should reject approveMatch with ERR_6002_SELF_APPROVAL when checker is the same as maker', async () => {
+      mockSupabaseUser.from.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: 'same-user-id' }, error: null }),
+          };
+        }
+        if (table === 'unmatched_transactions') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: unmatchedId,
+                status: 'PROPOSED',
+                maker_user_id: 'same-user-id', // Maker is this user!
+                suggested_customer_id: customerId,
+                payment_transactions: { id: 'ptx-1', tenant_id: tenantId },
+              },
+              error: null,
+            }),
+          };
+        }
+        return {};
+      });
+
+      await expect(service.approveMatch(supportMakerUser, 'token', unmatchedId)).rejects.toThrow(AppException);
+      try {
+        await service.approveMatch(supportMakerUser, 'token', unmatchedId);
+      } catch (err: any) {
+        expect(err.code).toBe('ERR_6002_SELF_APPROVAL');
+      }
+    });
+
+    it('should approve match successfully when checker is different from maker', async () => {
+      const updateUnmatched = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const updatePaymentTx = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+
+      mockSupabaseUser.from.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: 'checker-user-id' }, error: null }),
+          };
+        }
+        if (table === 'unmatched_transactions') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: unmatchedId,
+                status: 'PROPOSED',
+                maker_user_id: 'maker-user-id', // Different!
+                suggested_customer_id: customerId,
+                payment_transactions: { id: 'ptx-1', tenant_id: tenantId },
+              },
+              error: null,
+            }),
+            update: updateUnmatched,
+          };
+        }
+        if (table === 'payment_transactions') {
+          return { update: updatePaymentTx };
+        }
+        return {};
+      });
+
+      const auditInsert = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseAdmin.from.mockReturnValue({ insert: auditInsert });
+
+      const result = await service.approveMatch(supportCheckerUser, 'token', unmatchedId);
+
+      expect(result.message).toContain('thành công');
+      expect(updateUnmatched).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'APPROVED', checker_user_id: 'checker-user-id' })
+      );
+      expect(updatePaymentTx).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'MATCHED', matched_customer_id: customerId })
+      );
+      expect(auditInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenant_id: tenantId,
+          action: 'APPROVE_CUSTOMER_MATCH',
+          actor_user_id: 'checker-user-id',
+        })
+      );
+    });
+  });
+
+  describe('mergeCustomers', () => {
+    it('should throw ERR_6004_MERGE_SAME_CUSTOMER when source and target are the same', async () => {
+      await expect(
+        service.mergeCustomers(supportMakerUser, 'token', {
+          source_customer_id: 'cust-same',
+          target_customer_id: 'cust-same',
+        })
+      ).rejects.toThrow(AppException);
+      try {
+        await service.mergeCustomers(supportMakerUser, 'token', {
+          source_customer_id: 'cust-same',
+          target_customer_id: 'cust-same',
+        });
+      } catch (err: any) {
+        expect(err.code).toBe('ERR_6004_MERGE_SAME_CUSTOMER');
+      }
+    });
+
+    it('should invoke atomic RPC fn_merge_customer_profiles and write audit log', async () => {
+      mockSupabaseUser.from.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: 'staff-user-id' }, error: null }),
+          };
+        }
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: 'cust-valid' }, error: null }),
+          };
+        }
+        return {};
+      });
+
+      mockSupabaseAdmin.rpc.mockResolvedValue({ error: null });
+      const auditInsert = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseAdmin.from.mockReturnValue({ insert: auditInsert });
+
+      const result = await service.mergeCustomers(supportMakerUser, 'token', {
+        source_customer_id: 'cust-1',
+        target_customer_id: 'cust-2',
+      });
+
+      expect(result.message).toContain('thành công');
+      expect(mockSupabaseAdmin.rpc).toHaveBeenCalledWith('fn_merge_customer_profiles', {
+        source_id: 'cust-1',
+        target_id: 'cust-2',
+      });
+      expect(auditInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'MERGE_CUSTOMER_PROFILES',
+          entity_id: 'cust-2',
+        })
+      );
+    });
+  });
+});

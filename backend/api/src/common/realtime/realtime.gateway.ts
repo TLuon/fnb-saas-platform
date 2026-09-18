@@ -224,4 +224,30 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   ) {
     this.server.to(`support:${tenantId}`).emit('unmatched_transaction_created', payload);
   }
+
+  /** Gap 3 / B2 Roadmap 3 — product_out_of_stock */
+  emitProductOutOfStock(
+    branchId: string | null,
+    payload: {
+      product_id?: string;
+      product_name?: string;
+      ingredient_id: string;
+      ingredient_name: string;
+      current_stock: number;
+      tenant_id?: string;
+      branch_id?: string | null;
+      timestamp?: string;
+    },
+  ) {
+    const data = {
+      ...payload,
+      timestamp: payload.timestamp ?? new Date().toISOString(),
+    };
+    if (branchId && this.server) {
+      this.server.to(`kds:${branchId}`).emit('product_out_of_stock', data);
+    }
+    if (payload.tenant_id && this.server) {
+      this.server.to(`support:${payload.tenant_id}`).emit('product_out_of_stock', data);
+    }
+  }
 }

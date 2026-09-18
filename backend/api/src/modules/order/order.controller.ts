@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { OrderService } from './order.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { AddOrderItemDto } from './dto/add-order-item.dto.js';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto.js';
 import { UpdateKitchenStatusDto } from './dto/update-kitchen-status.dto.js';
 import { PayOrderDto } from './dto/pay-order.dto.js';
+import { ListOrdersQueryDto } from './dto/list-orders-query.dto.js';
+import { KdsOrdersQueryDto } from './dto/kds-orders-query.dto.js';
 import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
@@ -77,6 +79,26 @@ export class OrderController {
     @Body() dto: PayOrderDto,
   ) {
     return this.orderService.payOrder(user, accessToken, orderId, dto);
+  }
+
+  @Get('kds')
+  @Roles('STAFF', 'OWNER')
+  async getKdsSnapshot(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentAccessToken() accessToken: string,
+    @Query() query: KdsOrdersQueryDto,
+  ) {
+    return this.orderService.getKdsSnapshot(user, accessToken, query);
+  }
+
+  @Get()
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
+  async listOrders(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentAccessToken() accessToken: string,
+    @Query() query: ListOrdersQueryDto,
+  ) {
+    return this.orderService.listOrders(user, accessToken, query);
   }
 
   @Get(':id')
