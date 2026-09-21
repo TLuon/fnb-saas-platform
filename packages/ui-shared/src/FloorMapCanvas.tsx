@@ -10,6 +10,7 @@ export interface FloorTableCanvas {
   width?: number;
   height?: number;
   shape?: 'circle' | 'rectangle' | 'square';
+  capacity?: number;
 }
 
 export interface FloorMapCanvasProps {
@@ -157,9 +158,9 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
     return null;
   };
 
-  const handleMouseDown = (e: ReactMouseEvent) => {
-    clickStartRef.current = { x: e.clientX, y: e.clientY };
-    const { x, y } = getCanvasMousePosition(e.clientX, e.clientY);
+  const handlePointerDown = (clientX: number, clientY: number) => {
+    clickStartRef.current = { x: clientX, y: clientY };
+    const { x, y } = getCanvasMousePosition(clientX, clientY);
 
     if (editable) {
       const hitTable = getHitTable(x, y);
@@ -168,19 +169,27 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
         const tx = hitTable.coord_x ?? 0;
         const ty = hitTable.coord_y ?? 0;
         dragOffsetRef.current = { x: x - tx, y: y - ty };
-        if (onTableClick) onTableClick(hitTable);
-        if (onTableSelect) onTableSelect(hitTable);
         return;
       }
     }
 
     setIsPanning(true);
-    panStartRef.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+    panStartRef.current = { x: clientX - offset.x, y: clientY - offset.y };
   };
 
-  const handleMouseMove = (e: ReactMouseEvent) => {
+  const handleMouseDown = (e: ReactMouseEvent) => {
+    handlePointerDown(e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handlePointerMove = (clientX: number, clientY: number) => {
     if (draggedTableId) {
-      const { x, y } = getCanvasMousePosition(e.clientX, e.clientY);
+      const { x, y } = getCanvasMousePosition(clientX, clientY);
       const newX = Math.round((x - dragOffsetRef.current.x) / 10) * 10;
       const newY = Math.round((y - dragOffsetRef.current.y) / 10) * 10;
       
@@ -189,16 +198,35 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
       ));
     } else if (isPanning) {
       setOffset({
-        x: e.clientX - panStartRef.current.x,
-        y: e.clientY - panStartRef.current.y,
+        x: clientX - panStartRef.current.x,
+        y: clientY - panStartRef.current.y,
       });
     }
   };
 
-  const handleMouseUp = (e: ReactMouseEvent) => {
+  const handleMouseMove = (e: ReactMouseEvent) => {
+    handlePointerMove(e.clientX, e.clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handlePointerUp = (clientX: number, clientY: number) => {
     if (draggedTableId) {
       const table = localTables.find(t => t.id === draggedTableId);
-      if (table && onTableMove) {
+      
+      const dx = Math.abs(clientX - clickStartRef.current.x);
+      const dy = Math.abs(clientY - clickStartRef.current.y);
+      
+      if (dx < 5 && dy < 5 && table) {
+        // It was a click, not a drag
+        if (onTableClick) onTableClick(table);
+        if (onTableSelect) onTableSelect(table);
+      } else if (table && onTableMove) {
+        // It was a drag
         onTableMove(table, table.coord_x ?? 0, table.coord_y ?? 0);
       }
       setDraggedTableId(null);
@@ -206,16 +234,26 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
     
     if (isPanning) {
       setIsPanning(false);
-      const dx = Math.abs(e.clientX - clickStartRef.current.x);
-      const dy = Math.abs(e.clientY - clickStartRef.current.y);
+      const dx = Math.abs(clientX - clickStartRef.current.x);
+      const dy = Math.abs(clientY - clickStartRef.current.y);
       if (dx < 5 && dy < 5) {
-        const { x, y } = getCanvasMousePosition(e.clientX, e.clientY);
+        const { x, y } = getCanvasMousePosition(clientX, clientY);
         const hitTable = getHitTable(x, y);
         if (hitTable) {
           if (onTableClick) onTableClick(hitTable);
           if (onTableSelect) onTableSelect(hitTable);
         }
       }
+    }
+  };
+
+  const handleMouseUp = (e: ReactMouseEvent) => {
+    handlePointerUp(e.clientX, e.clientY);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.changedTouches.length === 1) {
+      handlePointerUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
     }
   };
 
@@ -257,7 +295,13 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        className="block"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        className="block touch-none"
+        role="img"
+        aria-label="Sơ đồ bàn tương tác"
       />
       <div className="absolute top-4 right-4 bg-white/90 p-2 rounded-lg text-xs font-medium text-gray-600 backdrop-blur-sm pointer-events-none shadow">
         Cuộn để Zoom - {editable ? 'Kéo bàn để di chuyển' : 'Kéo nền để di chuyển'}

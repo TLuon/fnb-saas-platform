@@ -1,0 +1,45 @@
+declare module 'lucide-react' {
+  export const LucideIcon: any;
+  export const icons: any;
+  export const Camera: any;
+  export const ShoppingCart: any;
+  export const Star: any;
+  export const History: any;
+  export const LogOut: any;
+  export const QrCode: any;
+  export const Store: any;
+  export const ChevronRight: any;
+  export const Activity: any;
+  export const User: any;
+  export const Search: any;
+  export const Menu: any;
+  export const X: any;
+  export const Edit: any;
+  export const Edit2: any;
+  export const LayoutDashboard: any;
+  export const ShoppingBag: any;
+  export const CheckSquare: any;
+  export const ClipboardList: any;
+  export const PieChart: any;
+  export const Users: any;
+  export const Clock: any;
+  export const MapPin: any;
+  export const Server: any;
+  export const Trash2: any;
+  export const Plus: any;
+  export const Save: any;
+  export const Upload: any;
+  export const Eye: any;
+  export const Map: any;
+  export const Calendar: any;
+  export const Coffee: any;
+  export const BarChart3: any;
+  export const UsersRound: any;
+  export const Settings: any;
+  export const MessageSquareWarning: any;
+  export const UtensilsCrossed: any;
+  export const Package: any;
+  // Fallback for any other icon
+  const src: any;
+  export default src;
+}

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    container_name: fnb-redis-dev
+
+  backend:
+    image: node:20-alpine
+    container_name: fnb-backend
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend/api/node_modules
+      - /app/apps/staff-dashboard/node_modules
+      - /app/apps/customer-pwa/node_modules
+      - /app/packages/types/node_modules
+      - /app/packages/ui-shared/node_modules
+      - /app/packages/utils/node_modules
+    ports:
+      - "3000:3000"
+    command: sh -c "npm install && cd backend/api && npm run start:dev"
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+
+  staff-dashboard:
+    image: node:20-alpine
+    container_name: fnb-staff-dashboard
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend/api/node_modules
+      - /app/apps/staff-dashboard/node_modules
+      - /app/apps/customer-pwa/node_modules
+      - /app/packages/types/node_modules
+      - /app/packages/ui-shared/node_modules
+      - /app/packages/utils/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && cd apps/staff-dashboard && npm run dev -- --host"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3000/api/v1
+      - VITE_SOCKET_URL=http://localhost:3000
+    depends_on:
+      - backend
+
+  customer-pwa:
+    image: node:20-alpine
+    container_name: fnb-customer-pwa
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend/api/node_modules
+      - /app/apps/staff-dashboard/node_modules
+      - /app/apps/customer-pwa/node_modules
+      - /app/packages/types/node_modules
+      - /app/packages/ui-shared/node_modules
+      - /app/packages/utils/node_modules
+    ports:
+      - "3001:3001"
+    command: sh -c "npm install && cd apps/customer-pwa && npm run dev -- -H 0.0.0.0 -p 3001"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:3000
+    depends_on:
+      - backend

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { createApiClient } from '@fnb/utils';
+import React, { useState, useEffect } from 'react';
+import { apiClient } from '@fnb/utils';
 
 interface Shift {
   id: string;
@@ -16,34 +16,32 @@ const ShiftManagement: React.FC = () => {
   const [initialCash, setInitialCash] = useState<number>(0);
   const [finalCash, setFinalCash] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const branchId = localStorage.getItem('branchId') || 'branch-1';
 
-  const apiClient = useMemo(() => createApiClient({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-    getToken: () => localStorage.getItem('jwt'),
-  }), []);
+
 
   useEffect(() => {
     // Fetch current shift
-    apiClient.get('/api/v1/shifts/current')
-      .then(res => {
-        if (res.data.data) {
-          setCurrentShift(res.data.data);
+    apiClient.get(`/api/v1/shifts/current?branch_id=${branchId}`).then((res: any) => {
+        const shiftData = res.data?.data || res.data || res;
+        if (shiftData) {
+          setCurrentShift(shiftData);
           // Set default final cash to expected cash if available
-          if (res.data.data.expected_cash) {
-            setFinalCash(res.data.data.expected_cash);
+          if (shiftData.expected_cash) {
+            setFinalCash(shiftData.expected_cash);
           }
         }
       })
       .catch(() => {
         console.warn('No active shift found');
       });
-  }, [apiClient]);
+  }, [branchId]);
 
   const handleOpenShift = async () => {
     setIsSubmitting(true);
     try {
-      const res = await apiClient.post('/api/v1/shifts/open', { initial_cash: initialCash });
-      setCurrentShift(res.data.data);
+      const res = await apiClient.post('/api/v1/shifts/open', { initial_cash: initialCash, branch_id: branchId });
+      setCurrentShift(res.data?.data || res.data || res);
       alert('Đã mở ca thành công!');
     } catch (err: any) {
       alert(err.response?.data?.message || 'Không thể mở ca');
@@ -57,7 +55,7 @@ const ShiftManagement: React.FC = () => {
     setIsSubmitting(true);
     try {
       const res = await apiClient.post(`/api/v1/shifts/${currentShift.id}/close`, { final_cash: finalCash });
-      setCurrentShift(res.data.data); // Should return CLOSED shift
+      setCurrentShift(res.data?.data || res.data || res); // Should return CLOSED shift
       alert('Đã đóng ca thành công!');
     } catch (err: any) {
       alert(err.response?.data?.message || 'Không thể đóng ca');

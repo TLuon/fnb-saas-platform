@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { FloorMapCanvas, FloorTableCanvas } from '@fnb/ui-shared';
-import { createApiClient, mapApiTableToCanvas } from '@fnb/utils';
+import React, { useEffect, useState } from 'react';
+import { FloorMapCanvas, FloorTableCanvas, TableStatusLegend } from '@fnb/ui-shared';
+import { apiClient, mapApiTableToCanvas } from '@fnb/utils';
 
 interface Floor {
   id: string;
@@ -18,34 +18,31 @@ const FloorEditor: React.FC = () => {
   const [error, setError] = useState<string>('');
   
   const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
+  const [deletedTableIds, setDeletedTableIds] = useState<Set<string>>(new Set());
 
   const branchId = localStorage.getItem('branchId') || 'branch-1';
-
-  const apiClient = useMemo(() => createApiClient({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-    getToken: () => localStorage.getItem('jwt'),
-  }), []);
 
   useEffect(() => {
     setIsLoading(true);
     apiClient.get(`/api/v1/floors?branch_id=${branchId}`)
-      .then(res => {
-        const floorList = res.data.data || [];
+      .then((res: any) => {
+        const floorList = res.data?.data || res.data || res || [];
         setFloors(floorList);
         if (floorList.length > 0) setSelectedFloor(floorList[0].id);
       })
       .catch(() => setError('Không thể tải danh sách tầng'))
       .finally(() => setIsLoading(false));
-  }, [apiClient, branchId]);
+  }, [branchId]);
 
   const loadTables = (floorId: string) => {
     setIsLoading(true);
     apiClient.get(`/api/v1/floors/${floorId}/tables`)
-      .then(res => {
-        const mappedTables: FloorTableCanvas[] = (res.data.data || []).map(mapApiTableToCanvas);
+      .then((res: any) => {
+        const mappedTables: FloorTableCanvas[] = (res.data?.data || res.data || res || []).map(mapApiTableToCanvas);
         setTables(mappedTables);
         setSelectedTable(null);
         setDirtyTableIds(new Set());
+        setDeletedTableIds(new Set());
       })
       .catch(() => setError('Không thể tải danh sách bàn'))
       .finally(() => setIsLoading(false));
@@ -55,7 +52,7 @@ const FloorEditor: React.FC = () => {
     if (selectedFloor) {
       loadTables(selectedFloor);
     }
-  }, [selectedFloor, apiClient]);
+  }, [selectedFloor]);
 
   const markDirty = (id: string) => {
     setDirtyTableIds(prev => {
@@ -65,11 +62,49 @@ const FloorEditor: React.FC = () => {
     });
   };
 
+  const checkOverlap = (table: FloorTableCanvas, x: number, y: number) => {
+    const tw = table.width || 80;
+    const th = table.height || 80;
+    for (const t of tables) {
+      if (t.id === table.id) continue;
+      const ttw = t.width || 80;
+      const tth = t.height || 80;
+      const tx = t.coord_x ?? 0;
+      const ty = t.coord_y ?? 0;
+      if (x < tx + ttw && x + tw > tx && y < ty + tth && y + th > ty) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const handleTableMove = (table: FloorTableCanvas, x: number, y: number) => {
+    if (checkOverlap(table, x, y)) {
+      alert('Vị trí bàn bị chồng chéo!');
+      // revert to old position by triggering a re-render with old coords
+      setTables(prev => [...prev]);
+      return;
+    }
     setTables(prev => prev.map(t => t.id === table.id ? { ...t, coord_x: x, coord_y: y } : t));
     markDirty(table.id);
     if (selectedTable?.id === table.id) {
       setSelectedTable({ ...table, coord_x: x, coord_y: y });
+    }
+  };
+
+  const handleDeleteTable = (id: string) => {
+    if (!window.confirm('Bạn có chắc muốn xóa bàn này?')) return;
+    setTables(prev => prev.filter(t => t.id !== id));
+    if (selectedTable?.id === id) setSelectedTable(null);
+    if (!id.startsWith('new-')) {
+      setDeletedTableIds(prev => new Set(prev).add(id));
+      markDirty(id);
+    } else {
+      setDirtyTableIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -83,7 +118,8 @@ const FloorEditor: React.FC = () => {
       coord_y: 100,
       width: 80,
       height: 80,
-      shape: 'rectangle'
+      shape: 'rectangle',
+      capacity: 4
     };
     setTables([...tables, newTable]);
     setSelectedTable(newTable);
@@ -97,6 +133,10 @@ const FloorEditor: React.FC = () => {
     
     try {
       const savePromises = Array.from(dirtyTableIds).map(id => {
+        if (deletedTableIds.has(id)) {
+          return apiClient.delete(`/api/v1/tables/${id}`);
+        }
+
         const table = tables.find(t => t.id === id);
         if (!table) return Promise.resolve();
 
@@ -106,18 +146,25 @@ const FloorEditor: React.FC = () => {
           pos_y: table.coord_y,
           width: table.width,
           height: table.height,
-          shape: table.shape
+          shape: table.shape,
+          capacity: table.capacity || 4
         };
         
         if (id.startsWith('new-')) {
-          return apiClient.post('/api/v1/tables', { ...payload, floor_id: selectedFloor, capacity: 4 });
+          return apiClient.post('/api/v1/tables', { ...payload, floor_id: selectedFloor, branch_id: branchId });
         } else {
           return apiClient.patch(`/api/v1/tables/${id}`, payload);
         }
       });
 
-      await Promise.all(savePromises);
-      alert('Đã lưu sơ đồ bàn thành công!');
+      const results = await Promise.allSettled(savePromises);
+      const errors = results.filter(r => r.status === 'rejected');
+      if (errors.length > 0) {
+        setError(`Có lỗi xảy ra khi lưu ${errors.length} bàn.`);
+      } else {
+        alert('Đã lưu sơ đồ bàn thành công!');
+      }
+      setDeletedTableIds(new Set());
       loadTables(selectedFloor); // Reload to get actual DB IDs and clear dirty state
     } catch (err: any) {
       setError(err.response?.data?.message || 'Có lỗi xảy ra khi lưu một số bàn. Vui lòng thử lại.');
@@ -132,25 +179,35 @@ const FloorEditor: React.FC = () => {
     }
   };
 
+  const handleAddFloor = () => {
+    const name = window.prompt('Nhập tên tầng mới:');
+    if (!name) return;
+    apiClient.post('/api/v1/floors', { name, branch_id: branchId })
+      .then(() => {
+        setIsLoading(true);
+        return apiClient.get(`/api/v1/floors?branch_id=${branchId}`);
+      })
+      .then((res: any) => {
+        const floorList = res.data?.data || res.data || res || [];
+        setFloors(floorList);
+        if (!selectedFloor && floorList.length > 0) setSelectedFloor(floorList[0].id);
+      })
+      .catch((e: any) => setError(e.response?.data?.message || 'Không thể tạo tầng mới'))
+      .finally(() => setIsLoading(false));
+  };
+
   return (
     <div className="flex flex-col h-screen bg-[#FAF7F3]">
       {/* Header */}
       <header className="bg-[#543310] text-white p-4 flex justify-between items-center shadow-md">
         <h1 className="text-xl font-bold">Floor Editor (Quản lý sơ đồ bàn)</h1>
+
         <div className="flex gap-4 items-center">
           {dirtyTableIds.size > 0 && (
             <span className="text-sm font-medium bg-[#FED8B1] text-[#543310] px-3 py-1 rounded-full animate-pulse">
               Có {dirtyTableIds.size} thay đổi chưa lưu
             </span>
           )}
-          <select 
-            className="text-black rounded px-2 py-1 outline-none"
-            value={selectedFloor}
-            onChange={(e) => setSelectedFloor(e.target.value)}
-            disabled={isLoading}
-          >
-            {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
           <button 
             onClick={handleReset}
             disabled={isSaving || dirtyTableIds.size === 0}
@@ -170,8 +227,32 @@ const FloorEditor: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Floor Selector Sidebar */}
+        <div className="w-64 bg-white border-r border-[#E8DED5] flex flex-col">
+          <div className="p-4 border-b border-[#E8DED5] flex justify-between items-center">
+            <h2 className="font-bold text-[#543310]">Danh sách Tầng</h2>
+            <button className="text-xl font-bold text-[#D67D3E]" title="Thêm tầng" onClick={handleAddFloor}>+</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {floors.length === 0 ? (
+              <div className="p-4 text-sm text-gray-500 text-center">Chưa có tầng nào</div>
+            ) : floors.map(f => (
+              <button 
+                key={f.id}
+                onClick={() => setSelectedFloor(f.id)}
+                className={`w-full text-left px-4 py-3 border-b border-gray-100 font-medium transition ${selectedFloor === f.id ? 'bg-[#FAF7F3] text-[#D67D3E] border-l-4 border-l-[#D67D3E]' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Canvas Area */}
-        <div className="flex-1 p-4 relative">
+        <div className="flex-1 p-4 relative flex flex-col">
+          <div className="mb-4">
+            <TableStatusLegend />
+          </div>
           {error && (
             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#B42318] text-white px-4 py-2 rounded shadow-lg z-10 flex gap-4 items-center">
               <span>{error}</span>
@@ -222,6 +303,23 @@ const FloorEditor: React.FC = () => {
                     markDirty(selectedTable.id);
                   }}
                 />
+              </div>
+              
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Số ghế (Capacity)</label>
+                  <input 
+                    type="number" 
+                    className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-[#D67D3E]"
+                    value={selectedTable.capacity ?? 4}
+                    onChange={(e) => {
+                      const capacity = Number(e.target.value);
+                      setSelectedTable({...selectedTable, capacity});
+                      setTables(tables.map(t => t.id === selectedTable.id ? {...t, capacity} : t));
+                      markDirty(selectedTable.id);
+                    }}
+                  />
+                </div>
               </div>
               
               <div className="flex gap-4">
@@ -282,6 +380,15 @@ const FloorEditor: React.FC = () => {
                   <option value="square">Vuông</option>
                   <option value="circle">Tròn</option>
                 </select>
+              </div>
+
+              <div className="pt-6 mt-6 border-t border-gray-100">
+                <button
+                  onClick={() => handleDeleteTable(selectedTable.id)}
+                  className="w-full bg-red-50 text-red-600 font-bold py-2 rounded border border-red-200 hover:bg-red-100 transition"
+                >
+                  Xóa bàn này
+                </button>
               </div>
 
             </div>

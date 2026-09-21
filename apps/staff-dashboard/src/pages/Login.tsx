@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
-import { Coffee, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
+import { authStore } from '@fnb/utils';
+import { Coffee, Clock, User, X, Plus } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -22,16 +22,29 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Mock login via Zustand since backend API is not available
-      await useAuthStore.getState().login(email, password);
-      
-      const role = useAuthStore.getState().currentUser?.role || 'STAFF';
+      // Mock login since backend API is not available
+      let role = 'STAFF';
+      if (email.includes('owner')) role = 'OWNER';
+      if (email.includes('support')) role = 'SUPPORT';
 
+      // Set state directly in shared store
+      authStore.setState({
+        accessToken: 'mock-token',
+        isAuthenticated: true,
+        role: role,
+        branchId: '1',
+        profile: {
+          id: 'U1',
+          email: email,
+          full_name: 'Nhân viên Demo',
+        }
+      });
+      
       // Route based on role
       if (role === 'SUPPORT') {
         navigate('/support/board');
       } else if (role === 'STAFF') {
-        navigate('/kds');
+        navigate('/kds/kitchen'); // Fix BUG-02: Route was /kds instead of /kds/kitchen
       } else {
         navigate('/analytics'); // OWNER
       }
@@ -57,7 +70,7 @@ export default function Login() {
 
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-3 text-sm">
-            <AlertCircle size={20} className="shrink-0 text-red-500" />
+            <X size={20} className="shrink-0 text-red-500" />
             <span>{error}</span>
           </div>
         )}
@@ -68,7 +81,7 @@ export default function Login() {
               Email đăng nhập
             </label>
             <div className="flex items-center bg-[var(--color-brand-neutral)] px-4 py-3 rounded-xl border border-gray-200 focus-within:border-[var(--color-brand-secondary)] transition">
-              <Mail size={18} className="text-gray-400 mr-2 shrink-0" />
+              <User size={18} className="text-gray-400 mr-2 shrink-0" />
               <input
                 type="email"
                 value={email}
@@ -86,7 +99,7 @@ export default function Login() {
               Mật khẩu
             </label>
             <div className="flex items-center bg-[var(--color-brand-neutral)] px-4 py-3 rounded-xl border border-gray-200 focus-within:border-[var(--color-brand-secondary)] transition">
-              <Lock size={18} className="text-gray-400 mr-2 shrink-0" />
+              <Clock size={18} className="text-gray-400 mr-2 shrink-0" />
               <input
                 type="password"
                 value={password}
@@ -109,7 +122,7 @@ export default function Login() {
             ) : (
               <>
                 <span>Đăng nhập hệ thống</span>
-                <ArrowRight size={18} />
+                <Plus size={18} />
               </>
             )}
           </button>

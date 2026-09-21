@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { FloorMapCanvas, FloorTableCanvas } from '@fnb/ui-shared';
-import { createApiClient, RealtimeClient, mapApiTableToCanvas } from '@fnb/utils';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FloorMapCanvas, FloorTableCanvas, TableStatusLegend } from '@fnb/ui-shared';
+import { apiClient, RealtimeClient, mapApiTableToCanvas } from '@fnb/utils';
 
 interface Floor {
   id: string;
@@ -12,23 +13,24 @@ const LiveFloorMap: React.FC = () => {
   const [selectedFloor, setSelectedFloor] = useState<string>('');
   const [tables, setTables] = useState<FloorTableCanvas[]>([]);
   const [selectedTable, setSelectedTable] = useState<FloorTableCanvas | null>(null);
+  const navigate = useNavigate();
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
   const branchId = localStorage.getItem('branchId') || 'branch-1';
-
-  const apiClient = useMemo(() => createApiClient({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-    getToken: () => localStorage.getItem('jwt'),
-  }), []);
+  const selectedFloorRef = React.useRef(selectedFloor);
+  
+  useEffect(() => {
+    selectedFloorRef.current = selectedFloor;
+  }, [selectedFloor]);
 
   const fetchTables = (floorId: string) => {
     setIsLoading(true);
     apiClient.get(`/api/v1/floors/${floorId}/tables`)
-      .then(res => {
-        const mappedTables: FloorTableCanvas[] = (res.data.data || []).map(mapApiTableToCanvas);
+      .then((res: any) => {
+        const mappedTables: FloorTableCanvas[] = (res.data?.data || res.data || res || []).map(mapApiTableToCanvas);
         setTables(mappedTables);
         setLastUpdated(new Date());
         setError('');
@@ -39,13 +41,13 @@ const LiveFloorMap: React.FC = () => {
 
   useEffect(() => {
     apiClient.get(`/api/v1/floors?branch_id=${branchId}`)
-      .then(res => {
-        const floorList = res.data.data || [];
+      .then((res: any) => {
+        const floorList = res.data?.data || res.data || res || [];
         setFloors(floorList);
         if (floorList.length > 0) setSelectedFloor(floorList[0].id);
       })
       .catch(() => setError('Không thể tải danh sách tầng'));
-  }, [apiClient, branchId]);
+  }, [branchId]);
 
   useEffect(() => {
     if (!selectedFloor) return;
@@ -70,15 +72,14 @@ const LiveFloorMap: React.FC = () => {
     
     client.socket.on('disconnect', () => setIsConnected(false));
     
-    // Listen for table status updates
     client.socket.on('table_status_updated', (data: any) => {
-      if (data.floor_id === selectedFloor || !data.floor_id) {
-        // Optimistic UI update or full refetch depending on payload
+      const currentFloor = selectedFloorRef.current;
+      if (data.floor_id === currentFloor || !data.floor_id) {
         if (data.id && data.status) {
           setTables(prev => prev.map(t => t.id === data.id ? { ...t, status: data.status } : t));
           setLastUpdated(new Date());
         } else {
-          fetchTables(selectedFloor);
+          fetchTables(currentFloor);
         }
       }
     });
@@ -133,6 +134,10 @@ const LiveFloorMap: React.FC = () => {
               <button onClick={() => setError('')} className="font-bold underline">Đóng</button>
             </div>
           )}
+
+          <div className="absolute bottom-4 left-4 z-10">
+            <TableStatusLegend />
+          </div>
 
           {isLoading ? (
             <div className="w-full h-full flex items-center justify-center bg-white rounded-lg border border-[#E8DED5] shadow-inner text-gray-400">
@@ -199,8 +204,28 @@ const LiveFloorMap: React.FC = () => {
                   Bàn trống (Sẵn sàng)
                 </button>
               )}
+
+              {(selectedTable.status === 'RESERVED' || selectedTable.status === 'PENDING_LOCK') && (
+                <>
+                  <button 
+                    onClick={() => handleStatusChange('AVAILABLE')}
+                    className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-300 transition mb-2"
+                  >
+                    Hủy đặt / Mở khóa
+                  </button>
+                  <button 
+                    onClick={() => handleStatusChange('OCCUPIED')}
+                    className="w-full bg-[#D67D3E] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-orange-700 transition"
+                  >
+                    Nhận bàn (Check-in)
+                  </button>
+                </>
+              )}
               
-              <button className="w-full border-2 border-[#543310] text-[#543310] py-2.5 rounded-lg font-bold hover:bg-orange-50 transition mt-4">
+              <button 
+                onClick={() => navigate('/pos')}
+                className="w-full border-2 border-[#543310] text-[#543310] py-2.5 rounded-lg font-bold hover:bg-orange-50 transition mt-4"
+              >
                 Tạo Đơn Hàng (POS)
               </button>
             </div>

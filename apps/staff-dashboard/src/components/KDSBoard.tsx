@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { RealtimeClient, createApiClient } from '@fnb/utils';
+import React, { useEffect, useState } from 'react';
+import { RealtimeClient, apiClient } from '@fnb/utils';
 
 export interface OrderItem {
   id: string;
@@ -9,6 +9,10 @@ export interface OrderItem {
   kitchen_status: 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
   createdAt: number;
   station: 'KITCHEN' | 'BAR';
+  orderType?: 'DINE_IN' | 'TAKEAWAY';
+  tableName?: string;
+  note?: string;
+  modifiers?: Record<string, string>;
 }
 
 interface ColumnProps {
@@ -29,7 +33,7 @@ const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThreshol
         {items.filter(i => i.kitchen_status === status).length}
       </span>
     </div>
-    <div className="space-y-3 flex-1 overflow-y-auto pr-1 hide-scrollbar">
+    <div className="space-y-3 flex-1 overflow-y-auto pr-1">
       {items
         .filter((i) => i.kitchen_status === status)
         .sort((a, b) => a.createdAt - b.createdAt)
@@ -41,12 +45,30 @@ const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThreshol
           return (
             <div
               key={item.id}
-              className={`p-4 rounded-md border flex flex-col gap-3 transition shadow-sm ${isLate ? 'bg-red-50 border-red-200' : 'bg-[#FAF7F3] border-[#E8DED5]'} ${isPending ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`p-4 rounded-md border-2 flex flex-col gap-3 transition shadow-sm ${isLate ? 'bg-red-50 border-red-200' : status === 'QUEUED' ? 'bg-[#FAF7F3] border-[#D67D3E]' : 'bg-[#FAF7F3] border-[#E8DED5]'} ${isPending ? 'opacity-50 pointer-events-none' : ''}`}
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="font-bold text-lg text-[#543310]">#{item.orderId.slice(0, 5)}</span>
-                  <p className="text-sm font-bold text-[#D67D3E] mt-1 text-lg">{item.quantity}x {item.name}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-lg text-[#543310]">#{item.orderId.slice(0, 5)}</span>
+                    {item.orderType === 'TAKEAWAY' ? (
+                      <span className="bg-[#D67D3E] text-white text-xs font-bold px-2 py-0.5 rounded uppercase">Mang đi</span>
+                    ) : item.tableName ? (
+                      <span className="bg-[#E8DED5] text-[#543310] text-xs font-bold px-2 py-0.5 rounded">{item.tableName}</span>
+                    ) : null}
+                  </div>
+                  <p className="font-bold text-[#D67D3E] text-lg">{item.quantity}x {item.name}</p>
+                  
+                  {item.modifiers && Object.keys(item.modifiers).length > 0 && (
+                    <p className="text-xs text-gray-500 font-bold mt-1">
+                      {Object.values(item.modifiers).join(', ')}
+                    </p>
+                  )}
+                  {item.note && (
+                    <p className="text-xs text-[#D67D3E] font-black mt-1 italic">
+                      Ghi chú: {item.note}
+                    </p>
+                  )}
                 </div>
                 <span className={`text-xs font-bold px-2 py-1 rounded-md ${isLate ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-gray-600 border'}`}>
                   {elapsedMins} phút
@@ -103,32 +125,36 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
 
   const branchId = localStorage.getItem('branchId') || 'branch-1';
 
-  const apiClient = useMemo(() => createApiClient({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-    getToken: () => localStorage.getItem('jwt'),
-  }), []);
+
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    // Fetch initial snapshot
+  const fetchSnapshot = () => {
     apiClient.get(`/api/v1/orders/kds?branch_id=${branchId}&station=${station}`)
-      .then(res => {
-        const fetchedItems = (res.data.data || []).map((item: any) => ({
+      .then((res: any) => {
+        const fetchedItems = (res.data?.data || res.data || res || []).map((item: any) => ({
           id: item.id,
           orderId: item.order_id,
           name: item.product_name,
           quantity: item.quantity,
           kitchen_status: item.kitchen_status || 'QUEUED',
           createdAt: new Date(item.created_at || Date.now()).getTime(),
-          station: item.station || station
+          station: item.station || station,
+          orderType: item.order_type || 'DINE_IN',
+          tableName: item.table_name || '',
+          note: item.note,
+          modifiers: item.modifiers
         }));
         setItems(fetchedItems);
       })
       .catch(console.error);
+  };
+
+  useEffect(() => {
+    fetchSnapshot();
 
     const token = localStorage.getItem('jwt');
     const client = new RealtimeClient({
@@ -141,6 +167,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
     client.socket.on('connect', () => {
       setIsConnected(true);
       client.socket.emit('join_branch', { branch_id: branchId });
+      fetchSnapshot();
     });
     
     client.socket.on('disconnect', () => setIsConnected(false));
@@ -150,13 +177,17 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
       const newItems = (ticket.items || [])
         .filter((i: any) => i.station === station || !i.station)
         .map((item: any) => ({
-          id: item.order_item_id || item.id || Math.random().toString(36).substr(2, 9),
+          id: item.order_item_id || item.id || crypto.randomUUID(),
           orderId: ticket.order_id || ticket.orderId || '',
           name: item.product_name || item.name || 'Món',
           quantity: item.quantity,
           kitchen_status: item.kitchen_status || 'QUEUED',
           createdAt,
-          station
+          station,
+          orderType: ticket.type || ticket.order_type || 'DINE_IN',
+          tableName: ticket.table_name || ticket.tableName || '',
+          note: item.note,
+          modifiers: item.modifiers
         }));
         
       setItems(prev => {
@@ -178,7 +209,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
     return () => {
       client.disconnect();
     };
-  }, [apiClient, branchId, station]);
+  }, [branchId, station]);
 
   const changeStatus = async (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => {
     const originalItem = items.find(i => i.id === itemId);
@@ -222,10 +253,19 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
         </div>
       </header>
 
-      <div className="flex-1 flex gap-6 overflow-hidden">
-        <Column title="Chờ chế biến (QUEUED)" status="QUEUED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
-        <Column title="Đang làm (PREPARING)" status="PREPARING" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
-        <Column title="Sẵn sàng (READY)" status="READY" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+      <div className="flex-1 flex gap-6 overflow-x-auto pb-2">
+        <div className="min-w-[320px] flex-1">
+          <Column title="Chờ chế biến (QUEUED)" status="QUEUED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+        </div>
+        <div className="min-w-[320px] flex-1">
+          <Column title="Đang làm (PREPARING)" status="PREPARING" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+        </div>
+        <div className="min-w-[320px] flex-1">
+          <Column title="Sẵn sàng (READY)" status="READY" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+        </div>
+        <div className="min-w-[320px] flex-1 opacity-60">
+          <Column title="Đã phục vụ (SERVED)" status="SERVED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+        </div>
       </div>
     </div>
   );

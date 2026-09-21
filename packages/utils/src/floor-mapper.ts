@@ -9,6 +9,7 @@ export function mapApiTableToCanvas(t: any) {
     coord_y: t.pos_y,
     width: t.width,
     height: t.height,
-    shape: t.shape || 'rectangle'
+    shape: t.shape || 'rectangle',
+    capacity: t.capacity || 4
   };
 }
