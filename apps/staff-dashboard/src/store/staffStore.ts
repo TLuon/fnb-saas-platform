@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore.ts';
+import { authStore } from '@fnb/utils';
 
 export type Role = 'OWNER' | 'STAFF' | 'SUPPORT';
 
@@ -26,7 +26,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   
   fetchStaff: async (branchId = '22222222-2222-2222-2222-222222222222') => {
     try {
-      const token = useAuthStore.getState().accessToken;
+      const token = authStore.getState().accessToken;
       const headers: Record<string, string> = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -56,7 +56,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   },
 
   createStaff: async (staffData) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -87,7 +87,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   },
 
   updateStaff: async (id, data) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -106,7 +106,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   },
 
   deactivateStaff: async (id) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -135,7 +135,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
     }));
 
     try {
-      const token = useAuthStore.getState().accessToken;
+      const token = authStore.getState().accessToken;
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };

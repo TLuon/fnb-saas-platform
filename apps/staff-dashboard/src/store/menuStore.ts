@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore.ts';
+import { authStore } from '@fnb/utils';
 
 export interface Category {
   id: string;
@@ -35,7 +35,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
 
   fetchMenu: async () => {
     try {
-      const token = useAuthStore.getState().accessToken;
+      const token = authStore.getState().accessToken;
 
       const headers: Record<string, string> = {};
 
@@ -138,7 +138,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   addCategory: async (categoryData) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -155,7 +155,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   updateCategory: async (id, name) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -172,7 +172,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   deleteCategory: async (id) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -185,7 +185,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   addProduct: async (productData) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -215,7 +215,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   updateProduct: async (id, data) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -238,7 +238,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   deleteProduct: async (id) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -277,7 +277,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
 
     try {
       const token =
-        useAuthStore.getState().accessToken;
+        authStore.getState().accessToken;
 
       const headers: Record<
         string,

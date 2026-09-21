@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
+import { authStore } from '@fnb/utils';
 
 export interface Customer {
   id: string;
@@ -36,7 +36,7 @@ export const useCdpStore = create<CdpStore>((set) => ({
   fetchCustomers: async (segment = 'ALL') => {
     set({ loading: true, error: null });
     try {
-      const token = useAuthStore.getState().accessToken;
+      const token = authStore.getState().accessToken;
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -67,7 +67,7 @@ export const useCdpStore = create<CdpStore>((set) => ({
   fetchCustomer360: async (id) => {
     set({ loading: true, error: null, customer360: null });
     try {
-      const token = useAuthStore.getState().accessToken;
+      const token = authStore.getState().accessToken;
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -107,7 +107,7 @@ export const useCdpStore = create<CdpStore>((set) => ({
   },
 
   issueVoucher: async (id, voucherCode) => {
-    const token = useAuthStore.getState().accessToken;
+    const token = authStore.getState().accessToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     

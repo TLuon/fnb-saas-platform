@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useMenuStore } from './menuStore';
-import { useAuthStore } from './authStore';
+import { authStore } from '@fnb/utils';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -8,7 +8,7 @@ vi.stubGlobal('fetch', mockFetch);
 describe('useMenuStore', () => {
   beforeEach(() => {
     useMenuStore.setState({ categories: [], products: [] });
-    useAuthStore.setState({ accessToken: 'mock-token' });
+    authStore.setState({ accessToken: 'mock-token' });
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,

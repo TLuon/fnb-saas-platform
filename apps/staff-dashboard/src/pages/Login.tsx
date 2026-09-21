@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authStore } from '@fnb/utils';
+import { authStore, apiClient } from '@fnb/utils';
 import { Coffee, Clock, User, X, Plus } from 'lucide-react';
 
 export default function Login() {
@@ -22,31 +22,29 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Mock login since backend API is not available
-      let role = 'STAFF';
-      if (email.includes('owner')) role = 'OWNER';
-      if (email.includes('support')) role = 'SUPPORT';
+      const res = await apiClient.post('/auth/login', { email, password });
+      const tokens = res.data?.data || res.data || res;
+      
+      authStore.getState().setTokens(tokens.access_token, tokens.refresh_token);
 
-      // Set state directly in shared store
-      authStore.setState({
-        accessToken: 'mock-token',
-        isAuthenticated: true,
-        role: role,
-        branchId: '1',
-        profile: {
-          id: 'U1',
-          email: email,
-          full_name: 'Nhân viên Demo',
-        }
+      const meRes = await apiClient.get('/auth/me');
+      const meData = meRes.data?.data || meRes.data || meRes;
+      const profileInfo = meData.profile || {};
+      
+      authStore.getState().setProfile({
+        id: profileInfo.id || meData.sub || 'unknown',
+        email: email,
+        full_name: profileInfo.full_name || 'Nhân viên',
       });
       
-      // Route based on role
+      const role = meData.role_app || authStore.getState().role;
+      
       if (role === 'SUPPORT') {
         navigate('/support/board');
       } else if (role === 'STAFF') {
-        navigate('/kds/kitchen'); // Fix BUG-02: Route was /kds instead of /kds/kitchen
+        navigate('/kds/kitchen');
       } else {
-        navigate('/analytics'); // OWNER
+        navigate('/analytics');
       }
     } catch (err: any) {
       setError(err?.message || 'Lỗi kết nối máy chủ');

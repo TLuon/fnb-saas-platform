@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
+import { authStore } from '@fnb/utils';
 
 export interface DashboardData {
   revenue: number;
@@ -28,7 +28,7 @@ export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
   fetchDashboard: async (branchId = 'all', period = 'today') => {
     set({ loading: true, error: null });
     try {
-      const token = useAuthStore.getState().accessToken;
+      const token = authStore.getState().accessToken;
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
 

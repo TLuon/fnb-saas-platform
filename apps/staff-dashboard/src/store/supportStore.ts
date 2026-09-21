@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore.ts';
+import { authStore } from '@fnb/utils';
 
 export interface UnmatchedTransaction {
   id: string;
@@ -99,7 +99,7 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
   proposeMatch: async (id, customerId) => {
     set({ loading: true, error: null });
     try {
-      const currentUser = useAuthStore.getState().currentUser;
+      const currentUser = authStore.getState().profile;
       if (!currentUser) throw new Error("Chưa đăng nhập");
 
       // Mock
@@ -112,7 +112,7 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
             ...state.auditLogs,
             [id]: [
               ...(state.auditLogs[id] || []),
-              { id: Date.now().toString(), action: 'PROPOSED', actor: currentUser.name, timestamp: new Date().toISOString() }
+              { id: Date.now().toString(), action: 'PROPOSED', actor: currentUser.full_name || currentUser.email || 'Staff', timestamp: new Date().toISOString() }
             ]
           },
           loading: false
@@ -126,7 +126,7 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
   approveMatch: async (id) => {
     set({ loading: true, error: null });
     try {
-      const currentUser = useAuthStore.getState().currentUser;
+      const currentUser = authStore.getState().profile;
       const tx = get().unmatchedTransactions.find(t => t.id === id);
       
       if (!currentUser) throw new Error("Chưa đăng nhập");
