@@ -148,4 +148,66 @@ export class MenuService {
     if (!data) throw new AppException('ERR_7002_PRODUCT_NOT_FOUND', 'Không tìm thấy món');
     return data;
   }
+
+  /**
+   * B1.md P2.3 — GET /public/catalog?tenant_subdomain=&branch_id=
+   * Endpoint công khai cho khách vãng lai xem menu mà không cần JWT.
+   * Resolve tenant bằng tenant_subdomain, kiểm tra branch_id nếu có.
+   * Chỉ trả danh mục và món ăn đang active.
+   */
+  async getPublicCatalog(subdomain: string, branchId?: string) {
+    const admin = this.supabase.admin();
+
+    // 1. Resolve tenant
+    const { data: tenant, error: tenantError } = await admin
+      .from('tenants')
+      .select('id, name, subdomain')
+      .eq('subdomain', subdomain)
+      .maybeSingle();
+
+    if (tenantError) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', tenantError.message);
+    if (!tenant) throw new AppException('ERR_1001_UNAUTHORIZED', 'Quán không tồn tại hoặc tên miền không đúng');
+
+    // 2. Kiểm tra branch_id nếu có truyền lên
+    if (branchId) {
+      const { data: branch, error: branchError } = await admin
+        .from('branches')
+        .select('id')
+        .eq('id', branchId)
+        .eq('tenant_id', tenant.id)
+        .maybeSingle();
+
+      if (branchError) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', branchError.message);
+      if (!branch) throw new AppException('ERR_9001_VALIDATION_FAILED', 'Chi nhánh không hợp lệ hoặc không thuộc quán');
+    }
+
+    // 3. Lấy categories
+    const { data: categories, error: catError } = await admin
+      .from('categories')
+      .select('id, name, kitchen_station')
+      .eq('tenant_id', tenant.id)
+      .order('name', { ascending: true });
+
+    if (catError) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', catError.message);
+
+    // 4. Lấy products đang active
+    const { data: products, error: prodError } = await admin
+      .from('products')
+      .select('id, category_id, name, price, default_modifiers')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (prodError) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', prodError.message);
+
+    return {
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        subdomain: tenant.subdomain,
+      },
+      categories: categories ?? [],
+      products: products ?? [],
+    };
+  }
 }
