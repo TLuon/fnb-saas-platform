@@ -43,13 +43,15 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
           >
             <X size={20} />
           </button>
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-[#6B625B]">
-              [Hình ảnh]
-            </div>
-          )}
+          <img 
+            src={
+              (product.image_url && product.image_url !== 'null' && product.image_url !== 'undefined' && product.image_url !== '')
+                ? (product.image_url.startsWith('http') ? product.image_url : `http://localhost:3000${product.image_url}`)
+                : `https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=400&q=80`
+            } 
+            alt={product.name} 
+            className="w-full h-full object-cover" 
+          />
         </div>
 
         {/* Content (Scrollable) */}
@@ -115,7 +117,7 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
             onClick={handleAdd}
             className="flex-1 h-12 bg-[#543310] text-white rounded-xl font-bold flex items-center justify-center hover:bg-[#D67D3E] transition-colors"
           >
-            Thêm - {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.base_price * quantity)}
+            Thêm
           </button>
         </div>
 

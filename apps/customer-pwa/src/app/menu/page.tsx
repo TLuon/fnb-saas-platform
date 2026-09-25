@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useCartStore } from '../../stores/cartStore';
 import { PublicHeader } from '../../components/PublicHeader';
 import { MenuSearchBar } from '../../components/MenuSearchBar';
@@ -15,6 +16,7 @@ import { io } from 'socket.io-client';
 import { normalizePublicCatalog, type CatalogCategory, type CatalogProduct } from '../../lib/catalog';
 
 export default function MenuPage() {
+  const searchParams = useSearchParams();
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,7 @@ export default function MenuPage() {
   const addItem = useCartStore(state => state.addItem);
   const cartCount = useCartStore(state => state.getTotalItems());
   const cartTotal = useCartStore(state => state.getSubtotal());
+  const setReservationCode = useCartStore(state => state.setReservationCode);
   
   const { showInfo, showError } = useToast();
 
@@ -51,6 +54,12 @@ export default function MenuPage() {
   useEffect(() => {
     fetchCatalog();
 
+    const resCode = searchParams.get('reservationCode');
+    const tName = searchParams.get('tableName');
+    if (resCode) {
+      setReservationCode(resCode, tName || undefined);
+    }
+
     // WebSocket Realtime for out_of_stock
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
     const socket = io(wsUrl);
@@ -67,7 +76,7 @@ export default function MenuPage() {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [searchParams, setReservationCode]);
 
   // Compute derived state for categories and products
   const filteredProducts = useMemo(() => {
@@ -153,7 +162,7 @@ export default function MenuPage() {
         <ProductGrid 
           products={filteredProducts} 
           onProductClick={setSelectedProduct} 
-          onAddToCart={(p) => setSelectedProduct(p)} // Open modal to add with modifiers
+          onAddToCart={(p) => handleAddToCart(p, 1, '')} // Add directly to cart without modifiers
         />
       )}
 

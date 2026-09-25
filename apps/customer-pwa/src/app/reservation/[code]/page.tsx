@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 
 import { PublicHeader } from '../../../components/PublicHeader';
 import { ReservationLockModal } from '../../../components/ReservationLockModal';
@@ -12,6 +13,8 @@ import { useStore } from 'zustand';
 export default function ReservationPage() {
   const params = useParams();
   const code = (params?.code as string) || '';
+  const searchParams = useSearchParams();
+  const tableName = searchParams.get('tableName') || '';
   const tenantId = useStore(authStore, (state) => state.tenantId);
 
   const [viewState, setViewState] = useState<'LOADING' | 'LOCK_MODAL' | 'QR_PAYMENT' | 'RESULT'>('LOADING');
@@ -95,6 +98,7 @@ export default function ReservationPage() {
           <ReservationResult 
             status={resultStatus}
             reservationCode={code}
+            tableName={tableName}
           />
         )}
       </div>

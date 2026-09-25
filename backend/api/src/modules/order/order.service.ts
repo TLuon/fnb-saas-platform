@@ -280,8 +280,8 @@ export class OrderService {
       throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
     }
 
-    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
-      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã đóng');
+    if (order.status === 'CANCELLED') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã hủy');
     }
 
     // 2. Check if there are QUEUED items
@@ -420,7 +420,7 @@ export class OrderService {
     // 1. Check order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status, table_id, final_amount, subtotal, branch_id, shift_id')
+      .select('id, status, table_id, final_amount, subtotal, branch_id, shift_id, order_type')
       .eq('id', orderId)
       .single();
 
@@ -597,15 +597,27 @@ export class OrderService {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi cập nhật order thành COMPLETED');
     }
 
-    // Free table
+    // Free table or keep occupied
     if (order.table_id) {
-      await supabase
-        .from('tables')
-        .update({
-          status: 'AVAILABLE',
-          current_order_id: null
-        })
-        .eq('id', order.table_id);
+      if (order.order_type === 'DINE_IN') {
+        await supabase
+          .from('tables')
+          .update({
+            status: 'OCCUPIED',
+            current_order_id: null
+          })
+          .eq('id', order.table_id);
+        this.realtimeGateway.emitTableStatusChanged(order.table_id, 'OCCUPIED');
+      } else {
+        await supabase
+          .from('tables')
+          .update({
+            status: 'AVAILABLE',
+            current_order_id: null
+          })
+          .eq('id', order.table_id);
+        this.realtimeGateway.emitTableStatusChanged(order.table_id, 'AVAILABLE');
+      }
     }
 
     // Audit Log

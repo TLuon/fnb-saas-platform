@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authStore } from '@fnb/utils';
+import { authStore, apiClient } from '@fnb/utils';
 
 export interface Category {
   id: string;
@@ -35,46 +35,13 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
 
   fetchMenu: async () => {
     try {
-      const token = authStore.getState().accessToken;
-
-      const headers: Record<string, string> = {};
-
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const baseUrl =
-        import.meta.env.VITE_API_URL ||
-        'http://localhost:3001/api/v1';
-
       const [catRes, prodRes] = await Promise.all([
-        fetch(`${baseUrl}/categories`, { headers }),
-        fetch(`${baseUrl}/products`, { headers }),
+        apiClient.get('/categories'),
+        apiClient.get('/products'),
       ]);
 
-      if (!catRes.ok) {
-        throw new Error(
-          `Categories API failed: ${catRes.status}`,
-        );
-      }
-
-      if (!prodRes.ok) {
-        throw new Error(
-          `Products API failed: ${prodRes.status}`,
-        );
-      }
-
-      const rawCategories = await catRes.json();
-      const rawProducts = await prodRes.json();
-
-      // Backend trả { success, data, error }
-      const categoryData = Array.isArray(rawCategories)
-        ? rawCategories
-        : rawCategories.data ?? [];
-
-      const productData = Array.isArray(rawProducts)
-        ? rawProducts
-        : rawProducts.data ?? [];
+      const categoryData = catRes.data?.data || catRes.data || catRes || [];
+      const productData = prodRes.data?.data || prodRes.data || prodRes || [];
 
       const categories: Category[] = categoryData.map(
         (c: any) => ({
@@ -138,71 +105,33 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   addCategory: async (categoryData) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/categories`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(categoryData),
-    });
-    if (!res.ok) throw new Error('Create category failed');
-    const newCat = await res.json();
-    const finalCat = newCat.data || newCat;
+    const res = await apiClient.post('/categories', categoryData);
+    const finalCat = res.data?.data || res.data || (res as any);
     set((state) => ({ categories: [...state.categories, finalCat] }));
   },
 
   updateCategory: async (id, name) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/categories/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) throw new Error('Update category failed');
+    await apiClient.patch(`/categories/${id}`, { name });
     set((state) => ({
       categories: state.categories.map((c) => (c.id === id ? { ...c, name } : c)),
     }));
   },
 
   deleteCategory: async (id) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/categories/${id}`, { method: 'DELETE', headers });
-    if (!res.ok) throw new Error('Delete category failed');
+    await apiClient.delete(`/categories/${id}`);
     set((state) => ({
       categories: state.categories.filter((c) => c.id !== id),
     }));
   },
 
   addProduct: async (productData) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
     const payload = {
       ...productData,
       category_id: productData.categoryId,
     };
 
-    const res = await fetch(`${baseUrl}/products`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error('Create product failed');
-    const newProd = await res.json();
-    const finalProd = newProd.data || newProd;
+    const res = await apiClient.post('/products', payload);
+    const finalProd = res.data?.data || res.data || (res as any);
     set((state) => ({ 
       products: [...state.products, {
         id: finalProd.id,
@@ -215,36 +144,20 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
   },
 
   updateProduct: async (id, data) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
     const payload: any = { ...data };
     if (data.categoryId) {
       payload.category_id = data.categoryId;
       delete payload.categoryId;
     }
 
-    const res = await fetch(`${baseUrl}/products/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error('Update product failed');
+    await apiClient.patch(`/products/${id}`, payload);
     set((state) => ({
       products: state.products.map((p) => (p.id === id ? { ...p, ...data } : p)),
     }));
   },
 
   deleteProduct: async (id) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/products/${id}`, { method: 'DELETE', headers });
-    if (!res.ok) throw new Error('Delete product failed');
+    await apiClient.delete(`/products/${id}`);
     set((state) => ({
       products: state.products.filter((p) => p.id !== id),
     }));
@@ -276,41 +189,9 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
     }));
 
     try {
-      const token =
-        authStore.getState().accessToken;
-
-      const headers: Record<
-        string,
-        string
-      > = {
-        'Content-Type': 'application/json',
-      };
-
-      if (token) {
-        headers.Authorization =
-          `Bearer ${token}`;
-      }
-
-      const baseUrl =
-        import.meta.env.VITE_API_URL ||
-        'http://localhost:3001/api/v1';
-
-      const response = await fetch(
-        `${baseUrl}/products/${id}`,
-        {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            is_active: newStatus,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Product update failed: ${response.status}`,
-        );
-      }
+      await apiClient.patch(`/products/${id}`, {
+        is_active: newStatus,
+      });
     } catch (error) {
       console.error(
         'Failed to toggle product:',

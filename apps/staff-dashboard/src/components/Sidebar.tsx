@@ -22,15 +22,6 @@ export function Sidebar() {
       ease: 'power3.out'
     });
 
-    // Stagger animation for the navigation links
-    gsap.from('.nav-item', {
-      x: -20,
-      opacity: 0,
-      duration: 0.4,
-      stagger: 0.05,
-      ease: 'power2.out',
-      delay: 0.2
-    });
   }, { scope: containerRef });
 
   const ownerLinks = [
@@ -50,15 +41,15 @@ export function Sidebar() {
 
   const staffLinks = [
     { to: '/pos', icon: <Coffee size={20} />, label: 'Bán hàng (POS)' },
-    { to: '/floor-map', icon: <UsersRound size={20} />, label: 'Sơ đồ trực tiếp' },
+    { to: '/floor-map', icon: <UsersRound size={20} />, label: 'Sơ đồ bàn' },
     { to: '/kds/kitchen', icon: <UtensilsCrossed size={20} />, label: 'KDS - Bếp' },
     { to: '/kds/bar', icon: <Coffee size={20} />, label: 'KDS - Quầy Bar' },
   ];
 
-  const links = role === 'OWNER' 
-    ? ownerLinks 
-    : role === 'SUPPORT' 
-      ? supportLinks 
+  const links = role === 'OWNER'
+    ? ownerLinks
+    : role === 'SUPPORT'
+      ? supportLinks
       : role === 'STAFF'
         ? staffLinks
         : [];
@@ -80,9 +71,9 @@ export function Sidebar() {
             key={link.to}
             to={link.to}
             className={({ isActive }) =>
-              `nav-item flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${isActive
-                ? 'bg-[var(--color-brand-accent)]/40 text-[var(--color-brand-secondary)] shadow-sm'
-                : 'text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)]'
+              `nav-item flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-300 ${isActive
+                ? 'bg-[#543310] text-white shadow-md'
+                : 'text-[#6B625B] hover:bg-[#E8DED5] hover:text-[#543310]'
               }`
             }
           >
@@ -93,7 +84,7 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-200">
-        <button className="nav-item flex items-center gap-3 px-4 py-3 w-full text-left rounded-xl font-semibold text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)] transition-all duration-300">
+        <button className="nav-item flex items-center gap-3 px-4 py-3 w-full text-left rounded-xl font-bold text-[#6B625B] hover:bg-[#E8DED5] hover:text-[#543310] transition-all duration-300">
           <Settings size={20} />
           Cài đặt hệ thống
         </button>

@@ -72,7 +72,7 @@ export function ProductTable({
                         onClick={() => onToggleProduct(p.id)}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                           isActive
-                            ? 'bg-[var(--color-brand-success)]'
+                            ? 'bg-[var(--color-brand-primary)]'
                             : 'bg-gray-300'
                         }`}
                       >

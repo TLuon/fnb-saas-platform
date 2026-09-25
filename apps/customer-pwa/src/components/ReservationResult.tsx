@@ -7,9 +7,10 @@ export type ReservationResultStatus = 'SUCCESS' | 'FAIL' | 'EXPIRED';
 interface ReservationResultProps {
   status: ReservationResultStatus;
   reservationCode: string;
+  tableName: string;
 }
 
-export function ReservationResult({ status, reservationCode }: ReservationResultProps) {
+export function ReservationResult({ status, reservationCode, tableName }: ReservationResultProps) {
   const router = useRouter();
 
   const getStatusConfig = () => {
@@ -62,10 +63,10 @@ export function ReservationResult({ status, reservationCode }: ReservationResult
       <div className="space-y-3">
         {status === 'SUCCESS' ? (
           <button 
-            onClick={() => router.push('/menu')}
+            onClick={() => router.push('/floors')}
             className="w-full py-3 bg-[#543310] text-white font-bold rounded-xl hover:bg-[#D67D3E] transition-colors"
           >
-            Đến trang Menu chọn món
+            Quay lại sơ đồ bàn
           </button>
         ) : (
           <button 

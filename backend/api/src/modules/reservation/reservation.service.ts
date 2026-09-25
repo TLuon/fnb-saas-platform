@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../config/supabase.service.js';
 import { RedisService } from '../../common/redis.service.js';
 import { RealtimeGateway } from '../../common/realtime/realtime.gateway.js';
@@ -9,12 +9,49 @@ import { MockPaymentDto } from './dto/mock-payment.dto.js';
 import * as QRCode from 'qrcode';
 
 @Injectable()
-export class ReservationService {
+export class ReservationService implements OnModuleInit {
+  private readonly logger = new Logger(ReservationService.name);
+
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly redisService: RedisService,
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
+
+  onModuleInit() {
+    // Chạy ngầm định kỳ 5 phút để hủy các bàn giữ quá 1 tiếng
+    setInterval(() => {
+      this.clearExpiredReservations().catch(err => 
+        this.logger.error('Lỗi khi dọn dẹp bàn giữ hết hạn', err)
+      );
+    }, 5 * 60 * 1000); // 5 phút
+  }
+
+  private async clearExpiredReservations() {
+    const supabaseAdmin = this.supabaseService.admin();
+    // Tìm các bàn RESERVED quá 1 tiếng
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    
+    const { data: expiredTables, error: queryError } = await supabaseAdmin
+      .from('tables')
+      .select('id, tenant_id')
+      .eq('status', 'RESERVED')
+      .lt('updated_at', oneHourAgo);
+
+    if (queryError || !expiredTables || expiredTables.length === 0) return;
+
+    for (const table of expiredTables) {
+      this.logger.log(`Giải phóng bàn ${table.id} do hết hạn giữ chỗ`);
+      const { error: updateError } = await supabaseAdmin
+        .from('tables')
+        .update({ status: 'AVAILABLE' })
+        .eq('id', table.id);
+
+      if (!updateError) {
+        this.realtimeGateway.emitTableStatusChanged(table.id, 'AVAILABLE');
+      }
+    }
+  }
 
   async lockTable(user: AuthenticatedUser, accessToken: string, dto: LockTableDto) {
     const supabase = this.supabaseService.forUser(accessToken);
@@ -69,6 +106,8 @@ export class ReservationService {
       await redisClient.del(lockKey, resKey);
       throw new AppException('ERR_2003_INVALID_TABLE_STATUS_TRANSITION', 'Không thể cập nhật trạng thái bàn');
     }
+
+    this.realtimeGateway.emitTableStatusChanged(dto.table_id, 'PENDING_LOCK');
 
     return {
       reservation_code: reservationCode,
@@ -205,6 +244,8 @@ export class ReservationService {
           .update({ status: 'RESERVED' })
           .eq('id', resData.table_id);
 
+        this.realtimeGateway.emitTableStatusChanged(resData.table_id, 'RESERVED');
+
         // Free Redis locks
         await redisClient.del(`lock:${resData.tenant_id}:${resData.table_id}`, `reservation:${code}`);
 
@@ -300,6 +341,8 @@ export class ReservationService {
       .update({ status: 'AVAILABLE' })
       .eq('id', resData.table_id)
       .eq('status', 'PENDING_LOCK');
+
+    this.realtimeGateway.emitTableStatusChanged(resData.table_id, 'AVAILABLE');
 
     return { message: 'Đã hủy giữ bàn thành công' };
   }

@@ -14,7 +14,10 @@ export class RealtimeClient {
   public socket: Socket;
 
   constructor(config: RealtimeClientConfig) {
-    this.supabase = createClient(config.supabaseUrl, config.supabaseKey);
+    this.supabase = createClient(
+      config.supabaseUrl || 'https://dummy.supabase.co', 
+      config.supabaseKey || 'dummy-key'
+    );
     this.socket = io(config.socketUrl, {
       autoConnect: false,
       ...(config.token ? { auth: { token: `Bearer ${config.token}` } } : {})

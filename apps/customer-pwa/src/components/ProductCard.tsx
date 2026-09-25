@@ -33,17 +33,15 @@ export function ProductCard({ product, onClick, onAdd }: ProductCardProps) {
       className={`bg-[#FFFFFF] border border-[#E8DED5] rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-lg hover:border-[#D67D3E] group flex flex-col h-full relative ${!isAvailable ? 'opacity-70' : ''}`}
     >
       <div className="h-40 bg-[#FAF7F3] relative overflow-hidden shrink-0">
-        {product.image_url ? (
-          <img 
-            src={product.image_url} 
-            alt={product.name} 
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-[#6B625B] bg-gray-100">
-            [Hình ảnh]
-          </div>
-        )}
+        <img 
+          src={
+            (product.image_url && product.image_url !== 'null' && product.image_url !== 'undefined' && product.image_url !== '')
+              ? (product.image_url.startsWith('http') ? product.image_url : `http://localhost:3000${product.image_url}`)
+              : `https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=400&q=80`
+          } 
+          alt={product.name} 
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+        />
 
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">

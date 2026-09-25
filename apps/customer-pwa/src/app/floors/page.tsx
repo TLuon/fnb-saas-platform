@@ -147,7 +147,7 @@ export default function FloorsPage() {
       
       const reservationCode = payload?.reservation_code || payload?.code;
       if (!reservationCode) throw new Error('API không trả mã đặt bàn');
-      router.push(`/reservation/${reservationCode}`);
+      router.push(`/reservation/${reservationCode}?tableName=${encodeURIComponent(table.name)}`);
     } catch (error: any) {
       if (error?.code === 'ERR_2002_TABLE_LOCKED' || error?.response?.data?.code === 'ERR_2002_TABLE_LOCKED') {
         showError('Bàn đã bị khách khác giữ. Vui lòng chọn bàn khác.');

@@ -70,19 +70,15 @@ export default function Home() {
           <Coffee className="floating-bean absolute top-[30%] right-[20%] text-[var(--color-brand-primary)]/10 w-20 h-20" />
 
           <div className="relative z-10 max-w-screen-xl mx-auto px-4">
-            <div className="hero-title inline-block mb-6 px-6 py-2 rounded-full backdrop-blur-md bg-[var(--color-brand-primary)]/10 border border-[var(--color-brand-primary)]/20 text-[var(--color-brand-primary)] font-bold text-base md:text-lg tracking-wide shadow-sm">
-              ✨ The F&B SaaS Coffee
-            </div>
             
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black font-serif text-[var(--color-brand-primary)] mb-6 leading-tight drop-shadow-sm">
-              <span className="hero-title block">Hương vị tuyệt hảo,</span>
-              <span className="hero-title block mt-2 text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-brand-primary)] to-[var(--color-brand-secondary)] pb-2">
-                Trải nghiệm khó quên.
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-black font-serif text-[var(--color-brand-primary)] mb-4 leading-tight drop-shadow-sm">
+              <span className="hero-title block text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-brand-primary)] to-[var(--color-brand-secondary)] pb-2">
+                The F&B SaaS Coffee
               </span>
             </h1>
             
-            <p className="hero-subtitle text-[var(--color-brand-primary)]/80 max-w-2xl mx-auto mb-4 text-lg md:text-xl font-medium leading-relaxed">
-              Khám phá thực đơn đa dạng và đặt bàn ngay để tận hưởng không gian thư giãn cùng những ly cà phê hảo hạng nhất.
+            <p className="hero-subtitle text-[var(--color-brand-primary)]/80 max-w-2xl mx-auto mb-4 text-xl md:text-2xl font-bold leading-relaxed tracking-wide">
+              ✨ Hương vị tuyệt hảo, trải nghiệm khó quên.
             </p>
 
             <div className="hero-subtitle flex flex-wrap justify-center gap-4 md:gap-8 mt-2 mb-10 text-[var(--color-brand-primary)]/90 font-bold text-sm md:text-base">

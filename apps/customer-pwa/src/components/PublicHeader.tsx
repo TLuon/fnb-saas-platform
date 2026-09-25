@@ -21,18 +21,30 @@ export function PublicHeader() {
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="hidden md:flex items-center gap-8">
+          <Link 
+            href="/" 
+            className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname === '/' ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
+          >
+            Trang chủ
+          </Link>
           <Link 
             href="/menu" 
-            className={`font-bold text-lg transition-colors ${pathname?.startsWith('/menu') ? 'text-[#D67D3E]' : 'text-[#543310] hover:text-[#D67D3E]'}`}
+            className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname?.startsWith('/menu') ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
           >
             Thực đơn
           </Link>
           <Link 
             href="/floors"
-            className={`font-medium transition-colors ${pathname.startsWith('/floors') || pathname.startsWith('/reservation') ? 'text-[#D67D3E]' : 'text-[#222222] hover:text-[#D67D3E]'}`}
+            className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname?.startsWith('/floors') || pathname?.startsWith('/reservation') ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
           >
             Đặt bàn
+          </Link>
+          <Link 
+            href="/promotions"
+            className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname?.startsWith('/promotions') ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
+          >
+            Khuyến mãi
           </Link>
         </nav>
 

@@ -16,12 +16,15 @@ export interface CartItem {
 export interface CartState {
   items: CartItem[];
   orderNote: string;
+  reservationCode?: string;
+  tableName?: string;
   
   // Actions
   addItem: (item: Omit<CartItem, 'id'>) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
   setOrderNote: (note: string) => void;
+  setReservationCode: (code?: string, tableName?: string) => void;
   clearCart: () => void;
   
   // Computed (can be derived in component, but convenient here)
@@ -34,6 +37,8 @@ export const useCartStore = create<CartState>()(
     (set, get) => ({
       items: [],
       orderNote: '',
+      reservationCode: undefined,
+      tableName: undefined,
       
       addItem: (newItem) => set((state) => {
         // Generate a unique ID based on product + modifiers to stack identical items
@@ -68,7 +73,9 @@ export const useCartStore = create<CartState>()(
       
       setOrderNote: (note) => set({ orderNote: note }),
       
-      clearCart: () => set({ items: [], orderNote: '' }),
+      setReservationCode: (code, tableName) => set({ reservationCode: code, tableName }),
+      
+      clearCart: () => set({ items: [], orderNote: '', reservationCode: undefined, tableName: undefined }),
       
       getSubtotal: () => {
         return get().items.reduce((total, item) => total + (item.price * item.quantity), 0);

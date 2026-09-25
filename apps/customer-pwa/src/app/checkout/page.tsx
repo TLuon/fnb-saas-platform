@@ -82,6 +82,14 @@ export default function CheckoutPage() {
       // Theo task: Chỉ clear cart SAU KHI backend trả success
       clearCart();
       sessionStorage.removeItem('selected_voucher_id');
+      
+      // Gửi bếp sau khi thanh toán thành công (Bất kể tại bàn hay mang đi)
+      try {
+        await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+      } catch (err) {
+        console.error('Failed to submit to kitchen after payment', err);
+      }
+      
       setPaymentStatus('SUCCESS');
 
     } catch (err) {
@@ -193,6 +201,16 @@ export default function CheckoutPage() {
             className="w-full py-4 bg-[#543310] text-white font-bold rounded-xl hover:bg-[#D67D3E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-8 text-lg"
           >
             Thanh toán {formatPrice(payableAmount)}
+          </button>
+        )}
+
+        {paymentStatus === 'SUCCESS' && (
+          <button
+            onClick={() => router.push('/')}
+            className="w-full py-4 bg-[#237A57] text-white font-bold rounded-xl hover:bg-[#1c6346] transition-colors mt-8 text-lg flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Về trang chủ
           </button>
         )}
       </div>

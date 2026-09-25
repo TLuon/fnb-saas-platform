@@ -23,6 +23,8 @@ export default function CartPage() {
   const setOrderNote = useCartStore(state => state.setOrderNote);
   const getSubtotal = useCartStore(state => state.getSubtotal);
   const getTotalItems = useCartStore(state => state.getTotalItems);
+  const reservationCode = useCartStore(state => state.reservationCode);
+  const tableName = useCartStore(state => state.tableName);
 
   const [isMounted, setIsMounted] = useState(false);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
@@ -77,8 +79,8 @@ export default function CartPage() {
       <div className="flex-1 max-w-screen-xl mx-auto w-full p-4 space-y-6 pb-32">
         <BranchTableSummary 
           branchName="FNB Bến Thành" 
-          orderType="DINE_IN" 
-          tableName="T1-01" 
+          orderType={reservationCode ? 'DINE_IN' : 'TAKEAWAY'} 
+          tableName={tableName} 
         />
 
         <div className="space-y-4">

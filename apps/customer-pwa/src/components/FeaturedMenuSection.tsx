@@ -79,17 +79,15 @@ export function FeaturedMenuSection() {
             style={{ animationDelay: `${index * 100}ms` }}
           >
             <div className="h-48 bg-gray-100 relative overflow-hidden">
-              {item.image_url ? (
-                <img 
-                  src={item.image_url} 
-                  alt={item.name} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#6B625B]">
-                  [Hình ảnh]
-                </div>
-              )}
+              <img 
+                src={
+                  (item.image_url && item.image_url !== 'null' && item.image_url !== 'undefined' && item.image_url !== '')
+                    ? (item.image_url.startsWith('http') ? item.image_url : `http://localhost:3000${item.image_url}`)
+                    : `https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=400&q=80`
+                } 
+                alt={item.name} 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
+              />
             </div>
             <div className="p-5">
               <h3 className="text-lg font-bold text-[#222222] mb-1 line-clamp-1">{item.name}</h3>

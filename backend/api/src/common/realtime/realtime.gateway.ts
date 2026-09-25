@@ -167,6 +167,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     client.emit('joined_group_order', { room, table_id: tableId });
   }
 
+  @SubscribeMessage('join_branch')
+  handleJoinBranch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { branch_id: string }
+  ) {
+    const user = (client as any).user;
+    if (!user || !user.tenant_id) return;
+
+    if (data?.branch_id && (user.role_app === 'STAFF' || user.role_app === 'OWNER')) {
+      const kdsRoom = `kds:${data.branch_id}`;
+      client.join(kdsRoom);
+      this.logger.log(`Client ${client.id} joined ${kdsRoom} via join_branch event`);
+    }
+  }
+
   /**
    * leave_group_order — cleanup khi client rời khỏi phòng nhóm chủ động
    */
@@ -248,6 +263,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
     if (payload.tenant_id && this.server) {
       this.server.to(`support:${payload.tenant_id}`).emit('product_out_of_stock', data);
+    }
+  }
+
+  /** Emit table status change to everyone */
+  emitTableStatusChanged(tableId: string, status: string) {
+    if (this.server) {
+      this.server.emit('table_status_changed', { table_id: tableId, status });
     }
   }
 }

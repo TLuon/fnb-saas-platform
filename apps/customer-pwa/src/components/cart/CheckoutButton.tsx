@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiClient, authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
+import { useCartStore } from '../../stores/cartStore';
 import { buildOrderItemPayload } from '../../lib/checkout';
 
 interface CheckoutButtonProps {
@@ -16,6 +17,7 @@ interface CheckoutButtonProps {
 export function CheckoutButton({ isDisabled, itemCount, totalAmount, items, orderNote }: CheckoutButtonProps) {
   const router = useRouter();
   const isAuthenticated = useStore(authStore, (state) => state.isAuthenticated);
+  const reservationCode = useCartStore((state) => state.reservationCode);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const handleCheckout = async () => {
@@ -29,9 +31,13 @@ export function CheckoutButton({ isDisabled, itemCount, totalAmount, items, orde
       }
 
       // 1. Tạo order DINE_IN hoặc TAKEAWAY
-      const orderRes: any = await apiClient.post('/orders', {
-        order_type: 'TAKEAWAY',
-      });
+      const payload: any = { order_type: 'TAKEAWAY' };
+      if (reservationCode) {
+        payload.reservation_code = reservationCode;
+        payload.order_type = 'DINE_IN';
+      }
+      
+      const orderRes: any = await apiClient.post('/orders', payload);
       const orderData = orderRes.data?.data || orderRes.data || orderRes;
       const orderId = orderData.id || orderData.order_id;
 
@@ -49,8 +55,7 @@ export function CheckoutButton({ isDisabled, itemCount, totalAmount, items, orde
         }
       }
 
-      // 3. Gửi bếp
-      await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+      // Removed submit-kitchen here. It should happen AFTER payment in checkout page.
 
       // 4. Chuyển tới trang checkout thật
       router.push(`/checkout?order_id=${orderId}`);
