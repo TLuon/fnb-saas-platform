@@ -94,14 +94,18 @@ export function FeaturedMenuSection() {
       </h2>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {items.map(item => (
-          <div key={item.id} className="bg-[#FFFFFF] rounded-xl border border-[#E8DED5] overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer">
+        {items.map((item, index) => (
+          <div 
+            key={item.id} 
+            className="menu-card bg-white/60 backdrop-blur-md rounded-2xl border border-white/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(84,51,16,0.12)] transition-all duration-500 group cursor-pointer"
+            style={{ animationDelay: `${index * 100}ms` }}
+          >
             <div className="h-48 bg-gray-100 relative overflow-hidden">
               {item.image_url ? (
                 <img 
                   src={item.image_url} 
                   alt={item.name} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[#6B625B]">
@@ -118,8 +122,9 @@ export function FeaturedMenuSection() {
                 <span className="font-bold text-[#543310] text-lg">
                   {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.base_price || 0)}
                 </span>
-                <button className="text-[#D67D3E] font-medium text-sm hover:underline">
-                  Xem chi tiết
+                <button className="flex items-center gap-1 text-[var(--color-brand-secondary)] font-bold text-sm hover:text-[var(--color-brand-primary)] transition-colors opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 duration-300">
+                  <span>Thêm</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                 </button>
               </div>
             </div>

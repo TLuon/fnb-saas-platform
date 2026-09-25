@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
 import { apiClient } from '@fnb/utils';
 import { useCartStore } from '../../../stores/cartStore';
@@ -11,11 +11,10 @@ import { OrderDetailItems } from '../../../components/orders/OrderDetailItems';
 import { PaymentSummary } from '../../../components/orders/PaymentSummary';
 import { CSATPrompt } from '../../../components/orders/CSATPrompt';
 
-export default function OrderDetailPage() {
-  const params = useParams();
+export default function OrderDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { showInfo, showError } = useToast();
-  const orderId = params?.id as string;
+  const orderId = params?.id;
   const clearCart = useCartStore(state => state.clearCart);
   const addItem = useCartStore(state => state.addItem);
 

@@ -17,10 +17,10 @@ const getBaseURL = () => {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) {
-    return (import.meta as any).env.VITE_API_URL;
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) {
+    return (import.meta as any).env.VITE_API_BASE_URL;
   }
-  return 'http://localhost:3001/api/v1';
+  return 'http://localhost:3000/api/v1';
 };
 
 export const apiClient: AxiosInstance = axios.create({

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { ActivePassHeader } from '../../../components/coffee-pass/ActivePassHeader';
 import { RedemptionProgress } from '../../../components/coffee-pass/RedemptionProgress';
@@ -9,10 +9,9 @@ import { RotatingCodePanel } from '../../../components/coffee-pass/RotatingCodeP
 import { PassExpiredState } from '../../../components/coffee-pass/PassExpiredState';
 import { apiClient } from '@fnb/utils';
 
-export default function CoffeePassDetailPage() {
-  const params = useParams();
+export default function CoffeePassDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const passId = params?.id as string;
+  const passId = params?.id;
 
   const [loading, setLoading] = useState(true);
   const [passData, setPassData] = useState<any>(null);

@@ -2,10 +2,36 @@ import { NavLink } from 'react-router-dom';
 import { Coffee, Users, BarChart3, UsersRound, Settings, ClipboardList, MessageSquareWarning, UtensilsCrossed, Clock, Package } from 'lucide-react';
 import { authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
+import { useRef } from 'react';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+
+gsap.registerPlugin(useGSAP);
 
 export function Sidebar() {
   const role = useStore(authStore, state => state.role);
   const profile = useStore(authStore, state => state.profile);
+  const containerRef = useRef<HTMLElement>(null);
+
+  useGSAP(() => {
+    // Animate the whole sidebar sliding in
+    gsap.from(containerRef.current, {
+      x: -50,
+      opacity: 0,
+      duration: 0.6,
+      ease: 'power3.out'
+    });
+
+    // Stagger animation for the navigation links
+    gsap.from('.nav-item', {
+      x: -20,
+      opacity: 0,
+      duration: 0.4,
+      stagger: 0.05,
+      ease: 'power2.out',
+      delay: 0.2
+    });
+  }, { scope: containerRef });
 
   const ownerLinks = [
     { to: '/menu-management', icon: <Coffee size={20} />, label: 'Quản lý Thực đơn' },
@@ -40,7 +66,7 @@ export function Sidebar() {
   if (!role && !profile) return null;
 
   return (
-    <aside className="w-64 bg-[var(--color-brand-neutral)] text-[var(--color-brand-primary)] flex flex-col h-screen border-r border-gray-200 shadow-sm relative z-10">
+    <aside ref={containerRef} className="w-64 bg-[var(--color-brand-neutral)] text-[var(--color-brand-primary)] flex flex-col h-screen border-r border-gray-200 shadow-sm relative z-10">
       <div className="p-6 border-b border-gray-200">
         <h1 className="text-2xl font-black font-serif tracking-wide">
           <span className="text-[var(--color-brand-secondary)]">F&B</span> {role}
@@ -54,7 +80,7 @@ export function Sidebar() {
             key={link.to}
             to={link.to}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${isActive
+              `nav-item flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${isActive
                 ? 'bg-[var(--color-brand-accent)]/40 text-[var(--color-brand-secondary)] shadow-sm'
                 : 'text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)]'
               }`
@@ -67,7 +93,7 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-200">
-        <button className="flex items-center gap-3 px-4 py-3 w-full text-left rounded-xl font-semibold text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)] transition-all duration-300">
+        <button className="nav-item flex items-center gap-3 px-4 py-3 w-full text-left rounded-xl font-semibold text-gray-500 hover:bg-white hover:shadow-sm hover:text-[var(--color-brand-primary)] transition-all duration-300">
           <Settings size={20} />
           Cài đặt hệ thống
         </button>

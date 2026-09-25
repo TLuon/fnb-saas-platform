@@ -3,7 +3,7 @@ import { Phone, Mail, MapPin, Globe, MessageCircle } from 'lucide-react';
 
 export function ContactFooter() {
   return (
-    <footer className="bg-[#FFFFFF] border-t border-[#E8DED5] pt-12 pb-8 mt-12">
+    <footer className="bg-transparent border-t border-white/40 pt-12 pb-8 mt-12">
       <div className="max-w-screen-xl mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         <div>
           <h3 className="text-xl font-bold font-serif text-[#543310] mb-4">F&B SaaS</h3>
@@ -43,7 +43,7 @@ export function ContactFooter() {
         </div>
       </div>
       
-      <div className="max-w-screen-xl mx-auto px-4 pt-8 border-t border-[#E8DED5] text-center text-sm text-[#6B625B]">
+      <div className="max-w-screen-xl mx-auto px-4 pt-8 border-t border-black/10 text-center text-sm text-[#6B625B]">
         <p>&copy; {new Date().getFullYear()} F&B SaaS Platform. All rights reserved.</p>
       </div>
     </footer>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import { apiClient } from '@fnb/utils';
 import { PublicHeader } from '../../../components/PublicHeader';
@@ -14,10 +14,9 @@ import { GroupMenuPicker } from '../../../components/group-order/GroupMenuPicker
 import { useToast } from '../../../components/ToastProvider';
 import { ChevronRight, Plus } from 'lucide-react';
 
-export default function GroupOrderPage() {
-  const params = useParams();
+export default function GroupOrderSessionPage({ params }: { params: { tableId: string } }) {
   const router = useRouter();
-  const tableId = params?.tableId as string;
+  const tableId = params?.tableId;
   const { showInfo, showError } = useToast();
 
   const [memberName, setMemberName] = useState('');

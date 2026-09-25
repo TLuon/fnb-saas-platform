@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import { apiClient } from '@fnb/utils';
 import { PublicHeader } from '../../../../components/PublicHeader';
@@ -11,10 +11,9 @@ import { RealtimeConnectionBadge, SocketStatus } from '../../../../components/gr
 import { useToast } from '../../../../components/ToastProvider';
 import { ArrowLeft } from 'lucide-react';
 
-export default function GroupOrderCartPage() {
-  const params = useParams();
+export default function GroupOrderCartPage({ params }: { params: { tableId: string } }) {
   const router = useRouter();
-  const tableId = params?.tableId as string;
+  const tableId = params?.tableId;
   const { showInfo, showError } = useToast();
 
   const [cartItems, setCartItems] = useState<SharedCartItem[]>([]);

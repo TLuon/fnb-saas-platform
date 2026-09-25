@@ -1,16 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+
 import { PublicHeader } from '../../../components/PublicHeader';
 import { ReservationLockModal } from '../../../components/ReservationLockModal';
 import { VietQRPanel } from '../../../components/VietQRPanel';
 import { ReservationResult, ReservationResultStatus } from '../../../components/ReservationResult';
 import { apiClient } from '@fnb/utils';
 
-export default function ReservationPage() {
-  const params = useParams();
-  const code = (params?.code as string) || '';
+export default function ReservationPage({ params }: { params: { code: string } }) {
+  const code = params?.code || '';
 
   const [viewState, setViewState] = useState<'LOADING' | 'LOCK_MODAL' | 'QR_PAYMENT' | 'RESULT'>('LOADING');
   const [resultStatus, setResultStatus] = useState<ReservationResultStatus>('SUCCESS');

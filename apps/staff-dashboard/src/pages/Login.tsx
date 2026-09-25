@@ -88,6 +88,7 @@ export default function Login() {
                 className="bg-transparent w-full outline-none text-sm text-[var(--color-brand-primary)] font-medium"
                 required
                 disabled={loading}
+                autoComplete="email"
               />
             </div>
           </div>
@@ -106,6 +107,7 @@ export default function Login() {
                 className="bg-transparent w-full outline-none text-sm text-[var(--color-brand-primary)] font-medium"
                 required
                 disabled={loading}
+                autoComplete="current-password"
               />
             </div>
           </div>
@@ -113,10 +115,13 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 bg-[var(--color-brand-primary)] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[var(--color-brand-secondary)] transition shadow-md disabled:opacity-50"
+            className="w-full mt-2 bg-[var(--color-brand-primary)] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[var(--color-brand-secondary)] hover:shadow-lg transition-all duration-300 shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {loading ? (
-              'Đang đăng nhập...'
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Đang xử lý...</span>
+              </>
             ) : (
               <>
                 <span>Đăng nhập hệ thống</span>
