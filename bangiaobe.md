@@ -26,3 +26,15 @@ Nhân viên (Staff) cần bấm vào bàn màu nâu (`RESERVED`) trên giao di�
   - Đổi trạng thái bàn thành `OCCUPIED`.
   - Đổi trạng thái `reservations` thành `CHECKED_IN`.
   - Tự động khởi tạo một `order` (giỏ hàng) mới gán vào `current_order_id` của bàn đó.
+
+## 3. Quản lý Hình ảnh Sản phẩm (Products)
+**Vấn đề:**
+Hiện tại bảng `products` chưa có cột lưu hình ảnh, và API chưa có luồng upload ảnh cho món ăn. Khách hàng và Staff không thể xem được hình ảnh trực quan của món ăn.
+
+**Yêu cầu BE:**
+- Update schema (bảng `products`): Thêm cột `image_url` (TEXT).
+- Cập nhật tài liệu `ERD.md` để phản ánh cột mới này.
+- **API & Storage:** 
+  - Tạo bucket mới trên Supabase Storage (ví dụ: `product-images`).
+  - Viết luồng xử lý upload hình ảnh trực tiếp hoặc cung cấp Presigned URL để FE upload.
+  - Cập nhật API tạo/sửa món (`POST /products` và `PATCH /products/:id`) để nhận và map `image_url` vào database.
