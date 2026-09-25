@@ -30,8 +30,13 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       
-      // Call register API via shared apiClient
-      await apiClient.post('/auth/register', formData);
+      await apiClient.post('/auth/register', {
+        tenant_subdomain: process.env.NEXT_PUBLIC_TENANT_SUBDOMAIN || 'cafe-and-cake',
+        full_name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+      });
       showInfo('Đăng ký thành công! Đang tự động đăng nhập...');
 
       // Auto login after registration
@@ -42,6 +47,18 @@ export default function RegisterPage() {
 
       if (payload?.access_token) {
         authStore.getState().setTokens(payload.access_token, payload.refresh_token);
+        const me: any = await apiClient.get('/auth/me');
+        authStore.getState().setProfile({
+          id: me.profile?.id || me.sub,
+          auth_user_id: me.sub,
+          role_app: me.role_app,
+          email: me.profile?.email || me.email,
+          phone: me.profile?.phone,
+          full_name: me.profile?.full_name || formData.name,
+          tenant_id: me.tenant_id,
+          membership_tier: me.profile?.membership_tier,
+          loyalty_points: Number(me.profile?.loyalty_points || 0),
+        });
         router.push('/menu');
       } else {
         router.push('/login');

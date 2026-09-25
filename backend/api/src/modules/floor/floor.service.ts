@@ -21,16 +21,29 @@ import { TableStatus, UpdateTableStatusDto } from './dto/update-table-status.dto
  * rộng map bên dưới và báo lại nhóm.
  */
 const ALLOWED_MANUAL_TRANSITIONS: Record<TableStatus, TableStatus[]> = {
-  AVAILABLE: ['CLEANING'],
-  PENDING_LOCK: [],
-  RESERVED: [],
-  OCCUPIED: ['CLEANING'],
-  CLEANING: ['AVAILABLE'],
+  AVAILABLE: ['CLEANING', 'OCCUPIED'],
+  PENDING_LOCK: ['AVAILABLE', 'OCCUPIED'],
+  RESERVED: ['AVAILABLE', 'OCCUPIED'],
+  OCCUPIED: ['CLEANING', 'AVAILABLE'],
+  CLEANING: ['AVAILABLE', 'OCCUPIED'],
 };
 
 @Injectable()
 export class FloorService {
   constructor(private readonly supabase: SupabaseService) {}
+
+  /** Lấy danh sách chi nhánh của tenant hiện tại */
+  async listBranches(accessToken: string, tenantId: string) {
+    const client = this.supabase.forUser(accessToken);
+    const { data, error } = await client
+      .from('branches')
+      .select('id, tenant_id, name, address, created_at')
+      .eq('tenant_id', tenantId)
+      .order('name', { ascending: true });
+
+    if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    return data ?? [];
+  }
 
   /** API_CONTRACT.md mục 2 — GET /floors?branch_id=. RLS tự lọc theo tenant. */
   async listFloors(accessToken: string, branchId: string) {
@@ -128,9 +141,17 @@ export class FloorService {
       );
     }
 
+    const updatePayload: Record<string, any> = {
+      status: dto.status,
+      updated_at: new Date().toISOString(),
+    };
+    if (dto.status === 'AVAILABLE') {
+      updatePayload.current_order_id = null;
+    }
+
     const { data, error } = await client
       .from('tables')
-      .update({ status: dto.status, updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq('id', tableId)
       .select()
       .single();

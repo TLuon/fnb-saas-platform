@@ -38,6 +38,8 @@ export class ReservationService {
     const redisClient = this.redisService.getClient();
     const lockKey = `lock:${user.tenant_id}:${dto.table_id}`;
     const reservationCode = 'RES_' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const depositAmount = 50000;
+    const expiresAt = new Date(Date.now() + 600_000).toISOString();
     
     // Store user ID in lock to verify ownership later
     const locked = await redisClient.set(lockKey, user.sub, 'EX', 600, 'NX');
@@ -52,7 +54,8 @@ export class ReservationService {
       tenant_id: user.tenant_id,
       table_id: dto.table_id,
       user_id: user.sub,
-      amount: 50000 // default deposit amount
+      amount: depositAmount,
+      expires_at: expiresAt,
     }), 'EX', 600);
 
     // 3. Update table status
@@ -67,7 +70,11 @@ export class ReservationService {
       throw new AppException('ERR_2003_INVALID_TABLE_STATUS_TRANSITION', 'Không thể cập nhật trạng thái bàn');
     }
 
-    return { reservation_code: reservationCode };
+    return {
+      reservation_code: reservationCode,
+      expires_at: expiresAt,
+      deposit_amount: depositAmount,
+    };
   }
 
   async generateQr(user: AuthenticatedUser, code: string) {
@@ -88,6 +95,9 @@ export class ReservationService {
     const qrDataUrl = await QRCode.toDataURL(qrString);
 
     return {
+      code,
+      amount: Number(resData.amount),
+      expires_at: resData.expires_at,
       qr_string: qrString,
       qr_image: qrDataUrl,
     };

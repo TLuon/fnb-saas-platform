@@ -107,6 +107,8 @@ export default function CartPage() {
         isDisabled={isCheckoutDisabled}
         itemCount={getTotalItems()}
         totalAmount={subtotal}
+        items={items}
+        orderNote={orderNote}
       />
 
       <LoginRequiredModal 

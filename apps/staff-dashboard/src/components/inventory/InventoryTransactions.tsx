@@ -20,6 +20,10 @@ export function InventoryTransactions({ transactions }: InventoryTransactionsPro
         return { color: 'text-blue-600', bg: 'bg-blue-100', icon: <ArrowUpRight size={16} />, label: 'Xuất kho' };
       case 'WASTE':
         return { color: 'text-[#B42318]', bg: 'bg-red-100', icon: <Trash2 size={16} />, label: 'Báo hỏng / Hủy' };
+      case 'ADJUSTMENT':
+        return { color: 'text-purple-700', bg: 'bg-purple-100', icon: null, label: 'Điều chỉnh' };
+      case 'ORDER_CONSUMPTION':
+        return { color: 'text-blue-700', bg: 'bg-blue-100', icon: <ArrowUpRight size={16} />, label: 'Trừ theo đơn' };
       default:
         return { color: 'text-gray-600', bg: 'bg-gray-100', icon: null, label: type };
     }
@@ -59,7 +63,12 @@ export function InventoryTransactions({ transactions }: InventoryTransactionsPro
                   </td>
                   <td className="p-4 font-bold text-gray-800">{tx.ingredientName}</td>
                   <td className={`p-4 text-right font-black text-lg ${ui.color}`}>
-                    {tx.type === 'IN' ? '+' : '-'}{tx.quantity.toLocaleString('vi-VN')}
+                    {tx.type === 'IN' ? '+' : tx.type === 'ADJUSTMENT' ? '' : '-'}{tx.quantity.toLocaleString('vi-VN')}
+                    {tx.balanceAfter !== null && (
+                      <div className="text-xs text-gray-400 font-medium">
+                        Tồn sau: {tx.balanceAfter.toLocaleString('vi-VN')}
+                      </div>
+                    )}
                   </td>
                   <td className="p-4 text-gray-600">{tx.user}</td>
                   <td className="p-4 text-gray-500 max-w-[200px] truncate" title={tx.note}>{tx.note}</td>

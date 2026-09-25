@@ -253,6 +253,8 @@ export class InventoryService {
       newStock = qty;
     }
 
+    const appUserId = await this.resolvePublicUserId(client, user);
+
     // 2. Cập nhật current_stock của nguyên vật liệu
     const { error: updateStockError } = await client
       .from('ingredients')
@@ -278,7 +280,7 @@ export class InventoryService {
         quantity: qty,
         balance_after: newStock,
         notes: dto.notes ?? null,
-        created_by: user.sub,
+        created_by: appUserId,
       })
       .select()
       .single();
@@ -305,6 +307,24 @@ export class InventoryService {
     }
 
     return tx;
+  }
+
+  private async resolvePublicUserId(client: any, user: AuthenticatedUser): Promise<string> {
+    const { data: appUser, error } = await client
+      .from('users')
+      .select('id')
+      .eq('auth_user_id', user.sub)
+      .eq('tenant_id', user.tenant_id)
+      .maybeSingle();
+
+    if (error) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    }
+    if (!appUser) {
+      throw new AppException('ERR_1001_UNAUTHORIZED', 'Không tìm thấy thông tin tài khoản người dùng');
+    }
+
+    return appUser.id;
   }
 
   async listTransactions(accessToken: string, query: ListTransactionsQueryDto) {
@@ -409,4 +429,3 @@ export class InventoryService {
     return rpcResult;
   }
 }
-

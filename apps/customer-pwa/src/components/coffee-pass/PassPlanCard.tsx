@@ -7,7 +7,7 @@ export interface PassPlan {
   price: number;
   total_redemptions: number;
   duration_days: number;
-  description: string;
+  description?: string;
 }
 
 interface PassPlanCardProps {
@@ -32,7 +32,9 @@ export function PassPlanCard({ plan, onSubscribe }: PassPlanCardProps) {
         </div>
       </div>
       
-      <p className="text-sm text-[#6B625B] flex-1">{plan.description}</p>
+      <p className="text-sm text-[#6B625B] flex-1">
+        {plan.description || `${plan.total_redemptions} lượt đồ uống, sử dụng trong ${plan.duration_days} ngày.`}
+      </p>
       
       <div className="mt-4 pt-4 border-t border-[#E8DED5]">
         <div className="flex justify-between items-center mb-4">

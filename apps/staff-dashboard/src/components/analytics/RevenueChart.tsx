@@ -14,6 +14,19 @@ export function RevenueChart({ data }: RevenueChartProps) {
     }).format(value);
   };
 
+  const formatYAxis = (value: number) => {
+    if (value === 0) return '0';
+    if (value >= 1_000_000) {
+      const formatted = (value / 1_000_000).toFixed(value % 1_000_000 === 0 ? 0 : 1);
+      return `${formatted} Tr`;
+    }
+    if (value >= 1_000) {
+      const formatted = (value / 1_000).toFixed(value % 1_000 === 0 ? 0 : 1);
+      return `${formatted}k`;
+    }
+    return value.toLocaleString('vi-VN');
+  };
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -28,10 +41,17 @@ export function RevenueChart({ data }: RevenueChartProps) {
     return null;
   };
 
+  const hasRevenue = data && data.some((d) => d.revenue > 0);
+
   return (
     <div className="bg-white p-6 rounded-2xl border border-[#E8DED5] shadow-sm h-[400px] flex flex-col">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-bold text-[#543310]">Biểu đồ doanh thu</h3>
+        <div>
+          <h3 className="text-xl font-bold text-[#543310]">Biểu đồ doanh thu</h3>
+          {!hasRevenue && (
+            <p className="text-xs text-gray-400 mt-1">Chưa có giao dịch phát sinh doanh thu trong khoảng thời gian này</p>
+          )}
+        </div>
         <div className="flex items-center gap-2 text-sm text-gray-500 font-medium">
           <span className="w-3 h-3 rounded-full bg-[var(--color-brand-secondary)]"></span>
           Doanh thu (VNĐ)
@@ -62,7 +82,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#888', fontSize: 12 }}
-              tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
+              tickFormatter={formatYAxis}
               dx={-10}
             />
             <Tooltip content={<CustomTooltip />} />

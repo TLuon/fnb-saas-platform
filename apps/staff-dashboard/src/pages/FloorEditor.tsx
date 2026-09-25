@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FloorMapCanvas, FloorTableCanvas, TableStatusLegend } from '@fnb/ui-shared';
-import { apiClient, mapApiTableToCanvas } from '@fnb/utils';
+import { apiClient, authStore, mapApiTableToCanvas } from '@fnb/utils';
+import { useStore } from 'zustand';
 
 interface Floor {
   id: string;
@@ -20,9 +21,16 @@ const FloorEditor: React.FC = () => {
   const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
   const [deletedTableIds, setDeletedTableIds] = useState<Set<string>>(new Set());
 
-  const branchId = localStorage.getItem('branchId') || 'branch-1';
+  const branchId = useStore(authStore, (state) => state.branchId);
 
   useEffect(() => {
+    if (!branchId) {
+      setFloors([]);
+      setTables([]);
+      setError('Tài khoản chưa được gán chi nhánh');
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     apiClient.get(`/api/v1/floors?branch_id=${branchId}`)
       .then((res: any) => {
@@ -127,6 +135,7 @@ const FloorEditor: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (!branchId) return setError('Tài khoản chưa được gán chi nhánh');
     if (dirtyTableIds.size === 0) return alert('Không có thay đổi nào để lưu');
     setIsSaving(true);
     setError('');
@@ -180,6 +189,7 @@ const FloorEditor: React.FC = () => {
   };
 
   const handleAddFloor = () => {
+    if (!branchId) return setError('Tài khoản chưa được gán chi nhánh');
     const name = window.prompt('Nhập tên tầng mới:');
     if (!name) return;
     apiClient.post('/api/v1/floors', { name, branch_id: branchId })

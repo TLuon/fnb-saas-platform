@@ -25,21 +25,11 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
     const fetchDetail = async () => {
       try {
         const res: any = await apiClient.get(`/orders/${orderId}`);
-        setOrder(res);
-      } catch (err) {
-        // Mock fallback
-        setOrder({
-          id: orderId,
-          status: 'COMPLETED',
-          total_amount: 145000,
-          payment_method: 'VIETQR',
-          created_at: new Date().toISOString(),
-          is_rated: false,
-          items: [
-            { id: '1', name: 'Cà phê Sữa Đá', quantity: 2, price: 35000, modifiers: 'Ít đá, Nhiều sữa' },
-            { id: '2', name: 'Bánh Mì Chả Lụa', quantity: 1, price: 75000, note: 'Không lấy hành' }
-          ]
-        });
+        const data = res?.data || res;
+        setOrder(data);
+      } catch (err: any) {
+        showError(err?.response?.data?.message || err?.message || 'Không thể tải chi tiết đơn hàng');
+        setOrder(null);
       } finally {
         setLoading(false);
       }

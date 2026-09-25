@@ -41,7 +41,7 @@ export default function Home() {
 
   const handleReservation = () => {
     requireAuth(() => {
-      router.push('/reservation');
+      router.push('/floors');
     });
   };
 

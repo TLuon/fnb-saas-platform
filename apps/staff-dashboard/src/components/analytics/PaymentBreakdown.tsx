@@ -14,18 +14,29 @@ export function PaymentBreakdown({ data }: PaymentBreakdownProps) {
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload;
+      const item = payload[0].payload;
       return (
         <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-xl">
-          <p className="font-bold text-gray-700 mb-1">{data.method}</p>
+          <p className="font-bold text-gray-700 mb-1">{item.method}</p>
           <p className="text-[var(--color-brand-primary)] font-black">
-            {formatCurrency(data.amount)} ({data.percentage}%)
+            {formatCurrency(item.amount)} ({item.percentage}%)
           </p>
         </div>
       );
     }
     return null;
   };
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-white p-6 rounded-2xl border border-[#E8DED5] shadow-sm flex flex-col h-full">
+        <h3 className="text-xl font-bold text-[#543310] mb-6">Tỷ lệ thanh toán</h3>
+        <div className="flex-1 flex items-center justify-center text-gray-400 font-medium py-12">
+          Chưa có dữ liệu thanh toán trong khoảng thời gian này
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white p-6 rounded-2xl border border-[#E8DED5] shadow-sm flex flex-col h-full">

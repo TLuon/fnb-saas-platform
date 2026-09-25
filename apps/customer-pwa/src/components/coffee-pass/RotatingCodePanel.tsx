@@ -18,12 +18,17 @@ export function RotatingCodePanel({ passId }: RotatingCodePanelProps) {
       setError('');
       // GET /api/v1/coffee-pass/:id/current-code
       const res: any = await apiClient.get(`/coffee-pass/${passId}/current-code`);
-      setCode(res.code || Math.floor(100000 + Math.random() * 900000).toString());
-      setTimeLeft(30);
-    } catch (err) {
-      // Mock for demo
-      setCode(Math.floor(100000 + Math.random() * 900000).toString());
-      setTimeLeft(30);
+      const data = res?.data || res;
+      if (data?.code) {
+        setCode(data.code);
+        setTimeLeft(data.expires_in ?? 30);
+      } else {
+        setError('Không thể lấy mã Coffee Pass');
+        setCode('------');
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Không thể tạo mã OTP');
+      setCode('------');
     } finally {
       setLoading(false);
     }

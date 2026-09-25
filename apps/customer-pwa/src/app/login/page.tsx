@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../components/ToastProvider';
 import { authStore, apiClient } from '@fnb/utils';
+import { getSafeReturnUrl } from '../../lib/checkout';
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -31,10 +32,30 @@ export default function LoginPage() {
       // Store valid JWT token using Zustand
       authStore.getState().setTokens(payload.access_token, payload.refresh_token);
 
+      const me: any = await apiClient.get('/auth/me');
+      if (me?.role_app !== 'CUSTOMER') {
+        throw new Error('Tài khoản này không thuộc cổng khách hàng.');
+      }
+      authStore.getState().setProfile({
+        id: me.profile?.id || me.sub,
+        auth_user_id: me.sub,
+        role_app: me.role_app,
+        email: me.profile?.email || me.email,
+        phone: me.profile?.phone,
+        full_name: me.profile?.full_name || 'Khách hàng',
+        tenant_id: me.tenant_id,
+        membership_tier: me.profile?.membership_tier,
+        loyalty_points: Number(me.profile?.loyalty_points || 0),
+      });
+
       showInfo('Đăng nhập thành công');
-      router.push('/menu'); // Later will redirect to return URL
+      const returnUrl = typeof window !== 'undefined'
+        ? getSafeReturnUrl(window.location.search)
+        : '/menu';
+      router.replace(returnUrl);
     } catch (err: any) {
       console.error('Login error:', err);
+      authStore.getState().clearAuth();
       showError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
     } finally {
       setLoading(false);

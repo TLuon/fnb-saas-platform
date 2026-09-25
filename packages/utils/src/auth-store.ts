@@ -3,12 +3,19 @@ import { parseToken } from './auth';
 
 export interface UserProfile {
   id: string;
+  auth_user_id?: string;
+  role_app?: 'OWNER' | 'STAFF' | 'SUPPORT' | 'CUSTOMER';
   email?: string;
   phone?: string;
   full_name?: string;
   avatar_url?: string;
   is_active?: boolean;
+  branch_id?: string;
+  tenant_id?: string;
+  membership_tier?: string;
+  loyalty_points?: number;
 }
+
 
 export interface AuthState {
   accessToken: string | null;
@@ -47,6 +54,7 @@ export const authStore = createStore<AuthState>((set) => ({
     set({
       accessToken,
       refreshToken: refreshToken || null,
+      profile: null,
       isAuthenticated: true,
       role: payload?.role_app || null,
       tenantId: payload?.tenant_id || null,
@@ -55,7 +63,12 @@ export const authStore = createStore<AuthState>((set) => ({
   },
 
   setProfile: (profile: UserProfile) => {
-    set({ profile });
+    set((state) => ({
+      profile,
+      role: profile.role_app ?? state.role,
+      tenantId: profile.tenant_id ?? state.tenantId,
+      branchId: profile.branch_id ?? state.branchId,
+    }));
   },
 
   clearAuth: () => {
@@ -85,9 +98,18 @@ export const authStore = createStore<AuthState>((set) => ({
         const payload = parseToken(accessToken);
         // Check expiry
         if (payload?.exp && Date.now() >= payload.exp * 1000) {
-          // Xử lý refresh logic ở tầng app/api client, tạm thời clear
           localStorage.removeItem('access_token');
-          set({ isLoading: false });
+          localStorage.removeItem('refresh_token');
+          set({
+            accessToken: null,
+            refreshToken: null,
+            profile: null,
+            role: null,
+            tenantId: null,
+            branchId: null,
+            isAuthenticated: false,
+            isLoading: false,
+          });
           return;
         }
 

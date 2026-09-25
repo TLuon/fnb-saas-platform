@@ -24,10 +24,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const payload: any = await apiClient.get('/auth/me');
           
           state.setProfile({
-            id: payload.sub || payload.profile?.id || payload.id || 'user-id',
-            email: payload.email,
+            id: payload.profile?.id || payload.sub || 'user-id',
+            auth_user_id: payload.sub,
+            role_app: payload.role_app,
+            email: payload.profile?.email || payload.email,
+            phone: payload.profile?.phone,
             full_name: payload.profile?.full_name || payload.email,
-            is_active: payload.is_active !== false,
+            is_active: payload.profile?.is_active !== false,
+            tenant_id: payload.tenant_id,
+            branch_id: payload.branch_id,
+            membership_tier: payload.profile?.membership_tier,
+            loyalty_points: Number(payload.profile?.loyalty_points || 0),
           });
         } catch (e: any) {
           console.error('Failed to fetch profile', e);

@@ -14,4 +14,8 @@ export class PayOrderDto {
   @IsOptional()
   @IsString()
   totp_code?: string;
+
+  @IsOptional()
+  @IsUuidLoose()
+  voucher_id?: string;
 }

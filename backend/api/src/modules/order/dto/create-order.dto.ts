@@ -10,6 +10,10 @@ export class CreateOrderDto {
   @IsString()
   reservation_code?: string;
 
+  @IsUuidLoose()
+  @IsOptional()
+  branch_id?: string;
+
   @IsOptional()
   @IsString()
   order_type?: string;

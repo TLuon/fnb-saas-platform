@@ -30,6 +30,16 @@ export class CoffeePassController {
     return this.coffeePassService.subscribe(user, accessToken, dto);
   }
 
+  @Get('my-passes/:id')
+  @Roles('CUSTOMER')
+  async getMyPass(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentAccessToken() accessToken: string,
+    @Param('id') subscriptionId: string,
+  ) {
+    return this.coffeePassService.getMyPass(user, accessToken, subscriptionId);
+  }
+
   @Get(':id/current-code')
   @Roles('CUSTOMER')
   async getCurrentCode(

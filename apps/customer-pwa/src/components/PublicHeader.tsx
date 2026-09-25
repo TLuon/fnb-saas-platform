@@ -29,8 +29,8 @@ export function PublicHeader() {
             Thực đơn
           </Link>
           <Link 
-            href="/reservation" 
-            className={`font-bold text-lg transition-colors ${pathname?.startsWith('/reservation') ? 'text-[#D67D3E]' : 'text-[#543310] hover:text-[#D67D3E]'}`}
+            href="/floors"
+            className={`font-medium transition-colors ${pathname.startsWith('/floors') || pathname.startsWith('/reservation') ? 'text-[#D67D3E]' : 'text-[#222222] hover:text-[#D67D3E]'}`}
           >
             Đặt bàn
           </Link>

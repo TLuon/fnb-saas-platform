@@ -15,32 +15,19 @@ export default function CoffeePassDetailPage({ params }: { params: { id: string 
 
   const [loading, setLoading] = useState(true);
   const [passData, setPassData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPass = async () => {
       try {
         setLoading(true);
-        // GET /api/v1/coffee-pass/my-passes/:id
-        // We'll mock the response based on the task since there isn't a specific API for fetching my pass detail in the task list
-        const res: any = await apiClient.get(`/coffee-pass/my-passes/${passId}`).catch(() => ({
-          id: passId,
-          plan_name: 'Gói Cà Phê Chào Ngày Mới',
-          expires_at: new Date(Date.now() + 864000000).toISOString(),
-          total_redemptions: 10,
-          remaining_redemptions: 7,
-          is_active: true
-        }));
-        
-        // Let's hardcode expired logic for demo if passId includes "expired"
-        if (passId.includes('expired')) {
-          res.is_active = false;
-          res.remaining_redemptions = 0;
-          res.expires_at = new Date(Date.now() - 864000000).toISOString();
-        }
-
+        setError(null);
+        const res: any = await apiClient.get(`/coffee-pass/my-passes/${passId}`);
         setPassData(res);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Lỗi tải gói pass:', err);
+        setPassData(null);
+        setError(err?.message || 'Không thể tải thông tin Coffee Pass.');
       } finally {
         setLoading(false);
       }
@@ -48,12 +35,16 @@ export default function CoffeePassDetailPage({ params }: { params: { id: string 
     fetchPass();
   }, [passId]);
 
-  if (loading || !passData) {
+  if (loading) {
     return (
       <main className="min-h-screen bg-[#FAF7F3] flex flex-col justify-center items-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#543310]"></div>
       </main>
     );
+  }
+
+  if (error || !passData) {
+    return <main className="min-h-screen bg-[#FAF7F3] flex flex-col justify-center items-center p-6 text-center"><p className="font-bold text-[#B42318]">{error || 'Không tìm thấy Coffee Pass.'}</p><button type="button" onClick={() => router.push('/coffee-pass')} className="mt-4 rounded-md bg-[#543310] px-4 py-2 font-bold text-white">Quay lại danh sách gói</button></main>;
   }
 
   const isExpired = !passData.is_active || passData.remaining_redemptions <= 0 || new Date(passData.expires_at) < new Date();

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { apiClient } from '@fnb/utils';
 import { ProductGrid } from '../ProductGrid';
+import { normalizePublicCatalog } from '../../lib/catalog';
 
 interface GroupMenuPickerProps {
   isOpen: boolean;
@@ -16,19 +17,11 @@ export function GroupMenuPicker({ isOpen, onClose, onAddToCart }: GroupMenuPicke
   useEffect(() => {
     if (isOpen && products.length === 0) {
       setLoading(true);
-      // Fetch mock data for the picker
-      apiClient.get('/public/catalog?tenant_subdomain=demo&branch_id=b1')
+      const subdomain = process.env.NEXT_PUBLIC_TENANT_SUBDOMAIN || 'cafe-and-cake';
+      apiClient.get(`/public/catalog?tenant_subdomain=${subdomain}`)
+
         .then((res: any) => {
-          let allProducts: any[] = [];
-          const catalog = Array.isArray(res) ? res : (res?.categories || []);
-          catalog.forEach((cat: any) => {
-            if (cat.items) {
-              allProducts = [...allProducts, ...cat.items];
-            } else {
-              allProducts.push(cat);
-            }
-          });
-          setProducts(allProducts);
+          setProducts(normalizePublicCatalog(res).products);
         })
         .finally(() => setLoading(false));
     }

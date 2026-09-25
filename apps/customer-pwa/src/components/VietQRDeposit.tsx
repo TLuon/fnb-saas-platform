@@ -13,6 +13,7 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
   const [qrString, setQrString] = useState<string>(`VIETQR|${reservationCode}|${amount}`);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [paymentError, setPaymentError] = useState('');
 
   useEffect(() => {
     async function loadRealQr() {
@@ -54,10 +55,11 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
 
   const handleSimulatePayment = async () => {
     setIsProcessing(true);
+    setPaymentError('');
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
       // Call backend simulated payment webhook
-      await fetch(`${baseUrl}/reservations/webhook/mock-payment/${tenantId}?secret=dev-mock-secret-key-12345`, {
+      const response = await fetch(`${baseUrl}/reservations/webhook/mock-payment/${tenantId}?secret=dev-mock-secret-key-12345`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,11 +71,16 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
           bank_reference: `SIM_BANK_${Date.now()}`,
         }),
       });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error?.message || 'Không thể xác nhận thanh toán đặt cọc');
+      }
+      onMockSuccess();
     } catch (err) {
       console.warn('Simulated payment webhook call warning:', err);
+      setPaymentError(err instanceof Error ? err.message : 'Không thể xác nhận thanh toán đặt cọc');
     } finally {
       setIsProcessing(false);
-      onMockSuccess();
     }
   };
 
@@ -90,6 +97,12 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
       <p className="text-gray-600 mb-1">Quét mã QR qua ứng dụng Ngân hàng</p>
       <p className="text-xs text-gray-400 mb-2 font-mono">Mã giữ chỗ: {reservationCode}</p>
       <p className="font-bold text-[#543310] text-xl mb-6">{amount.toLocaleString()} ₫</p>
+
+      {paymentError && (
+        <p className="mb-4 w-full border border-[#FDA29B] bg-[#FEE4E2] p-3 text-sm text-[#B42318]">
+          {paymentError}
+        </p>
+      )}
       
       <button 
         onClick={handleSimulatePayment}

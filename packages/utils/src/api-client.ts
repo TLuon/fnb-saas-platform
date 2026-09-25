@@ -23,99 +23,121 @@ const getBaseURL = () => {
   return 'http://localhost:3000/api/v1';
 };
 
-export const apiClient: AxiosInstance = axios.create({
-  baseURL: getBaseURL(),
-});
+export interface CreateApiClientOptions {
+  baseURL?: string;
+  getToken?: () => string | null | undefined;
+  onError?: (error: any) => void;
+}
 
-// Request Interceptor: Attach Token
-apiClient.interceptors.request.use(async (reqConfig) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('access_token');
+export function createApiClient(options: CreateApiClientOptions = {}): AxiosInstance {
+  const instance = axios.create({
+    baseURL: options.baseURL || getBaseURL(),
+  });
+
+  instance.interceptors.request.use(async (reqConfig) => {
+    if (reqConfig.url?.startsWith('/api/v1/')) {
+      reqConfig.url = reqConfig.url.substring('/api/v1'.length);
+    } else if (reqConfig.url === '/api/v1') {
+      reqConfig.url = '/';
+    }
+
+    let token: string | null | undefined = null;
+    if (options.getToken) {
+      token = options.getToken();
+    } else if (typeof window !== 'undefined') {
+      token = localStorage.getItem('access_token');
+    }
     if (token && reqConfig.headers) {
-      reqConfig.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return reqConfig;
-});
-
-// Response Interceptor: Parse Envelope and Handle Errors
-apiClient.interceptors.response.use(
-  (response) => {
-    // Parse envelope: { success, data, error: { code, message } }
-    const data = response.data;
-    if (data && typeof data === 'object' && 'success' in data) {
-      // If success is false but status is 2xx, throw error to be caught by catch block
-      if (data.success === false) {
-        return Promise.reject({
-          isApiEnvelopeError: true,
-          apiError: data.error || { code: 'ERR_UNKNOWN', message: 'Lỗi không xác định' },
-          response
-        });
+      if (typeof (reqConfig.headers as any).set === 'function') {
+        (reqConfig.headers as any).set('Authorization', `Bearer ${token}`);
+      } else {
+        (reqConfig.headers as any)['Authorization'] = `Bearer ${token}`;
       }
-      return data.data; // Unwrap successful data
-    }
-    return data;
-  },
-  async (error: AxiosError | any) => {
-    // If we manually rejected it above as an envelope error
-    if (error.isApiEnvelopeError) {
-       return Promise.reject(error.apiError);
     }
 
-    const originalRequest = error.config as AxiosRequestConfig;
-    
-    // Handle automatic retries for safe GET requests
-    if (originalRequest && originalRequest.method?.toLowerCase() === 'get') {
-      const status = error.response?.status;
-      const isNetworkError = !error.response;
-      const isServerError = status && status >= 500 && status < 600;
+    return reqConfig;
+  });
 
-      if (isNetworkError || isServerError) {
-        originalRequest._retryCount = originalRequest._retryCount || 0;
-        if (originalRequest._retryCount < 2) {
-          originalRequest._retryCount += 1;
-          // Delay before retry
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return apiClient(originalRequest);
+  instance.interceptors.response.use(
+    (response) => {
+      const data = response.data;
+      if (data && typeof data === 'object' && 'success' in data) {
+        if (data.success === false) {
+          const apiError = data.error || { code: 'ERR_UNKNOWN', message: 'Lỗi không xác định' };
+          if (options.onError) {
+            options.onError(apiError);
+          }
+          return Promise.reject({
+            isApiEnvelopeError: true,
+            apiError,
+            response,
+          });
+        }
+        return data.data;
+      }
+      return response;
+    },
+    async (error: AxiosError | any) => {
+      if (error.isApiEnvelopeError) {
+        return Promise.reject(error.apiError);
+      }
+
+      const originalRequest = error.config as AxiosRequestConfig;
+      if (originalRequest && originalRequest.method?.toLowerCase() === 'get') {
+        const status = error.response?.status;
+        const isNetworkError = !error.response;
+        const isServerError = status && status >= 500 && status < 600;
+
+        if (isNetworkError || isServerError) {
+          originalRequest._retryCount = originalRequest._retryCount || 0;
+          if (originalRequest._retryCount < 2) {
+            originalRequest._retryCount += 1;
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            return instance(originalRequest);
+          }
         }
       }
-    }
 
-    // Handle standard axios errors
-    if (error.response) {
-      const status = error.response.status;
-      const data = error.response.data as any;
-      
-      let apiError: ApiError = { code: 'ERR_UNKNOWN', message: 'Lỗi máy chủ' };
-      if (data && data.error && data.error.code) {
-        apiError = {
-          code: data.error.code,
-          message: data.error.message,
-        };
-      } else if (data && data.code) { 
-        apiError = { code: data.code, message: data.message };
-      } else if (data && data.message) {
-        apiError = { code: 'ERR_UNKNOWN', message: data.message };
-      }
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data as any;
 
-      // Attach parsed api error
-      (error as any).apiError = apiError;
+        let apiError: ApiError = { code: 'ERR_UNKNOWN', message: 'Lỗi máy chủ' };
+        if (data && data.error && data.error.code) {
+          apiError = {
+            code: data.error.code,
+            message: data.error.message,
+          };
+        } else if (data && data.code) {
+          apiError = { code: data.code, message: data.message };
+        } else if (data && data.message) {
+          apiError = { code: 'ERR_UNKNOWN', message: data.message };
+        }
 
-      // Handle 401 & 403 globally
-      if (status === 401) {
-        // We can emit a custom event or let the callers handle it
-        if (typeof window !== 'undefined') {
+        (error as any).apiError = apiError;
+
+        if (options.onError) {
+          options.onError(apiError);
+        }
+
+        if (status === 401 && typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('api:unauthorized'));
-        }
-      } else if (status === 403) {
-        if (typeof window !== 'undefined') {
+        } else if (status === 403 && typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('api:forbidden'));
         }
+
+        return Promise.reject(apiError);
       }
 
-      return Promise.reject(apiError);
-    }
+      if (options.onError) {
+        options.onError(error);
+      }
 
-    return Promise.reject(error);
-  }
-);
+      return Promise.reject(error);
+    }
+  );
+
+  return instance;
+}
+
+export const apiClient: AxiosInstance = createApiClient();

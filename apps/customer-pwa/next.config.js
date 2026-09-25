@@ -1,16 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@fnb/utils'],
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        bufferutil: false,
-        'utf-8-validate': false,
-      };
-    }
-    return config;
-  },
+  // Keep production builds from replacing files used by a running dev server.
+  distDir: process.env.NODE_ENV === 'production' ? '.next-build' : '.next',
 };
 
 module.exports = nextConfig;

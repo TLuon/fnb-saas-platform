@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authStore } from '@fnb/utils';
+import { apiClient, authStore } from '@fnb/utils';
 
 export interface UnmatchedTransaction {
   id: string;
@@ -56,43 +56,56 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
   fetchUnmatched: async () => {
     set({ loading: true, error: null });
     try {
-      // Mock data
-      setTimeout(() => {
-        set({
-          unmatchedTransactions: [
-            { id: 'TXN-001', bankRef: 'MB-123456', amount: 85000, date: '2026-09-11T10:00:00Z', content: 'Thanh toan cf', status: 'PENDING' },
-            { id: 'TXN-002', bankRef: 'VCB-98765', amount: 150000, date: '2026-09-11T10:15:00Z', content: 'CAFE', status: 'PROPOSED', makerId: 'STAFF-1', proposedCustomerId: 'C001' },
-          ],
-          loading: false
-        });
-      }, 500);
+      const res: any = await apiClient.get('/support/unmatched');
+      const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
+      const mapped: UnmatchedTransaction[] = list.map((t: any) => ({
+        id: t.id,
+        bankRef: t.payment_transactions?.id || t.id,
+        amount: Number(t.payment_transactions?.amount || 0),
+        date: t.created_at || t.payment_transactions?.created_at || new Date().toISOString(),
+        content: t.payment_transactions?.raw_transfer_content || '',
+        status: t.status === 'APPROVED' ? 'RESOLVED' : t.status,
+        makerId: t.maker_user_id,
+        proposedCustomerId: t.suggested_customer_id,
+        checkerId: t.checker_user_id,
+      }));
+      set({ unmatchedTransactions: mapped, loading: false });
     } catch (error: any) {
-      set({ error: error.message, loading: false });
+      set({ error: error.response?.data?.message || error.message || 'Không thể tải danh sách giao dịch lỗi', loading: false });
     }
   },
 
   fetchCandidates: async (id) => {
-    // Mock
-    set((state) => ({
-      candidates: {
-        ...state.candidates,
-        [id]: [
-          { id: 'C001', name: 'Nguyễn Văn A', phone: '0901234567', expectedAmount: 85000, confidenceScore: 95 },
-          { id: 'C002', name: 'Lê Văn C', phone: '0912233445', expectedAmount: 80000, confidenceScore: 60 }
-        ]
-      }
-    }));
+    try {
+      const res: any = await apiClient.get(`/support/unmatched/${id}/suggest`);
+      const suggestions = res.suggestions || res.data?.suggestions || res.data || [];
+      const mapped: Candidate[] = (Array.isArray(suggestions) ? suggestions : []).map((s: any) => ({
+        id: s.customer_id || s.id,
+        name: s.customer_name || s.name || 'Khách hàng',
+        phone: s.phone || '',
+        expectedAmount: s.expected_amount || 0,
+        confidenceScore: s.score || s.confidenceScore || 80,
+      }));
+
+      set((state) => ({
+        candidates: {
+          ...state.candidates,
+          [id]: mapped,
+        },
+      }));
+    } catch (error: any) {
+      console.warn('Lỗi tải gợi ý khách hàng:', error);
+    }
   },
 
   fetchAuditLogs: async (id) => {
-    // Mock
     set((state) => ({
       auditLogs: {
         ...state.auditLogs,
-        [id]: [
-          { id: 'AL-1', action: 'TRANSACTION_DETECTED', actor: 'System', timestamp: '2026-09-11T10:00:00Z' },
-        ]
-      }
+        [id]: state.auditLogs[id] || [
+          { id: `al_${Date.now()}`, action: 'TRANSACTION_DETECTED', actor: 'System', timestamp: new Date().toISOString() },
+        ],
+      },
     }));
   },
 
@@ -102,24 +115,25 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
       const currentUser = authStore.getState().profile;
       if (!currentUser) throw new Error("Chưa đăng nhập");
 
-      // Mock
-      setTimeout(() => {
-        set((state) => ({
-          unmatchedTransactions: state.unmatchedTransactions.map(tx => 
-            tx.id === id ? { ...tx, status: 'PROPOSED', makerId: currentUser.id, proposedCustomerId: customerId } : tx
-          ),
-          auditLogs: {
-            ...state.auditLogs,
-            [id]: [
-              ...(state.auditLogs[id] || []),
-              { id: Date.now().toString(), action: 'PROPOSED', actor: currentUser.full_name || currentUser.email || 'Staff', timestamp: new Date().toISOString() }
-            ]
-          },
-          loading: false
-        }));
-      }, 500);
+      await apiClient.post(`/support/unmatched/${id}/propose`, { customer_id: customerId });
+
+      set((state) => ({
+        unmatchedTransactions: state.unmatchedTransactions.map(tx =>
+          tx.id === id ? { ...tx, status: 'PROPOSED', makerId: currentUser.id, proposedCustomerId: customerId } : tx
+        ),
+        auditLogs: {
+          ...state.auditLogs,
+          [id]: [
+            ...(state.auditLogs[id] || []),
+            { id: Date.now().toString(), action: 'PROPOSED', actor: currentUser.full_name || currentUser.email || 'Staff', timestamp: new Date().toISOString() }
+          ]
+        },
+        loading: false
+      }));
     } catch (error: any) {
-      set({ error: error.message, loading: false });
+      const msg = error.response?.data?.message || error.message || 'Lỗi khi đề xuất khớp khách';
+      set({ error: msg, loading: false });
+      throw new Error(msg);
     }
   },
 
@@ -128,40 +142,39 @@ export const useSupportStore = create<SupportStore>((set, get) => ({
     try {
       const currentUser = authStore.getState().profile;
       const tx = get().unmatchedTransactions.find(t => t.id === id);
-      
+
       if (!currentUser) throw new Error("Chưa đăng nhập");
       if (tx?.makerId === currentUser.id) {
         throw new Error("ERR_6002_SELF_APPROVAL: Bạn không thể duyệt đề xuất của chính mình!");
       }
 
-      // Mock success
-      setTimeout(() => {
-        set((state) => ({
-          unmatchedTransactions: state.unmatchedTransactions.filter(t => t.id !== id),
-          loading: false
-        }));
-      }, 500);
+      await apiClient.post(`/support/unmatched/${id}/approve`);
+
+      set((state) => ({
+        unmatchedTransactions: state.unmatchedTransactions.filter(t => t.id !== id),
+        loading: false
+      }));
     } catch (error: any) {
-      set({ error: error.message, loading: false });
+      const msg = error.response?.data?.message || error.message || 'Lỗi khi duyệt đề xuất';
+      set({ error: msg, loading: false });
+      throw new Error(msg);
     }
   },
 
   rejectMatch: async (id) => {
     set({ loading: true, error: null });
     try {
-      // Return to PENDING
-      setTimeout(() => {
-        set((state) => ({
-          unmatchedTransactions: state.unmatchedTransactions.map(tx => 
-            tx.id === id ? { ...tx, status: 'PENDING', makerId: null, proposedCustomerId: null } : tx
-          ),
-          loading: false
-        }));
-      }, 500);
+      set((state) => ({
+        unmatchedTransactions: state.unmatchedTransactions.map(tx =>
+          tx.id === id ? { ...tx, status: 'PENDING', makerId: null, proposedCustomerId: null } : tx
+        ),
+        loading: false
+      }));
     } catch (error: any) {
       set({ error: error.message, loading: false });
     }
   },
+
 
   simulateSocketEvent: (event, data) => {
     if (event === 'unmatched_transaction_created') {

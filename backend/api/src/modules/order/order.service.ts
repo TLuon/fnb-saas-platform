@@ -57,12 +57,52 @@ export class OrderService {
     const orderCode = 'ORD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
     const supabaseAdmin = this.supabaseService.admin();
 
+    let customerId: string | null = null;
+    if (user.role_app === 'CUSTOMER') {
+      const { data: customer, error: customerError } = await supabaseAdmin
+        .from('customers')
+        .select('id')
+        .eq('auth_user_id', user.sub)
+        .eq('tenant_id', user.tenant_id)
+        .maybeSingle();
+
+      if (customerError || !customer) {
+        throw new AppException('ERR_1001_UNAUTHORIZED', 'Không tìm thấy hồ sơ khách hàng');
+      }
+      customerId = customer.id;
+    }
+
     const orderType = dto.order_type ?? 'DINE_IN';
     const tableId = orderType === 'DINE_IN' ? (dto.table_id || null) : null;
 
+    let branchId = user.branch_id || dto.branch_id || null;
+    if (!branchId) {
+      if (tableId) {
+        const { data: tableData } = await supabaseAdmin
+          .from('tables')
+          .select('floors(branch_id)')
+          .eq('id', tableId)
+          .maybeSingle();
+        branchId = (tableData?.floors as any)?.branch_id || null;
+      }
+      if (!branchId) {
+        const { data: branchData } = await supabaseAdmin
+          .from('branches')
+          .select('id')
+          .eq('tenant_id', user.tenant_id)
+          .limit(1)
+          .maybeSingle();
+        branchId = branchData?.id || null;
+      }
+    }
+
+    if (!branchId) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Không tìm thấy chi nhánh cho đơn hàng');
+    }
+
     const { data: result, error: rpcError } = await supabaseAdmin.rpc('fn_create_order', {
       p_tenant_id:        user.tenant_id,
-      p_branch_id:        user.branch_id,
+      p_branch_id:        branchId,
       p_table_id:         tableId,
       p_order_code:       orderCode,
       p_reservation_code: dto.reservation_code || null,
@@ -89,7 +129,27 @@ export class OrderService {
       throw new AppException(errCode, errMsg);
     }
 
+    if (customerId) {
+      const { data: linkedOrder, error: linkError } = await supabaseAdmin
+        .from('orders')
+        .update({ customer_id: customerId })
+        .eq('id', rpcResult.order_id)
+        .eq('tenant_id', user.tenant_id)
+        .select('id')
+        .maybeSingle();
+
+      if (linkError || !linkedOrder) {
+        await supabaseAdmin
+          .from('orders')
+          .delete()
+          .eq('id', rpcResult.order_id)
+          .eq('tenant_id', user.tenant_id);
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Không thể liên kết đơn hàng với khách hàng');
+      }
+    }
+
     return {
+      id: rpcResult.order_id,
       order_id: rpcResult.order_id,
       order_code: rpcResult.order_code,
       deposit_applied: rpcResult.deposit_applied ?? 0,
@@ -372,6 +432,74 @@ export class OrderService {
       throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã thanh toán hoặc đã hủy');
     }
 
+    let appliedVoucherId: string | null = null;
+    if (dto.voucher_id) {
+      if (user.role_app !== 'CUSTOMER') {
+        throw new AppException('ERR_1001_UNAUTHORIZED', 'Voucher khách hàng chỉ áp dụng trên tài khoản khách');
+      }
+
+      const admin = this.supabaseService.admin();
+      const { data: customer } = await admin
+        .from('customers')
+        .select('id')
+        .eq('auth_user_id', user.sub)
+        .eq('tenant_id', user.tenant_id)
+        .maybeSingle();
+
+      if (!customer) {
+        throw new AppException('ERR_1001_UNAUTHORIZED', 'Không tìm thấy hồ sơ khách hàng');
+      }
+
+      const { data: voucher, error: voucherError } = await admin
+        .from('customer_vouchers')
+        .select('id, customer_id, discount_percent, free_item_product_id, is_used, expires_at')
+        .eq('id', dto.voucher_id)
+        .eq('customer_id', customer.id)
+        .eq('is_used', false)
+        .maybeSingle();
+
+      if (voucherError || !voucher) {
+        throw new AppException('ERR_9001_VALIDATION_FAILED', 'Voucher không hợp lệ hoặc đã được sử dụng');
+      }
+      if (voucher.expires_at && new Date(voucher.expires_at).getTime() <= Date.now()) {
+        throw new AppException('ERR_9001_VALIDATION_FAILED', 'Voucher đã hết hạn');
+      }
+      if (!voucher.discount_percent) {
+        throw new AppException('ERR_9001_VALIDATION_FAILED', 'Voucher này chưa hỗ trợ cho đơn hàng hiện tại');
+      }
+
+      const subtotal = Number(order.subtotal || 0);
+      const discountAmount = Math.min(
+        subtotal,
+        Math.round(subtotal * Number(voucher.discount_percent) / 100),
+      );
+      const finalAmount = Math.max(0, subtotal - discountAmount);
+      const { error: discountError } = await admin
+        .from('orders')
+        .update({ discount_amount: discountAmount, final_amount: finalAmount })
+        .eq('id', orderId)
+        .eq('tenant_id', user.tenant_id);
+
+      if (discountError) {
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Không thể áp dụng voucher vào đơn hàng');
+      }
+
+      order.final_amount = finalAmount;
+      appliedVoucherId = voucher.id;
+    }
+
+    const markVoucherUsed = async () => {
+      if (!appliedVoucherId) return;
+      const { error } = await this.supabaseService.admin()
+        .from('customer_vouchers')
+        .update({ is_used: true })
+        .eq('id', appliedVoucherId)
+        .eq('is_used', false);
+      if (error) {
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Thanh toán thành công nhưng không thể cập nhật voucher');
+      }
+    };
+
     // 1B. Shift Guard: Kiểm tra chi nhánh phải có ca mở để thanh toán
     const branchId = order.branch_id || user.branch_id;
     if (branchId) {
@@ -444,6 +572,8 @@ export class OrderService {
         }
       }
 
+      await markVoucherUsed();
+
       return { message: 'Đã thanh toán thành công' };
 
     } else if (dto.payment_method === 'COFFEE_PASS') {
@@ -497,6 +627,8 @@ export class OrderService {
         // B1 Blocker boundary: Không phá vỡ payment đã hoàn tất khi thiếu DB RPC trừ kho
       }
     }
+
+    await markVoucherUsed();
 
     return { message: 'Đã thanh toán thành công' };
   }

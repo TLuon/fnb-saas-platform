@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FloorMapCanvas, FloorTableCanvas, TableStatusLegend } from '@fnb/ui-shared';
-import { apiClient, RealtimeClient, mapApiTableToCanvas } from '@fnb/utils';
+import { apiClient, authStore, RealtimeClient, mapApiTableToCanvas } from '@fnb/utils';
+import { useStore } from 'zustand';
+import { getSocketBaseUrl } from '../lib/kds';
 
 interface Floor {
   id: string;
@@ -19,14 +21,16 @@ const LiveFloorMap: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
-  const branchId = localStorage.getItem('branchId') || 'branch-1';
+  const branchId = useStore(authStore, (state) => state.branchId);
+  const accessToken = useStore(authStore, (state) => state.accessToken);
   const selectedFloorRef = React.useRef(selectedFloor);
   
   useEffect(() => {
     selectedFloorRef.current = selectedFloor;
   }, [selectedFloor]);
 
-  const fetchTables = (floorId: string) => {
+  const fetchTables = useCallback((floorId: string) => {
+    if (!floorId) return;
     setIsLoading(true);
     apiClient.get(`/api/v1/floors/${floorId}/tables`)
       .then((res: any) => {
@@ -37,9 +41,17 @@ const LiveFloorMap: React.FC = () => {
       })
       .catch(() => setError('Không thể tải danh sách bàn'))
       .finally(() => setIsLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
+    if (!branchId) {
+      setFloors([]);
+      setTables([]);
+      setIsLoading(false);
+      setError('Tài khoản chưa được gán chi nhánh');
+      return;
+    }
+
     apiClient.get(`/api/v1/floors?branch_id=${branchId}`)
       .then((res: any) => {
         const floorList = res.data?.data || res.data || res || [];
@@ -50,24 +62,23 @@ const LiveFloorMap: React.FC = () => {
   }, [branchId]);
 
   useEffect(() => {
-    if (!selectedFloor) return;
+    if (!selectedFloor || !branchId || !accessToken) return;
     
     // Initial fetch
     fetchTables(selectedFloor);
 
     // Realtime setup
-    const token = localStorage.getItem('jwt');
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     const client = new RealtimeClient({
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
       supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-      socketUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-      token: token || undefined,
+      socketUrl: getSocketBaseUrl(apiUrl),
+      token: accessToken,
     });
 
     client.socket.on('connect', () => {
       setIsConnected(true);
-      // Join branch room for events ONLY after connected
-      client.socket.emit('join_branch', { branch_id: branchId });
+      fetchTables(selectedFloorRef.current);
     });
     
     client.socket.on('disconnect', () => setIsConnected(false));
@@ -86,10 +97,16 @@ const LiveFloorMap: React.FC = () => {
 
     client.connect();
 
+    const snapshotInterval = window.setInterval(
+      () => fetchTables(selectedFloorRef.current),
+      10000,
+    );
+
     return () => {
+      window.clearInterval(snapshotInterval);
       client.disconnect();
     };
-  }, [selectedFloor, branchId]); // Intentionally not including apiClient to avoid reconnect loops
+  }, [accessToken, branchId, fetchTables, selectedFloor]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (!selectedTable) return;

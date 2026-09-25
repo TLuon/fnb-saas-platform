@@ -51,10 +51,11 @@ export class ShiftService {
         tenant_id: user.tenant_id,
         branch_id: branchId,
         opened_by: appUserId,
-        starting_cash: dto.starting_cash,
+        starting_cash: dto.starting_cash ?? dto.initial_cash ?? 0,
         notes: dto.notes ?? null,
         status: 'OPEN',
       })
+
       .select()
       .single();
 
@@ -117,7 +118,7 @@ export class ShiftService {
     );
     const startingCash = Number(shift.starting_cash || 0);
     const expectedCash = startingCash + totalCashOrders;
-    const actualCash = Number(dto.ending_cash);
+    const actualCash = Number(dto.ending_cash ?? dto.final_cash ?? 0);
     const difference = actualCash - expectedCash;
 
     // 4. Cập nhật đóng ca kèm thông tin đối soát
@@ -135,10 +136,11 @@ export class ShiftService {
       .update({
         closed_by: appUserId,
         closed_at: new Date().toISOString(),
-        ending_cash: dto.ending_cash,
+        ending_cash: dto.ending_cash ?? dto.final_cash ?? 0,
         status: 'CLOSED',
         notes: updatedNotes,
       })
+
       .eq('id', shiftId)
       .select()
       .single();

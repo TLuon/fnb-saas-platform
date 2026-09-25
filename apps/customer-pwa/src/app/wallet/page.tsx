@@ -26,31 +26,46 @@ export default function WalletPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // GET /api/v1/wallet/balance
-        const balRes: any = await apiClient.get('/wallet/balance').catch(() => ({ main: 150000, promo: 50000 }));
-        setBalance(balRes);
+        // GET /wallet
+        const balRes: any = await apiClient.get('/wallet').catch(() => null);
+        if (balRes) {
+          const w = balRes.data?.data || balRes.data || balRes;
+          setBalance({ main: Number(w.main_balance || 0), promo: Number(w.promo_balance || 0) });
+        }
 
-        // GET /api/v1/wallet/transactions
-        const txnRes: any = await apiClient.get('/wallet/transactions').catch(() => ([
-          { id: '1', type: 'TOP_UP', amount: 200000, description: 'Nạp tiền ví FNB', created_at: new Date().toISOString() },
-          { id: '2', type: 'PAYMENT', amount: 50000, description: 'Thanh toán đơn hàng #O-123', created_at: new Date(Date.now() - 86400000).toISOString() },
-          { id: '3', type: 'REFUND', amount: 25000, description: 'Hoàn tiền đơn hàng hủy #O-120', created_at: new Date(Date.now() - 172800000).toISOString() },
-          { id: '4', type: 'PAYMENT', amount: 30000, description: 'Thanh toán đơn hàng #O-099', created_at: new Date(Date.now() - 345600000).toISOString() },
-          { id: '5', type: 'TOP_UP', amount: 100000, description: 'Nạp tiền ví FNB', created_at: new Date(Date.now() - 518400000).toISOString() },
-        ]));
-        setTransactions(txnRes);
+        // GET /wallet/transactions
+        const txnRes: any = await apiClient.get('/wallet/transactions').catch(() => null);
+        if (txnRes) {
+          const tList = txnRes.data?.data || txnRes.data || (Array.isArray(txnRes) ? txnRes : []);
+          const mappedTxns = (Array.isArray(tList) ? tList : []).map((t: any) => ({
+            id: t.id,
+            type: t.type === 'TOPUP' ? 'TOP_UP' : (t.type === 'PAYMENT' ? 'PAYMENT' : 'REFUND'),
+            amount: Number(t.amount || 0),
+            description: t.description || (t.type === 'TOPUP' ? 'Nạp tiền ví FNB' : 'Thanh toán đơn hàng'),
+            created_at: t.created_at || new Date().toISOString(),
+          }));
+          setTransactions(mappedTxns);
+        }
 
-        // GET /api/v1/vouchers
-        const vchRes: any = await apiClient.get('/vouchers').catch(() => ([
-          { id: 'v1', code: 'WELCOME50', title: 'Giảm 50% cho bạn mới', description: 'Giảm tối đa 30K cho đơn từ 0đ', expires_at: new Date(Date.now() + 864000000).toISOString(), status: 'ACTIVE' },
-          { id: 'v2', code: 'FNB10K', title: 'Giảm 10K', description: 'Áp dụng cho đơn từ 50K', expires_at: new Date(Date.now() + 1728000000).toISOString(), status: 'ACTIVE' },
-          { id: 'v3', code: 'USED20', title: 'Giảm 20K', description: 'Đã sử dụng ngày hôm qua', expires_at: new Date(Date.now() + 864000000).toISOString(), status: 'USED' },
-          { id: 'v4', code: 'EXPIRED', title: 'Giảm 15%', description: 'Đã hết hạn sử dụng', expires_at: new Date(Date.now() - 864000000).toISOString(), status: 'EXPIRED' }
-        ]));
-        setVouchers(vchRes);
+        // GET /wallet/vouchers
+        const vchRes: any = await apiClient.get('/wallet/vouchers').catch(() => null);
+        if (vchRes) {
+          const vList = vchRes.vouchers || vchRes.data?.vouchers || vchRes.data || (Array.isArray(vchRes) ? vchRes : []);
+          const mappedVouchers = (Array.isArray(vList) ? vList : []).map((v: any) => ({
+            id: v.id,
+            code: v.voucher_code || (v.discount_percent ? `GIAM${v.discount_percent}%` : 'VOUCHER'),
+            title: v.discount_percent ? `Giảm ${v.discount_percent}% đơn hàng` : (v.free_item_product_id ? 'Tặng 1 món đồ uống miễn phí' : 'Voucher thành viên'),
+            description: v.source === 'CSAT_APOLOGY' ? 'Voucher tri ân từ CSKH' : 'Ưu đãi dành riêng cho bạn',
+            expires_at: v.expires_at,
+            status: v.is_used ? 'USED' : 'ACTIVE',
+          }));
+          setVouchers(mappedVouchers);
+        }
         
-        // Use profile data if we have an endpoint, mock for now
-        setCustomerName('Tuấn Nguyễn');
+        const profile = (apiClient as any)?.authStore?.getState?.()?.profile;
+        if (profile?.full_name) {
+          setCustomerName(profile.full_name);
+        }
       } catch (err) {
         console.error('Lỗi lấy dữ liệu ví:', err);
       } finally {
@@ -59,6 +74,7 @@ export default function WalletPage() {
     };
     fetchData();
   }, []);
+
 
   const handleTopUpSuccess = (newBalance: number) => {
     // Topup gọi qua backend, chỉ refresh balance SAU KHI API trả success.

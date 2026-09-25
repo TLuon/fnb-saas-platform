@@ -11,6 +11,7 @@ export interface FloorTableCanvas {
   height?: number;
   shape?: 'circle' | 'rectangle' | 'square';
   capacity?: number;
+  current_order_id?: string | null;
 }
 
 export interface FloorMapCanvasProps {

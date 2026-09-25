@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiClient } from '@fnb/utils';
 
 export interface SupportTicket {
   id: string;
@@ -26,31 +27,37 @@ export const useTicketStore = create<TicketStore>((set) => ({
   fetchTickets: async () => {
     set({ loading: true, error: null });
     try {
-      setTimeout(() => {
-        set({
-          tickets: [
-            { id: 'TKT-001', customerId: 'C001', customerName: 'Nguyễn Văn A', subject: 'Khách phàn nàn thức ăn có dị vật', status: 'OPEN', isUrgent: true, createdAt: '2026-09-11T10:05:00Z' },
-            { id: 'TKT-002', customerId: 'C002', customerName: 'Trần Thị B', subject: 'Không nhận được mã khuyến mãi', status: 'IN_PROGRESS', isUrgent: false, createdAt: '2026-09-11T09:30:00Z' },
-          ],
-          loading: false
-        });
-      }, 500);
+      const res: any = await apiClient.get('/support/tickets');
+      const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
+      const mapped: SupportTicket[] = list.map((t: any) => ({
+        id: t.id,
+        customerId: t.customer_id || '',
+        customerName: t.customers?.full_name || t.customers?.phone || 'Khách hàng',
+        subject: t.complaint_note || `Đánh giá CSAT ${t.csat_score || 5} sao (Đơn #${t.order_id?.slice(0, 8)})`,
+        status: t.status,
+        isUrgent: t.priority === 'URGENT',
+        createdAt: t.created_at || new Date().toISOString(),
+      }));
+      set({ tickets: mapped, loading: false });
     } catch (error: any) {
-      set({ error: error.message, loading: false });
+      set({ error: error.response?.data?.message || error.message || 'Không thể tải danh sách ticket', loading: false });
     }
   },
 
-  resolveTicket: async (id, _resolutionNote) => {
+  resolveTicket: async (id, resolutionNote) => {
     set({ loading: true, error: null });
     try {
-      setTimeout(() => {
-        set((state) => ({
-          tickets: state.tickets.filter(t => t.id !== id), // or update status to RESOLVED
-          loading: false
-        }));
-      }, 500);
+      await apiClient.post(`/support/tickets/${id}/resolve`, {
+        resolution_note: resolutionNote || 'Đã xử lý thỏa đáng qua kênh hỗ trợ',
+      });
+      set((state) => ({
+        tickets: state.tickets.filter((t) => t.id !== id),
+        loading: false,
+      }));
     } catch (error: any) {
-      set({ error: error.message, loading: false });
+      const msg = error.response?.data?.message || error.message || 'Lỗi khi xử lý ticket';
+      set({ error: msg, loading: false });
+      throw new Error(msg);
     }
-  }
+  },
 }));

@@ -1,11 +1,13 @@
-import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Users, Receipt } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Users, Receipt, ChevronRight } from 'lucide-react';
 import type { DashboardData } from '../../store/analyticsStore';
 
 interface MetricStripProps {
   data: DashboardData;
+  onOpenTransactions: () => void;
+  onOpenOccupiedTables?: () => void;
 }
 
-export function MetricStrip({ data }: MetricStripProps) {
+export function MetricStrip({ data, onOpenTransactions, onOpenOccupiedTables }: MetricStripProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
   };
@@ -13,10 +15,10 @@ export function MetricStrip({ data }: MetricStripProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       {/* Revenue */}
-      <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E8DED5] shadow-sm flex flex-col justify-between hover:shadow-md transition">
+      <button type="button" onClick={onOpenTransactions} className="group min-h-[170px] bg-white p-6 rounded-lg border border-[#E8DED5] shadow-sm flex flex-col justify-between text-left hover:border-[#D67D3E] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#D67D3E] focus:ring-offset-2 transition">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-gray-500 font-semibold text-sm uppercase tracking-wide">Tổng doanh thu</h3>
-          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-xl">
+          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-lg">
             <DollarSign size={20} className="text-[var(--color-brand-secondary)]" />
           </div>
         </div>
@@ -30,13 +32,14 @@ export function MetricStrip({ data }: MetricStripProps) {
             <span className="text-gray-400 text-sm">so với kỳ trước</span>
           </div>
         </div>
-      </div>
+        <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#8A4B1F] opacity-70 group-hover:opacity-100">Xem giao dịch <ChevronRight size={14} /></span>
+      </button>
 
       {/* Orders */}
-      <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E8DED5] shadow-sm flex flex-col justify-between hover:shadow-md transition">
+      <button type="button" onClick={onOpenTransactions} className="group min-h-[170px] bg-white p-6 rounded-lg border border-[#E8DED5] shadow-sm flex flex-col justify-between text-left hover:border-[#D67D3E] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#D67D3E] focus:ring-offset-2 transition">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-gray-500 font-semibold text-sm uppercase tracking-wide">Tổng số đơn</h3>
-          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-xl">
+          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-lg">
             <ShoppingBag size={20} className="text-[var(--color-brand-secondary)]" />
           </div>
         </div>
@@ -50,13 +53,18 @@ export function MetricStrip({ data }: MetricStripProps) {
             <span className="text-gray-400 text-sm">so với kỳ trước</span>
           </div>
         </div>
-      </div>
+        <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#8A4B1F] opacity-70 group-hover:opacity-100">Xem danh sách đơn <ChevronRight size={14} /></span>
+      </button>
 
       {/* Occupied tables */}
-      <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E8DED5] shadow-sm flex flex-col justify-between hover:shadow-md transition">
+      <button
+        type="button"
+        onClick={onOpenOccupiedTables}
+        className="group min-h-[170px] bg-white p-6 rounded-lg border border-[#E8DED5] shadow-sm flex flex-col justify-between text-left hover:border-[#D67D3E] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#D67D3E] focus:ring-offset-2 transition cursor-pointer"
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-gray-500 font-semibold text-sm uppercase tracking-wide">Bàn đang phục vụ</h3>
-          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-xl">
+          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-lg group-hover:bg-[#D67D3E]/20 transition">
             <Users size={20} className="text-[var(--color-brand-secondary)]" />
           </div>
         </div>
@@ -66,13 +74,16 @@ export function MetricStrip({ data }: MetricStripProps) {
             <span className="text-gray-400 text-sm">Real-time (Cập nhật liên tục)</span>
           </div>
         </div>
-      </div>
+        <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#8A4B1F] opacity-70 group-hover:opacity-100">
+          Xem danh sách bàn <ChevronRight size={14} />
+        </span>
+      </button>
 
       {/* Average order value */}
-      <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E8DED5] shadow-sm flex flex-col justify-between hover:shadow-md transition">
+      <button type="button" onClick={onOpenTransactions} className="group min-h-[170px] bg-white p-6 rounded-lg border border-[#E8DED5] shadow-sm flex flex-col justify-between text-left hover:border-[#D67D3E] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#D67D3E] focus:ring-offset-2 transition">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-gray-500 font-semibold text-sm uppercase tracking-wide">Giá trị TB / Đơn</h3>
-          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-xl">
+          <div className="p-2 bg-[var(--color-brand-accent)]/20 rounded-lg">
             <Receipt size={20} className="text-[var(--color-brand-secondary)]" />
           </div>
         </div>
@@ -82,7 +93,8 @@ export function MetricStrip({ data }: MetricStripProps) {
             <span className="text-gray-400 text-sm">Doanh thu / Tổng đơn</span>
           </div>
         </div>
-      </div>
+        <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#8A4B1F] opacity-70 group-hover:opacity-100">Đối chiếu đơn <ChevronRight size={14} /></span>
+      </button>
     </div>
   );
 }
