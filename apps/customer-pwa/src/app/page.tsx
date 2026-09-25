@@ -15,7 +15,7 @@ export default function Home() {
   const handleReservation = () => {
     // If Guest, trigger LoginRequiredModal via auth guard
     requireAuth(() => {
-      router.push('/reservation');
+      router.push('/floors');
     });
   };
 

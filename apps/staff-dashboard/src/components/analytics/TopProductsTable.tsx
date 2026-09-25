@@ -23,29 +23,37 @@ export function TopProductsTable({ products }: TopProductsTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {products.map((p, i) => (
-              <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                <td className="py-4">
-                  <div className="flex items-center gap-3">
-                    <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                      i === 0 ? 'bg-yellow-100 text-yellow-700' :
-                      i === 1 ? 'bg-gray-100 text-gray-700' :
-                      i === 2 ? 'bg-orange-100 text-orange-700' :
-                      'bg-gray-50 text-gray-400'
-                    }`}>
-                      {i + 1}
-                    </span>
-                    <span className="font-bold text-[var(--color-brand-primary)]">{p.name}</span>
-                  </div>
-                </td>
-                <td className="py-4 text-center font-medium text-gray-600">
-                  {p.quantity}
-                </td>
-                <td className="py-4 text-right font-bold text-[var(--color-brand-secondary)]">
-                  {formatCurrency(p.revenue)}
+            {products.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="py-8 text-center text-gray-400 font-medium">
+                  Chưa có dữ liệu món bán trong kỳ
                 </td>
               </tr>
-            ))}
+            ) : (
+              products.map((p, i) => (
+                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="py-4">
+                    <div className="flex items-center gap-3">
+                      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                        i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                        i === 1 ? 'bg-gray-100 text-gray-700' :
+                        i === 2 ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-50 text-gray-400'
+                      }`}>
+                        {i + 1}
+                      </span>
+                      <span className="font-bold text-[var(--color-brand-primary)]">{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="py-4 text-center font-medium text-gray-600">
+                    {p.quantity}
+                  </td>
+                  <td className="py-4 text-right font-bold text-[var(--color-brand-secondary)]">
+                    {formatCurrency(p.revenue)}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

@@ -6,13 +6,14 @@ import { PublicHeader } from '../../components/PublicHeader';
 import { OrderReviewList } from '../../components/checkout/OrderReviewList';
 import { OrderTypeSelector } from '../../components/checkout/OrderTypeSelector';
 import { PaymentMethodSelector, PaymentMethod } from '../../components/checkout/PaymentMethodSelector';
-import { VoucherSelector } from '../../components/checkout/VoucherSelector';
+import { VoucherSelector, VoucherOption } from '../../components/checkout/VoucherSelector';
 import { WalletBalanceRow } from '../../components/checkout/WalletBalanceRow';
 import { CoffeePassSelector } from '../../components/checkout/CoffeePassSelector';
 import { PaymentStatusBanner, PaymentStatus } from '../../components/checkout/PaymentStatusBanner';
 import { RetryPaymentButton } from '../../components/checkout/RetryPaymentButton';
 import { apiClient } from '@fnb/utils';
 import { useCartStore } from '../../stores/cartStore';
+import { unwrapOrderDetails } from '../../lib/checkout';
 
 export default function CheckoutPage() {
   const searchParams = useSearchParams();
@@ -24,8 +25,9 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   
-  const [orderType, setOrderType] = useState<'DINE_IN' | 'PICKUP'>('DINE_IN');
+  const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY'>('TAKEAWAY');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('VIETQR');
+  const [selectedVoucher, setSelectedVoucher] = useState<VoucherOption | null>(null);
   
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('IDLE');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -43,7 +45,9 @@ export default function CheckoutPage() {
         setError(false);
         // GET /api/v1/orders/:id
         const res: any = await apiClient.get(`/orders/${orderId}`);
-        setOrderData(res);
+        const ord = unwrapOrderDetails(res);
+        setOrderData(ord);
+        setOrderType(ord?.order_type === 'DINE_IN' ? 'DINE_IN' : 'TAKEAWAY');
       } catch (err) {
         console.error('Failed to fetch order', err);
         setError(true);
@@ -68,12 +72,16 @@ export default function CheckoutPage() {
       // POST /api/v1/orders/:id/pay
       const res = await apiClient.post(
         `/orders/${orderId}/pay`, 
-        { payment_method: paymentMethod },
+        {
+          payment_method: paymentMethod,
+          voucher_id: selectedVoucher?.id,
+        },
         { headers: { 'Idempotency-Key': idempotencyKey } }
       );
 
       // Theo task: Chỉ clear cart SAU KHI backend trả success
       clearCart();
+      sessionStorage.removeItem('selected_voucher_id');
       setPaymentStatus('SUCCESS');
 
     } catch (err) {
@@ -87,6 +95,12 @@ export default function CheckoutPage() {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
   };
+
+  const subtotal = Number(orderData?.subtotal ?? orderData?.final_amount ?? 0);
+  const discountAmount = selectedVoucher?.discount_percent
+    ? Math.round(subtotal * selectedVoucher.discount_percent / 100)
+    : Number(orderData?.discount_amount ?? 0);
+  const payableAmount = Math.max(0, subtotal - discountAmount);
 
   // Nếu API bị lỗi, ta chỉ hiển thị lỗi vì yêu cầu không dùng mock dữ liệu.
   if (error) {
@@ -126,12 +140,27 @@ export default function CheckoutPage() {
         <OrderTypeSelector 
           type={orderType} 
           onChange={setOrderType} 
-          tableName={orderData.table_name || 'T1-01'} 
+          tableName={orderData.table_name || orderData.tables?.table_code || 'T1-01'}
         />
 
-        <OrderReviewList items={orderData.items || []} />
+        <OrderReviewList
+          items={(orderData.order_items || orderData.items || []).map((it: any) => ({
+            id: it.id,
+            name: it.product_name || it.name || 'Món ăn',
+            quantity: it.quantity,
+            price: Number(it.unit_price || it.price || 0),
+            modifiers: it.modifiers ? (typeof it.modifiers === 'string' ? it.modifiers : Object.values(it.modifiers).join(', ')) : undefined,
+          }))}
+        />
 
-        <VoucherSelector onSelect={() => {}} />
+        <VoucherSelector selectedVoucher={selectedVoucher} onSelect={setSelectedVoucher} />
+
+        {discountAmount > 0 && (
+          <div className="flex items-center justify-between rounded-lg bg-green-50 px-4 py-3 text-sm font-bold text-green-700">
+            <span>Giảm giá voucher</span>
+            <span>-{formatPrice(discountAmount)}</span>
+          </div>
+        )}
 
         <PaymentMethodSelector method={paymentMethod} onChange={setPaymentMethod} />
 
@@ -163,7 +192,7 @@ export default function CheckoutPage() {
             disabled={isProcessing}
             className="w-full py-4 bg-[#543310] text-white font-bold rounded-xl hover:bg-[#D67D3E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-8 text-lg"
           >
-            Thanh toán {formatPrice(orderData.total_amount || 0)}
+            Thanh toán {formatPrice(payableAmount)}
           </button>
         )}
       </div>

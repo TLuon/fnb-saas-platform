@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Merge, AlertTriangle, X } from 'lucide-react';
+import { apiClient } from '@fnb/utils';
 
 interface MergeCustomerModalProps {
   isOpen: boolean;
@@ -18,26 +19,50 @@ export function MergeCustomerModal({ isOpen, onClose }: MergeCustomerModalProps)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sourcePhone.trim() || !targetPhone.trim()) {
-      setError('Vui lòng nhập đầy đủ SĐT');
+      setError('Vui lòng nhập đầy đủ SĐT hoặc mã khách hàng');
       return;
     }
 
     try {
       setLoading(true);
       setError('');
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSuccess('Đã hợp nhất thành công!');
+
+      let sourceId = sourcePhone.trim();
+      let targetId = targetPhone.trim();
+
+      // If phones were provided instead of UUIDs, look them up via CDP
+      if (!sourceId.includes('-') || !targetId.includes('-')) {
+        const cRes: any = await apiClient.get('/cdp/customers?segment=ALL');
+        const cList = cRes.data?.data || cRes.data || (Array.isArray(cRes) ? cRes : []);
+        if (!sourceId.includes('-')) {
+          const found = cList.find((c: any) => c.phone === sourceId);
+          if (found) sourceId = found.id;
+          else throw new Error(`Không tìm thấy khách hàng với SĐT nguồn: ${sourceId}`);
+        }
+        if (!targetId.includes('-')) {
+          const found = cList.find((c: any) => c.phone === targetId);
+          if (found) targetId = found.id;
+          else throw new Error(`Không tìm thấy khách hàng với SĐT đích: ${targetId}`);
+        }
+      }
+
+      await apiClient.post('/support/customers/merge', {
+        source_customer_id: sourceId,
+        target_customer_id: targetId,
+      });
+
+      setSuccess('Đã hợp nhất tài khoản khách hàng thành công!');
       setTimeout(() => {
         setSuccess('');
         onClose();
       }, 1500);
     } catch (err: any) {
-      setError(err.message || 'Có lỗi xảy ra');
+      setError(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi hợp nhất');
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">

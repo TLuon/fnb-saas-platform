@@ -243,7 +243,7 @@ export class GroupOrderService {
         confirmed: true
       });
 
-      return { message: 'Đã chốt order nhóm thành công' };
+      return { message: 'Đã chốt order nhóm thành công', order_id: orderId };
     } catch (error) {
       // NEW-008 / ISSUE-003: Compensating rollback on partial DB success
       // If order_items were inserted but submitKitchen (or subtotal update) failed,

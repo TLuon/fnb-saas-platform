@@ -4,13 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PublicHeader } from '../../../components/PublicHeader';
 import { ReservationLockModal } from '../../../components/ReservationLockModal';
-import { VietQRPanel } from '../../../components/VietQRPanel';
+import { VietQRDeposit } from '../../../components/VietQRDeposit';
 import { ReservationResult, ReservationResultStatus } from '../../../components/ReservationResult';
-import { apiClient } from '@fnb/utils';
+import { apiClient, authStore } from '@fnb/utils';
+import { useStore } from 'zustand';
 
 export default function ReservationPage() {
   const params = useParams();
   const code = (params?.code as string) || '';
+  const tenantId = useStore(authStore, (state) => state.tenantId);
 
   const [viewState, setViewState] = useState<'LOADING' | 'LOCK_MODAL' | 'QR_PAYMENT' | 'RESULT'>('LOADING');
   const [resultStatus, setResultStatus] = useState<ReservationResultStatus>('SUCCESS');
@@ -24,12 +26,13 @@ export default function ReservationPage() {
     const generateQR = async () => {
       try {
         const payload: any = await apiClient.post(`/reservations/${code}/generate-qr`, {});
-        // Expecting { amount: number, expires_at: string, qr_url: string }
-        if (payload) {
-          setAmount(payload.amount);
-          setExpiresAt(payload.expires_at);
-          setViewState('LOCK_MODAL');
+        const depositAmount = Number(payload?.amount);
+        if (!Number.isFinite(depositAmount) || !payload?.expires_at) {
+          throw new Error('Dữ liệu giữ bàn không hợp lệ');
         }
+        setAmount(depositAmount);
+        setExpiresAt(payload.expires_at);
+        setViewState('LOCK_MODAL');
       } catch (err) {
         console.error('Failed to generate QR', err);
         setResultStatus('FAIL');
@@ -80,10 +83,11 @@ export default function ReservationPage() {
         )}
 
         {viewState === 'QR_PAYMENT' && (
-          <VietQRPanel 
+          <VietQRDeposit
             amount={amount}
-            content={`FNB DAT BAN ${code}`}
-            onSimulatePaymentSuccess={handlePaymentSuccess}
+            reservationCode={code}
+            tenantId={tenantId || undefined}
+            onMockSuccess={handlePaymentSuccess}
           />
         )}
 

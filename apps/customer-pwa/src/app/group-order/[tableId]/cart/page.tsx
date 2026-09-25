@@ -71,11 +71,13 @@ export default function GroupOrderCartPage() {
     try {
       setIsConfirming(true);
       // POST /api/v1/group-order/:tableId/confirm
-      await apiClient.post(`/group-order/${tableId}/confirm`, {});
-      // Success means order locked and created. 
-      // Redirect to checkout ?order_id= (Assuming API returns order_id)
-      // Actually we will just navigate to /checkout?order_id=GROUP_ORDER_MOCK
-      router.push(`/checkout?order_id=G-${tableId}-${Date.now()}`);
+      const res: any = await apiClient.post(`/group-order/${tableId}/confirm`, {});
+      const data = res?.data || res;
+      if (data?.order_id) {
+        router.push(`/checkout?order_id=${data.order_id}`);
+      } else {
+        router.push('/orders');
+      }
     } catch (err: any) {
       showError('Không thể xác nhận: ' + err.message);
     } finally {

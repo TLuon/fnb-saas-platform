@@ -16,7 +16,7 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  @Roles('STAFF')
+  @Roles('STAFF', 'CUSTOMER')
   async createOrder(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -49,7 +49,7 @@ export class OrderController {
   }
 
   @Post(':id/submit-kitchen')
-  @Roles('STAFF')
+  @Roles('STAFF', 'CUSTOMER')
   async submitKitchen(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,

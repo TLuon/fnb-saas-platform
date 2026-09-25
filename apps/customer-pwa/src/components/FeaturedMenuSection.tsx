@@ -3,17 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '@fnb/utils';
 import { EmptyState, LoadingSkeleton } from '@fnb/ui-shared';
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  base_price: number;
-  image_url: string;
-}
+import { normalizePublicCatalog, type CatalogProduct } from '../lib/catalog';
 
 export function FeaturedMenuSection() {
-  const [items, setItems] = useState<MenuItem[]>([]);
+  const [items, setItems] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -21,25 +14,10 @@ export function FeaturedMenuSection() {
     const fetchCatalog = async () => {
       try {
         setLoading(true);
-        // Using mock tenant/branch for demo until domain logic is ready
-        const payload: any = await apiClient.get('/public/catalog?tenant_subdomain=demo&branch_id=b1');
-        
-        // Assume API returns categories with items. Flatten and get top 3-6
-        let featured: MenuItem[] = [];
-        if (Array.isArray(payload)) {
-          // If payload is array of items
-          featured = payload.slice(0, 6);
-        } else if (payload?.categories) {
-          // If payload is object with categories
-          payload.categories.forEach((cat: any) => {
-            if (cat.items) {
-              featured = [...featured, ...cat.items];
-            }
-          });
-          featured = featured.slice(0, 6);
-        }
-        
-        setItems(featured);
+        const subdomain = process.env.NEXT_PUBLIC_TENANT_SUBDOMAIN || 'cafe-and-cake';
+        const payload: any = await apiClient.get(`/public/catalog?tenant_subdomain=${subdomain}`);
+
+        setItems(normalizePublicCatalog(payload).products.slice(0, 6));
       } catch (err) {
         console.error('Failed to fetch public catalog', err);
         setError(true);
@@ -116,7 +94,7 @@ export function FeaturedMenuSection() {
               </p>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-[#543310] text-lg">
-                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.base_price || 0)}
+                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.base_price)}
                 </span>
                 <button className="text-[#D67D3E] font-medium text-sm hover:underline">
                   Xem chi tiết

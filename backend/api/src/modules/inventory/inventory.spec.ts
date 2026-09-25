@@ -13,6 +13,7 @@ describe('InventoryModule Tests', () => {
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
   const branchId = '22222222-2222-2222-2222-222222222222';
+  const publicUserId = '99999999-9999-9999-9999-999999999999';
   const ownerUser: AuthenticatedUser = {
     sub: 'owner-user-1',
     role_app: 'OWNER',
@@ -207,6 +208,12 @@ describe('InventoryModule Tests', () => {
         eq: vi.fn().mockResolvedValue({ error: null }),
       };
 
+      const userResolveQuery = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: publicUserId }, error: null }),
+      };
+
       const insertTxQuery = {
         insert: vi.fn().mockReturnThis(),
         select: vi.fn().mockReturnThis(),
@@ -223,6 +230,7 @@ describe('InventoryModule Tests', () => {
 
       mockSupabase.from
         .mockReturnValueOnce(getIngQuery)
+        .mockReturnValueOnce(userResolveQuery)
         .mockReturnValueOnce(updateStockQuery)
         .mockReturnValueOnce(insertTxQuery);
 
@@ -235,6 +243,9 @@ describe('InventoryModule Tests', () => {
       expect(result.balance_after).toBe(15);
       expect(updateStockQuery.update).toHaveBeenCalledWith(
         expect.objectContaining({ current_stock: 15 }),
+      );
+      expect(insertTxQuery.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ created_by: publicUserId }),
       );
     });
 
@@ -274,6 +285,12 @@ describe('InventoryModule Tests', () => {
         eq: vi.fn().mockResolvedValue({ error: null }),
       };
 
+      const userResolveQuery = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: publicUserId }, error: null }),
+      };
+
       const insertTxQuery = {
         insert: vi.fn().mockReturnThis(),
         select: vi.fn().mockReturnThis(),
@@ -290,6 +307,7 @@ describe('InventoryModule Tests', () => {
 
       mockSupabase.from
         .mockReturnValueOnce(getIngQuery)
+        .mockReturnValueOnce(userResolveQuery)
         .mockReturnValueOnce(updateStockQuery)
         .mockReturnValueOnce(insertTxQuery);
 

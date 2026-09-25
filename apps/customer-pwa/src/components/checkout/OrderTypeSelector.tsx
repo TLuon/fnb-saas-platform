@@ -2,8 +2,8 @@ import React from 'react';
 import { Store, ShoppingBag } from 'lucide-react';
 
 interface OrderTypeSelectorProps {
-  type: 'DINE_IN' | 'PICKUP';
-  onChange: (type: 'DINE_IN' | 'PICKUP') => void;
+  type: 'DINE_IN' | 'TAKEAWAY';
+  onChange: (type: 'DINE_IN' | 'TAKEAWAY') => void;
   tableName?: string;
 }
 
@@ -23,13 +23,13 @@ export function OrderTypeSelector({ type, onChange, tableName }: OrderTypeSelect
         </button>
 
         <button
-          onClick={() => onChange('PICKUP')}
+          onClick={() => onChange('TAKEAWAY')}
           className={`flex-1 p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${
-            type === 'PICKUP' ? 'border-[#D67D3E] bg-[#FED8B1]/30' : 'border-[#E8DED5] hover:bg-[#FAF7F3]'
+            type === 'TAKEAWAY' ? 'border-[#D67D3E] bg-[#FED8B1]/30' : 'border-[#E8DED5] hover:bg-[#FAF7F3]'
           }`}
         >
-          <ShoppingBag size={24} className={type === 'PICKUP' ? 'text-[#D67D3E]' : 'text-[#6B625B]'} />
-          <span className={`text-sm font-bold ${type === 'PICKUP' ? 'text-[#543310]' : 'text-[#6B625B]'}`}>Mang đi</span>
+          <ShoppingBag size={24} className={type === 'TAKEAWAY' ? 'text-[#D67D3E]' : 'text-[#6B625B]'} />
+          <span className={`text-sm font-bold ${type === 'TAKEAWAY' ? 'text-[#543310]' : 'text-[#6B625B]'}`}>Mang đi</span>
         </button>
       </div>
 

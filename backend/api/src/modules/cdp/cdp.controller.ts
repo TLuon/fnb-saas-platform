@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CdpService } from './cdp.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
-import { CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
+import { CurrentAccessToken, CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { ListCustomersBySegmentQueryDto } from './dto/list-customers-query.dto.js';
 import { CreateVoucherDto } from './dto/create-voucher.dto.js';
 
@@ -24,8 +25,8 @@ export class CdpController {
   createVoucher(
     @Param('id') id: string,
     @Body() dto: CreateVoucherDto,
-    @CurrentAccessToken() token: string,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.cdpService.createVoucher(token, id, dto);
+    return this.cdpService.createVoucher(user, id, dto);
   }
 }

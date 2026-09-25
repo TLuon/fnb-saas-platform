@@ -12,9 +12,11 @@ import { apiClient } from '@fnb/utils';
 import { useToast } from '../../components/ToastProvider';
 import { LoadingSkeleton, EmptyState } from '@fnb/ui-shared';
 import { io } from 'socket.io-client';
+import { normalizePublicCatalog, type CatalogCategory, type CatalogProduct } from '../../lib/catalog';
 
 export default function MenuPage() {
-  const [catalog, setCatalog] = useState<any[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,16 +34,12 @@ export default function MenuPage() {
     try {
       setLoading(true);
       setError(false);
-      // GET /api/v1/public/catalog
-      const payload: any = await apiClient.get('/public/catalog?tenant_subdomain=demo&branch_id=b1');
-      
-      let data = [];
-      if (Array.isArray(payload)) {
-        data = payload;
-      } else if (payload?.categories) {
-        data = payload.categories;
-      }
-      setCatalog(data);
+      const subdomain = process.env.NEXT_PUBLIC_TENANT_SUBDOMAIN || 'cafe-and-cake';
+      const payload: any = await apiClient.get(`/public/catalog?tenant_subdomain=${subdomain}`);
+
+      const normalized = normalizePublicCatalog(payload);
+      setCategories(normalized.categories);
+      setProducts(normalized.products);
     } catch (err) {
       console.error('Failed to fetch catalog', err);
       setError(true);
@@ -72,25 +70,9 @@ export default function MenuPage() {
   }, []);
 
   // Compute derived state for categories and products
-  const { categories, filteredProducts } = useMemo(() => {
-    let cats: {id: string, name: string}[] = [];
-    let allProducts: any[] = [];
-    
-    // Normalize data if it is grouped by categories
-    catalog.forEach(cat => {
-      if (cat.items) {
-        cats.push({ id: cat.id, name: cat.name });
-        // Inject category_id into items if missing
-        const itemsWithCat = cat.items.map((i: any) => ({ ...i, category_id: cat.id }));
-        allProducts = [...allProducts, ...itemsWithCat];
-      } else {
-        // Flat list
-        allProducts.push(cat);
-      }
-    });
-
+  const filteredProducts = useMemo(() => {
     // Filter by Category
-    let result = allProducts;
+    let result = products;
     if (selectedCategoryId) {
       result = result.filter(p => p.category_id === selectedCategoryId);
     }
@@ -107,10 +89,10 @@ export default function MenuPage() {
       is_available: outOfStockIds.has(p.id) ? false : (p.is_available !== false)
     }));
 
-    return { categories: cats, filteredProducts: result };
-  }, [catalog, selectedCategoryId, searchQuery, outOfStockIds]);
+    return result;
+  }, [products, selectedCategoryId, searchQuery, outOfStockIds]);
 
-  const handleAddToCart = (product: any, quantity: number, note: string) => {
+  const handleAddToCart = (product: CatalogProduct, quantity: number, note: string) => {
     addItem({
       productId: product.id,
       name: product.name,
@@ -118,7 +100,7 @@ export default function MenuPage() {
       quantity,
       note,
       imageUrl: product.image_url,
-      modifiers: '' // mock modifiers
+      modifiers: ''
     });
     showInfo(`Đã thêm ${quantity} x ${product.name} vào giỏ hàng`);
   };

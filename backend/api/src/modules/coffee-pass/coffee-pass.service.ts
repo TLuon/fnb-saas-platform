@@ -109,6 +109,52 @@ export class CoffeePassService {
     };
   }
 
+  async getMyPass(user: AuthenticatedUser, accessToken: string, subscriptionId: string) {
+    const supabase = this.supabaseService.forUser(accessToken);
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('auth_user_id', user.sub)
+      .eq('tenant_id', user.tenant_id)
+      .maybeSingle();
+
+    if (customerError || !customer) {
+      throw new AppException('ERR_1001_UNAUTHORIZED', 'Không tìm thấy hồ sơ khách hàng');
+    }
+
+    const { data: subscription, error } = await supabase
+      .from('coffee_pass_subscriptions')
+      .select(`
+        id,
+        remaining_redemptions,
+        expires_at,
+        created_at,
+        coffee_pass_plans ( name, total_redemptions, valid_days )
+      `)
+      .eq('id', subscriptionId)
+      .eq('customer_id', customer.id)
+      .maybeSingle();
+
+    if (error || !subscription) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Gói Coffee Pass không tồn tại');
+    }
+
+    const plan = Array.isArray(subscription.coffee_pass_plans)
+      ? subscription.coffee_pass_plans[0]
+      : subscription.coffee_pass_plans;
+    const remaining = Number(subscription.remaining_redemptions || 0);
+    const expiresAt = subscription.expires_at;
+
+    return {
+      id: subscription.id,
+      plan_name: plan?.name || 'Coffee Pass',
+      total_redemptions: Number(plan?.total_redemptions || 0),
+      remaining_redemptions: remaining,
+      expires_at: expiresAt,
+      is_active: remaining > 0 && new Date(expiresAt).getTime() > Date.now(),
+    };
+  }
+
   async getCurrentCode(user: AuthenticatedUser, accessToken: string, subscriptionId: string) {
     const supabase = this.supabaseService.forUser(accessToken);
 

@@ -76,16 +76,14 @@ const POS: React.FC = () => {
   const [selectedModifiers, setSelectedModifiers] = useState<Record<string, string>>({});
 
   const profile = useStore(authStore, (state) => state.profile);
-  const branchId = localStorage.getItem('branchId') || 'branch-1';
-
-
+  const branchId = profile?.branch_id || localStorage.getItem('branchId') || '22222222-2222-2222-2222-222222222222';
 
   // Fetch Menu
   useEffect(() => {
     setIsLoadingMenu(true);
     Promise.all([
-      apiClient.get(`/api/v1/menu/categories?branch_id=${branchId}`).then((res: any) => res),
-      apiClient.get(`/api/v1/menu/products?branch_id=${branchId}`).then((res: any) => res)
+      apiClient.get('/categories').then((res: any) => res),
+      apiClient.get('/products').then((res: any) => res)
     ]).then(([catRes, prodRes]) => {
       setCategories(catRes.data?.data || catRes.data || catRes || []);
       setProducts(prodRes.data?.data || prodRes.data || prodRes || []);
@@ -127,7 +125,8 @@ const POS: React.FC = () => {
 
   // Fetch Floors
   useEffect(() => {
-    apiClient.get(`/api/v1/floors?branch_id=${branchId}`).then((res: any) => {
+    const query = branchId && branchId.includes('-') ? `?branch_id=${branchId}` : '';
+    apiClient.get(`/floors${query}`).then((res: any) => {
         const floorList = res.data?.data || res.data || res || [];
         setFloors(floorList);
         if (floorList.length > 0) setSelectedFloor(floorList[0].id);
@@ -135,28 +134,50 @@ const POS: React.FC = () => {
       .catch(console.error);
   }, [branchId]);
 
+  // State for active order of current table
+  const [activeTableOrder, setActiveTableOrder] = useState<any | null>(null);
+
+  const fetchTables = () => {
+    if (!selectedFloor) return;
+    apiClient.get(`/floors/${selectedFloor}/tables`).then((res: any) => {
+      const mappedTables = (res.data?.data || res.data || res || []).map((t: any) => ({
+        id: t.id,
+        name: t.name || t.table_code,
+        status: t.status || 'AVAILABLE',
+        coord_x: t.pos_x,
+        coord_y: t.pos_y,
+        width: t.width,
+        height: t.height,
+        shape: t.shape || 'rectangle',
+        capacity: t.capacity || 4,
+        current_order_id: t.current_order_id || null,
+      }));
+      setTables(mappedTables);
+    }).catch(console.error);
+  };
+
   // Fetch Tables for selected Floor
   useEffect(() => {
-    if (!selectedFloor) return;
-    apiClient.get(`/api/v1/floors/${selectedFloor}/tables`).then((res: any) => {
-        const mappedTables = (res.data?.data || res.data || res || []).map((t: any) => ({
-          id: t.id,
-          name: t.name || t.table_code,
-          status: t.status || 'AVAILABLE',
-          coord_x: t.pos_x,
-          coord_y: t.pos_y,
-          width: t.width,
-          height: t.height,
-          shape: t.shape || 'rectangle',
-          capacity: t.capacity || 4
-        }));
-        setTables(mappedTables);
-      })
-      .catch(console.error);
+    fetchTables();
   }, [selectedFloor]);
 
+  // When selectedTable changes, inspect if it has an active order
   useEffect(() => {
-    setActiveOrderId(null);
+    if (selectedTable && selectedTable.current_order_id) {
+      setActiveOrderId(selectedTable.current_order_id);
+      apiClient.get(`/orders/${selectedTable.current_order_id}`)
+        .then((res: any) => {
+          const ord = res.data?.data?.order || res.data?.order || res.data || res;
+          setActiveTableOrder(ord);
+        })
+        .catch(err => {
+          console.error('Failed to load active order for table:', err);
+          setActiveTableOrder(null);
+        });
+    } else {
+      setActiveOrderId(null);
+      setActiveTableOrder(null);
+    }
   }, [selectedTable]);
 
   const filteredProducts = products.filter(p => 
@@ -172,6 +193,9 @@ const POS: React.FC = () => {
     }
     return sum + itemTotal * item.quantity;
   }, 0);
+
+  const existingOrderTotal = Number(activeTableOrder?.final_amount || activeTableOrder?.subtotal || 0);
+  const totalAmountToPay = estimatedSubtotal + existingOrderTotal;
 
   const handleProductClick = (product: Product) => {
     if (!product.is_active || outOfStockIds.has(product.id)) {
@@ -227,55 +251,124 @@ const POS: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const payload = {
-        table_id: orderType === 'DINE_IN' ? selectedTable?.id : null,
-        type: orderType,
-        items: cart.map(item => ({
+      let orderId = activeOrderId;
+      let orderCode = activeTableOrder?.order_code || '';
+
+      if (!orderId) {
+        const orderRes: any = await apiClient.post('/orders', {
+          table_id: orderType === 'DINE_IN' ? selectedTable?.id : undefined,
+          order_type: orderType,
+        });
+        const orderData = orderRes.data?.data || orderRes.data || orderRes;
+        orderId = orderData.id || orderData.order_id;
+        orderCode = orderData.order_code || 'Mới';
+        if (orderType === 'DINE_IN') setActiveOrderId(orderId);
+      }
+
+      // Add each item to the order
+      for (const item of cart) {
+        await apiClient.post(`/orders/${orderId}/items`, {
           product_id: item.product.id,
           quantity: item.quantity,
-          note: item.note,
-          modifiers: item.modifiers
-        }))
-      };
-
-      let res;
-      if (orderType === 'DINE_IN' && activeOrderId) {
-        res = await apiClient.post(`/api/v1/orders/${activeOrderId}/items`, { items: payload.items });
-        alert(`Đã thêm món vào đơn hàng hiện tại và gửi lệnh xuống bếp!`);
-      } else {
-        res = await apiClient.post('/api/v1/orders', payload);
-        if (orderType === 'DINE_IN') {
-          const newOrderId = (res as any).data?.data?.id || (res as any).id;
-          if (newOrderId) setActiveOrderId(newOrderId);
-        }
-        alert(`Đã tạo đơn hàng #${(res as any).data?.data?.order_code || (res as any).order_code || 'Mới'} và gửi lệnh xuống bếp!`);
+          modifiers: item.modifiers,
+          notes: item.note,
+        });
       }
-      
+
+      // Submit kitchen
+      await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+
+      alert(`Đã gửi đơn hàng #${orderCode || orderId?.slice(0, 8)} xuống bếp thành công!`);
       setCart([]);
       if (orderType === 'TAKEAWAY') {
         fetchTakeawayOrders();
+      } else {
+        fetchTables();
+        if (orderId) {
+          const updatedOrdRes: any = await apiClient.get(`/orders/${orderId}`).catch(() => null);
+          if (updatedOrdRes) {
+            setActiveTableOrder(updatedOrdRes.data?.data?.order || updatedOrdRes.data?.order || updatedOrdRes.data);
+          }
+        }
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi tạo đơn');
+      alert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi tạo đơn');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const checkoutAndPay = () => {
+  const checkoutAndPay = async () => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      alert('Đã thanh toán thành công!');
+    try {
+      let orderId = activeOrderId;
+
+      if (!orderId && cart.length > 0) {
+        // Create order, add items, submit to kitchen, then pay
+        const orderRes: any = await apiClient.post('/orders', {
+          table_id: orderType === 'DINE_IN' ? selectedTable?.id : undefined,
+          order_type: orderType,
+        });
+        const orderData = orderRes.data?.data || orderRes.data || orderRes;
+        orderId = orderData.id || orderData.order_id;
+
+        for (const item of cart) {
+          await apiClient.post(`/orders/${orderId}/items`, {
+            product_id: item.product.id,
+            quantity: item.quantity,
+            modifiers: item.modifiers,
+            notes: item.note,
+          });
+        }
+        await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+      } else if (orderId && cart.length > 0) {
+        // If there are additional cart items on an existing order, append them first
+        for (const item of cart) {
+          await apiClient.post(`/orders/${orderId}/items`, {
+            product_id: item.product.id,
+            quantity: item.quantity,
+            modifiers: item.modifiers,
+            notes: item.note,
+          });
+        }
+        await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+      }
+
+      if (!orderId) {
+        alert('Không có đơn hàng nào cần thanh toán!');
+        return;
+      }
+
+      // Process payment with VIETQR
+      await apiClient.post(`/orders/${orderId}/pay`, {
+        payment_method: 'VIETQR',
+      });
+
+      alert('Đã thanh toán thành công qua VietQR!');
       setCart([]);
       setActiveOrderId(null);
+      setActiveTableOrder(null);
+      if (orderType === 'TAKEAWAY') {
+        fetchTakeawayOrders();
+      } else {
+        fetchTables();
+        setSelectedTable(null);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi thanh toán');
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   const fetchTakeawayOrders = () => {
-    apiClient.get(`/api/v1/orders/active?branch_id=${branchId}&type=TAKEAWAY`)
+    const query = branchId && branchId.includes('-')
+      ? `?branch_id=${branchId}&order_type=TAKEAWAY`
+      : '?order_type=TAKEAWAY';
+    apiClient.get(`/orders${query}`)
       .then((res: any) => {
-        setActiveTakeawayOrders(res.data?.data || res.data || res || []);
+        const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
+        setActiveTakeawayOrders(list);
       })
       .catch(console.error);
   };
@@ -286,13 +379,14 @@ const POS: React.FC = () => {
 
   const completeOrder = async (orderId: string) => {
     try {
-      await apiClient.patch(`/api/v1/orders/${orderId}/status`, { status: 'COMPLETED' });
+      await apiClient.post(`/orders/${orderId}/pay`, { payment_method: 'VIETQR' });
       fetchTakeawayOrders();
-      alert('Đã xác nhận giao đồ thành công!');
-    } catch (e) {
-      alert('Lỗi khi hoàn tất đơn');
+      alert('Đã xác nhận thanh toán & hoàn tất đơn hàng!');
+    } catch (e: any) {
+      alert(e.response?.data?.message || e.message || 'Lỗi khi hoàn tất đơn');
     }
   };
+
 
   return (
     <div className="flex flex-col h-screen bg-[#FAF7F3] overflow-hidden">
@@ -481,8 +575,26 @@ const POS: React.FC = () => {
         </div>
 
         <div className="border-t border-[#E8DED5] p-4 bg-white shadow-[0_-4px_15px_rgba(0,0,0,0.02)] space-y-2">
+          {activeTableOrder && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2 text-xs">
+              <div className="flex justify-between items-center font-bold text-[#543310]">
+                <span>Đơn hiện tại (#{activeTableOrder.order_code || activeTableOrder.id?.slice(0, 6)})</span>
+                <span>{existingOrderTotal.toLocaleString('vi-VN')}đ</span>
+              </div>
+              {activeTableOrder.order_items && activeTableOrder.order_items.length > 0 && (
+                <div className="mt-1 text-gray-500 max-h-20 overflow-y-auto">
+                  {activeTableOrder.order_items.map((it: any, i: number) => (
+                    <div key={i} className="flex justify-between">
+                      <span>{it.quantity}x {it.product_name}</span>
+                      <span>{(it.quantity * it.unit_price).toLocaleString('vi-VN')}đ</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex justify-between items-center text-gray-600 font-medium text-sm">
-            <span>Tạm tính</span>
+            <span>{cart.length > 0 ? 'Món mới chọn' : 'Tạm tính'}</span>
             <span>{estimatedSubtotal.toLocaleString('vi-VN')}đ</span>
           </div>
           <div className="flex justify-between items-center text-gray-600 font-medium text-sm border-b pb-2">
@@ -492,9 +604,11 @@ const POS: React.FC = () => {
           <div className="flex justify-between items-center mb-4">
             <div className="flex flex-col">
               <span className="text-[#543310] font-bold">Tổng thanh toán</span>
-              <span className="text-xs text-gray-400 italic">(Dự kiến)</span>
+              <span className="text-xs text-gray-400 italic">
+                {activeTableOrder ? '(Đơn tại bàn + Món mới)' : '(Dự kiến)'}
+              </span>
             </div>
-            <span className="font-black text-[#D67D3E] text-2xl">{estimatedSubtotal.toLocaleString('vi-VN')}đ</span>
+            <span className="font-black text-[#D67D3E] text-2xl">{totalAmountToPay.toLocaleString('vi-VN')}đ</span>
           </div>
           
           <div className="flex gap-2">
@@ -507,10 +621,10 @@ const POS: React.FC = () => {
             </button>
             <button 
               onClick={checkoutAndPay}
-              disabled={cart.length === 0 || isSubmitting}
+              disabled={(cart.length === 0 && !activeOrderId) || isSubmitting}
               className="flex-1 bg-[#237A57] text-white py-3 rounded-xl font-bold text-sm shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              Thanh Toán
+              {isSubmitting ? 'Đang xử lý...' : 'Thanh Toán'}
             </button>
           </div>
         </div>

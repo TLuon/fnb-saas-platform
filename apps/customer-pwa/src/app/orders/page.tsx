@@ -15,17 +15,12 @@ export default function OrdersPage() {
     const fetchOrders = async () => {
       try {
         setLoading(true);
-        // Mock API call to list orders (pagination is required by task)
         const res: any = await apiClient.get(`/orders?page=1&limit=20`);
-        setOrders(res.data || res || []);
+        const data = res?.data || res;
+        setOrders(Array.isArray(data) ? data : (data?.data || []));
       } catch (err) {
         console.error('Failed to fetch orders', err);
-        // Inject mock orders for demonstration if API fails to show UI
-        setOrders([
-          { id: 'O-991', status: 'PREPARING', total_amount: 145000, order_type: 'DINE_IN', table_name: 'T1-01', created_at: new Date().toISOString() },
-          { id: 'O-992', status: 'COMPLETED', total_amount: 55000, order_type: 'PICKUP', created_at: new Date(Date.now() - 86400000).toISOString() },
-          { id: 'O-993', status: 'CANCELLED', total_amount: 105000, order_type: 'DINE_IN', table_name: 'T2-05', created_at: new Date(Date.now() - 172800000).toISOString() },
-        ]);
+        setOrders([]);
       } finally {
         setLoading(false);
       }

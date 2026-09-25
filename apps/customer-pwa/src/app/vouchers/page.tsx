@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../components/ToastProvider';
 import { Ticket, Gift, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface VoucherItem {
   id: string;
@@ -16,6 +17,7 @@ export default function VouchersPage() {
   const [vouchers, setVouchers] = useState<VoucherItem[]>([]);
   const [loading, setLoading] = useState(true);
   const { showInfo, showError } = useToast();
+  const router = useRouter();
 
   const fetchVouchers = useCallback(async () => {
     try {
@@ -61,7 +63,9 @@ export default function VouchersPage() {
   }, [fetchVouchers]);
 
   const handleUse = (v: VoucherItem) => {
-    showInfo(`Đã chọn áp dụng mã ${v.voucher_code || 'ưu đãi'} cho đơn hàng`);
+    sessionStorage.setItem('selected_voucher_id', v.id);
+    showInfo('Đã chọn voucher. Thêm món vào giỏ để áp dụng khi thanh toán.');
+    router.push('/cart');
   };
 
   return (

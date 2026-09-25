@@ -8,6 +8,7 @@ import { PassPlanCard, PassPlan } from '../../components/coffee-pass/PassPlanCar
 import { SubscribeModal } from '../../components/coffee-pass/SubscribeModal';
 import { useToast } from '../../components/ToastProvider';
 import { apiClient } from '@fnb/utils';
+import { extractSubscription, normalizePassPlans, normalizeWalletBalance } from '../../lib/coffee-pass';
 
 export default function CoffeePassPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function CoffeePassPage() {
   const [plans, setPlans] = useState<PassPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   
   const [selectedPlan, setSelectedPlan] = useState<PassPlan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,32 +26,18 @@ export default function CoffeePassPage() {
     const fetchInitData = async () => {
       try {
         setLoading(true);
-        // GET /api/v1/coffee-pass/plans
-        const plansRes: any = await apiClient.get('/coffee-pass/plans').catch(() => ([
-          {
-            id: 'cp_1',
-            name: 'Gói Cà Phê Chào Ngày Mới',
-            price: 150000,
-            total_redemptions: 10,
-            duration_days: 30,
-            description: 'Tận hưởng 10 ly cà phê truyền thống với giá siêu ưu đãi, áp dụng mọi khung giờ.'
-          },
-          {
-            id: 'cp_2',
-            name: 'Thẻ Đặc Quyền Espresso',
-            price: 350000,
-            total_redemptions: 20,
-            duration_days: 60,
-            description: 'Trải nghiệm trọn vẹn tinh hoa Espresso với 20 ly. Tiết kiệm lên đến 40%.'
-          }
-        ]));
-        setPlans(plansRes);
-
-        // Fetch wallet to check balance
-        const balRes: any = await apiClient.get('/wallet/balance').catch(() => ({ main: 250000, promo: 0 }));
-        setWalletBalance(balRes.main + balRes.promo);
-      } catch (err) {
+        setError(null);
+        const [plansRes, walletRes] = await Promise.all([
+          apiClient.get('/coffee-pass/plans'),
+          apiClient.get('/wallet'),
+        ]);
+        setPlans(normalizePassPlans(plansRes));
+        setWalletBalance(normalizeWalletBalance(walletRes));
+      } catch (err: any) {
         console.error('Lỗi lấy dữ liệu Coffee Pass:', err);
+        setPlans([]);
+        setWalletBalance(0);
+        setError(err?.message || 'Không thể tải Coffee Pass lúc này.');
       } finally {
         setLoading(false);
       }
@@ -63,11 +51,13 @@ export default function CoffeePassPage() {
   };
 
   const handleConfirmSubscribe = async (planId: string) => {
-    // POST /api/v1/coffee-pass/subscribe
-    await apiClient.post('/coffee-pass/subscribe', { planId }).catch(() => null);
+    const response = await apiClient.post('/coffee-pass/subscribe', { plan_id: planId });
+    const subscription = extractSubscription(response);
+    if (!subscription?.id) {
+      throw new Error('Máy chủ không trả về thông tin gói đã mua.');
+    }
     showInfo('Mua gói thành công!');
-    // After buying, route to the pass detail page
-    router.push(`/coffee-pass/my-${planId}`);
+    router.push(`/coffee-pass/${subscription.id}`);
   };
 
   if (loading) {
@@ -88,7 +78,14 @@ export default function CoffeePassPage() {
           <p className="text-[#6B625B] text-sm mt-1">Trả trước, uống thả ga. Tiết kiệm lên đến 40%.</p>
         </div>
 
-        <PassPlanGrid plans={plans} onSubscribe={handleSubscribeClick} />
+        {error ? (
+          <div className="rounded-lg border border-red-200 bg-white p-6 text-center">
+            <p className="font-semibold text-red-700">{error}</p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-md bg-[#543310] px-4 py-2 text-sm font-bold text-white">Tải lại</button>
+          </div>
+        ) : (
+          <PassPlanGrid plans={plans} onSubscribe={handleSubscribeClick} />
+        )}
       </div>
 
       <SubscribeModal 

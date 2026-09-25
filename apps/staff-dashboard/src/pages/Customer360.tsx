@@ -27,9 +27,9 @@ export default function Customer360Page() {
     );
   }
 
-  const handleIssueVoucher = async (code: string) => {
+  const handleIssueVoucher = async (discountPercent: number) => {
     if (id) {
-      await issueVoucher(id, code);
+      await issueVoucher(id, discountPercent);
     }
   };
 

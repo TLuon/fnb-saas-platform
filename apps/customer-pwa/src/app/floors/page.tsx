@@ -6,7 +6,8 @@ import { FloorTabs } from '../../components/FloorTabs';
 import { TableStatusLegend } from '../../components/TableStatusLegend';
 import { TableInfoDrawer } from '../../components/TableInfoDrawer';
 import { FloorMapCanvas } from '@fnb/ui-shared';
-import { apiClient } from '@fnb/utils';
+import { apiClient, authStore } from '@fnb/utils';
+import { useStore } from 'zustand';
 import { useToast } from '../../components/ToastProvider';
 import { LoadingSkeleton, EmptyState } from '@fnb/ui-shared';
 import { useRouter } from 'next/navigation';
@@ -18,7 +19,10 @@ export default function FloorsPage() {
   const router = useRouter();
   const { showInfo, showError } = useToast();
   const { showLoginModal, setShowLoginModal } = useAuthGuard();
+  const isAuthenticated = useStore(authStore, (state) => state.isAuthenticated);
 
+  const [branches, setBranches] = useState<any[]>([]);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
   const [floors, setFloors] = useState<any[]>([]);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [tables, setTables] = useState<any[]>([]);
@@ -32,17 +36,47 @@ export default function FloorsPage() {
   const [selectedTable, setSelectedTable] = useState<any | null>(null);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setLoadingFloors(false);
+      return;
+    }
+
+    const fetchBranches = async () => {
+      try {
+        setLoadingFloors(true);
+        setFloorsError(false);
+        const res = await apiClient.get('/branches');
+        const data = Array.isArray(res) ? res : (res?.data || []);
+        setBranches(data);
+        const configuredBranchId = process.env.NEXT_PUBLIC_BRANCH_ID;
+        const initialBranch = data.find((branch: any) => branch.id === configuredBranchId) || data[0];
+        setActiveBranchId(initialBranch?.id || null);
+      } catch (error) {
+        console.error('Failed to fetch branches', error);
+        setFloorsError(true);
+      } finally {
+        setLoadingFloors(false);
+      }
+    };
+
+    void fetchBranches();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!activeBranchId) {
+      setFloors([]);
+      setActiveFloorId(null);
+      return;
+    }
+
     const fetchFloors = async () => {
       try {
         setLoadingFloors(true);
         setFloorsError(false);
-        const res = await apiClient.get('/floors?branch_id=b1');
+        const res = await apiClient.get(`/floors?branch_id=${encodeURIComponent(activeBranchId)}`);
         const data = Array.isArray(res) ? res : (res?.data || []);
-        
         setFloors(data);
-        if (data.length > 0) {
-          setActiveFloorId(data[0].id);
-        }
+        setActiveFloorId(data[0]?.id || null);
       } catch (error) {
         console.error('Failed to fetch floors', error);
         setFloorsError(true);
@@ -51,8 +85,8 @@ export default function FloorsPage() {
       }
     };
 
-    fetchFloors();
-  }, []);
+    void fetchFloors();
+  }, [activeBranchId]);
 
   const fetchTables = async (floorId: string) => {
     try {
@@ -60,7 +94,14 @@ export default function FloorsPage() {
       setTablesError(false);
       const res = await apiClient.get(`/floors/${floorId}/tables`);
       const data = Array.isArray(res) ? res : (res?.data || []);
-      setTables(data);
+      setTables(data.map((table: any) => ({
+        ...table,
+        name: table.name || table.table_code,
+        code: table.code || table.table_code,
+        coord_x: table.coord_x ?? table.pos_x,
+        coord_y: table.coord_y ?? table.pos_y,
+        shape: typeof table.shape === 'string' ? table.shape.toLowerCase() : table.shape,
+      })));
     } catch (error) {
       console.error('Failed to fetch tables', error);
       setTablesError(true);
@@ -104,10 +145,9 @@ export default function FloorsPage() {
       
       const payload: any = await apiClient.post('/reservations/lock', { table_id: table.id });
       
-      // Expected response from lock api: { code: string, expires_at: string }
-      if (payload && payload.code) {
-        router.push(`/reservation/${payload.code}`);
-      }
+      const reservationCode = payload?.reservation_code || payload?.code;
+      if (!reservationCode) throw new Error('API không trả mã đặt bàn');
+      router.push(`/reservation/${reservationCode}`);
     } catch (error: any) {
       if (error?.code === 'ERR_2002_TABLE_LOCKED' || error?.response?.data?.code === 'ERR_2002_TABLE_LOCKED') {
         showError('Bàn đã bị khách khác giữ. Vui lòng chọn bàn khác.');
@@ -127,6 +167,23 @@ export default function FloorsPage() {
   return (
     <main className="min-h-screen bg-[#FAF7F3] flex flex-col pb-24">
       <PublicHeader />
+
+      {branches.length > 1 && (
+        <div className="border-b border-[#E8DED5] bg-white px-4 py-3">
+          <label className="mx-auto flex max-w-screen-xl items-center gap-3 text-sm font-bold text-[#543310]">
+            Chi nhánh
+            <select
+              value={activeBranchId || ''}
+              onChange={(event) => setActiveBranchId(event.target.value)}
+              className="min-w-0 flex-1 border border-[#E8DED5] bg-white px-3 py-2 font-medium outline-none focus:border-[#D67D3E] sm:max-w-sm"
+            >
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>{branch.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       
       {loadingFloors ? (
         <div className="p-4"><LoadingSkeleton className="w-full h-12" /></div>
@@ -152,10 +209,10 @@ export default function FloorsPage() {
         {loadingTables ? (
           <div className="flex flex-col items-center justify-center h-[600px] border border-[#E8DED5] rounded-xl bg-white">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#543310]"></div>
-            <p className="mt-4 text-[#6B625B]">ReservationLoading...</p>
+            <p className="mt-4 text-[#6B625B]">Đang tải sơ đồ bàn...</p>
           </div>
         ) : tablesError ? (
-          <EmptyState title="ReservationError" message="Không thể lấy thông tin bàn." />
+          <EmptyState title="Không thể tải sơ đồ bàn" message="Vui lòng thử lại sau ít phút." />
         ) : (
           <FloorMapCanvas 
             editable={false} 

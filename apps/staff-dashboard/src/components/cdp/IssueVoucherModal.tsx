@@ -4,12 +4,12 @@ import { Gift, X } from 'lucide-react';
 interface IssueVoucherModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (code: string) => Promise<void>;
+  onSubmit: (discountPercent: number) => Promise<void>;
   customerName: string;
 }
 
 export function IssueVoucherModal({ isOpen, onClose, onSubmit, customerName }: IssueVoucherModalProps) {
-  const [code, setCode] = useState('');
+  const [discountPercent, setDiscountPercent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -18,19 +18,20 @@ export function IssueVoucherModal({ isOpen, onClose, onSubmit, customerName }: I
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim()) {
-      setError('Vui lòng nhập mã Voucher');
+    const discount = Number(discountPercent);
+    if (!Number.isInteger(discount) || discount < 1 || discount > 100) {
+      setError('Mức giảm phải là số nguyên từ 1 đến 100');
       return;
     }
 
     try {
       setLoading(true);
       setError('');
-      await onSubmit(code.trim().toUpperCase());
+      await onSubmit(discount);
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
-        setCode('');
+        setDiscountPercent('');
         onClose();
       }, 1500);
     } catch (err: any) {
@@ -71,17 +72,20 @@ export function IssueVoucherModal({ isOpen, onClose, onSubmit, customerName }: I
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1">Mã Voucher / Khuyến mãi *</label>
+            <label className="block text-sm font-semibold text-gray-800 mb-1">Mức giảm (%) *</label>
             <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[var(--color-brand-secondary)] focus:border-transparent outline-none transition-all uppercase font-mono font-bold"
-              placeholder="VD: VIP100K"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[var(--color-brand-secondary)] focus:border-transparent outline-none transition-all font-bold"
+              placeholder="VD: 10"
               disabled={loading || success}
               autoFocus
             />
-            <p className="text-xs text-gray-400 mt-2">Ví dụ: Mừng sinh nhật, tặng mã VIP100K giảm 100,000đ.</p>
+            <p className="text-xs text-gray-400 mt-2">Hệ thống hiện hỗ trợ voucher giảm theo phần trăm.</p>
           </div>
 
           <div className="pt-4 flex justify-end gap-3 mt-4">

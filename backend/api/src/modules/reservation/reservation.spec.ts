@@ -348,6 +348,8 @@ describe('ReservationService - Webhook & Idempotency Tests', () => {
       const result = await service.lockTable(customerUser, 'token', { table_id: tableId });
 
       expect(result.reservation_code).toMatch(/^RES_[A-Z0-9]+/);
+      expect(result.deposit_amount).toBe(50000);
+      expect(new Date(result.expires_at).getTime()).toBeGreaterThan(Date.now());
       expect(mockRedisClient.set).toHaveBeenCalledWith(
         `lock:${tenantId}:${tableId}`,
         customerUser.sub,
@@ -450,6 +452,27 @@ describe('ReservationService - Webhook & Idempotency Tests', () => {
       } catch (err: any) {
         expect(err.code).toBe('ERR_3001_RESERVATION_EXPIRED');
       }
+    });
+
+    it('should return reservation metadata with the generated QR', async () => {
+      const expiresAt = new Date(Date.now() + 600_000).toISOString();
+      mockRedisClient.get.mockResolvedValue(JSON.stringify({
+        tenant_id: tenantId,
+        table_id: tableId,
+        user_id: customerUser.sub,
+        amount: 50000,
+        expires_at: expiresAt,
+      }));
+
+      const result = await service.generateQr(customerUser, 'RES_VALID');
+
+      expect(result).toMatchObject({
+        code: 'RES_VALID',
+        amount: 50000,
+        expires_at: expiresAt,
+      });
+      expect(result.qr_string).toContain('RES_VALID');
+      expect(result.qr_image).toMatch(/^data:image\/png;base64,/);
     });
 
     it('should reject generateQr when called by a different customer than lock owner', async () => {

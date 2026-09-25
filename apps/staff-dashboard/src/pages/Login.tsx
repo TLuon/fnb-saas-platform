@@ -20,6 +20,7 @@ export default function Login() {
 
     setError('');
     setLoading(true);
+    authStore.getState().clearAuth();
 
     try {
       const res = await apiClient.post('/auth/login', { email, password });
@@ -30,11 +31,21 @@ export default function Login() {
       const meRes = await apiClient.get('/auth/me');
       const meData = meRes.data?.data || meRes.data || meRes;
       const profileInfo = meData.profile || {};
+
+      if (!['OWNER', 'STAFF', 'SUPPORT'].includes(meData.role_app)) {
+        throw new Error('Tài khoản không có quyền truy cập Staff Dashboard');
+      }
       
       authStore.getState().setProfile({
         id: profileInfo.id || meData.sub || 'unknown',
+        auth_user_id: meData.sub,
+        role_app: meData.role_app,
         email: email,
         full_name: profileInfo.full_name || 'Nhân viên',
+        phone: profileInfo.phone,
+        is_active: profileInfo.is_active !== false,
+        branch_id: meData.branch_id,
+        tenant_id: meData.tenant_id,
       });
       
       const role = meData.role_app || authStore.getState().role;
@@ -47,6 +58,7 @@ export default function Login() {
         navigate('/analytics');
       }
     } catch (err: any) {
+      authStore.getState().clearAuth();
       setError(err?.message || 'Lỗi kết nối máy chủ');
     } finally {
       setLoading(false);

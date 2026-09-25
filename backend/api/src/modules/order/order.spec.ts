@@ -28,6 +28,12 @@ describe('OrderService & OrderController Tests', () => {
     branch_id: 'branch-1',
     role_app: 'OWNER' as const,
   };
+  const customerUser = {
+    sub: 'customer-auth-1',
+    tenant_id: tenantId,
+    branch_id: undefined,
+    role_app: 'CUSTOMER' as const,
+  };
 
   beforeEach(() => {
     mockSupabase = {
@@ -139,6 +145,57 @@ describe('OrderService & OrderController Tests', () => {
     }));
   });
 
+  it('links a customer-created order to the tenant-scoped customer profile', async () => {
+    mockSupabase.rpc = vi.fn().mockResolvedValue({
+      data: {
+        success: true,
+        order_id: 'order-customer-1',
+        order_code: 'ORD-CUSTOMER',
+        deposit_applied: 0,
+      },
+      error: null,
+    });
+
+    const customerQuery: any = {};
+    customerQuery.select = vi.fn(() => customerQuery);
+    customerQuery.eq = vi.fn(() => customerQuery);
+    customerQuery.maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'customer-profile-1' },
+      error: null,
+    });
+
+    const orderQuery: any = {};
+    orderQuery.update = vi.fn(() => orderQuery);
+    orderQuery.eq = vi.fn(() => orderQuery);
+    orderQuery.select = vi.fn(() => orderQuery);
+    orderQuery.maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'order-customer-1' },
+      error: null,
+    });
+
+    const branchQuery: any = {};
+    branchQuery.select = vi.fn(() => branchQuery);
+    branchQuery.eq = vi.fn(() => branchQuery);
+    branchQuery.limit = vi.fn(() => branchQuery);
+    branchQuery.maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'branch-1' },
+      error: null,
+    });
+
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'customers') return customerQuery;
+      if (table === 'orders') return orderQuery;
+      if (table === 'branches') return branchQuery;
+      return {};
+    });
+
+    const result = await service.createOrder(customerUser, 'token', { order_type: 'TAKEAWAY' });
+
+    expect(customerQuery.eq).toHaveBeenCalledWith('tenant_id', tenantId);
+    expect(orderQuery.update).toHaveBeenCalledWith({ customer_id: 'customer-profile-1' });
+    expect(result.order_id).toBe('order-customer-1');
+  });
+
   it('should pass DELIVERY RPC arguments with p_table_id null', async () => {
     mockSupabase.rpc = vi.fn().mockResolvedValue({
       data: {
@@ -192,6 +249,88 @@ describe('OrderService & OrderController Tests', () => {
   });
 
   describe('OrderService.payOrder', () => {
+    it('applies a tenant-scoped customer voucher and marks it used after payment', async () => {
+      const userOrderQuery: any = {};
+      userOrderQuery.select = vi.fn(() => userOrderQuery);
+      userOrderQuery.eq = vi.fn(() => userOrderQuery);
+      userOrderQuery.single = vi.fn().mockResolvedValue({
+        data: {
+          id: 'order-1',
+          status: 'IN_PROGRESS',
+          table_id: null,
+          subtotal: 32000,
+          final_amount: 32000,
+          branch_id: 'branch-1',
+          shift_id: 'shift-1',
+        },
+        error: null,
+      });
+      userOrderQuery.update = vi.fn(() => userOrderQuery);
+
+      const customerQuery: any = {};
+      customerQuery.select = vi.fn(() => customerQuery);
+      customerQuery.eq = vi.fn(() => customerQuery);
+      customerQuery.maybeSingle = vi.fn().mockResolvedValue({
+        data: { id: 'customer-1' },
+        error: null,
+      });
+
+      const voucherQuery: any = {};
+      voucherQuery.select = vi.fn(() => voucherQuery);
+      voucherQuery.eq = vi.fn(() => voucherQuery);
+      voucherQuery.maybeSingle = vi.fn().mockResolvedValue({
+        data: {
+          id: 'voucher-1',
+          customer_id: 'customer-1',
+          discount_percent: 7,
+          is_used: false,
+          expires_at: null,
+        },
+        error: null,
+      });
+      voucherQuery.update = vi.fn(() => voucherQuery);
+
+      const adminOrderQuery: any = {};
+      adminOrderQuery.update = vi.fn(() => adminOrderQuery);
+      adminOrderQuery.eq = vi.fn(() => adminOrderQuery);
+
+      const shiftQuery: any = {};
+      shiftQuery.select = vi.fn(() => shiftQuery);
+      shiftQuery.eq = vi.fn(() => shiftQuery);
+      shiftQuery.maybeSingle = vi.fn().mockResolvedValue({ data: { id: 'shift-1' }, error: null });
+
+      const auditQuery = { insert: vi.fn().mockResolvedValue({ error: null }) };
+      const userClient = { from: vi.fn(() => userOrderQuery) };
+      const adminClient = {
+        from: vi.fn((table: string) => {
+          if (table === 'customers') return customerQuery;
+          if (table === 'customer_vouchers') return voucherQuery;
+          if (table === 'orders') return adminOrderQuery;
+          if (table === 'shifts') return shiftQuery;
+          if (table === 'audit_logs') return auditQuery;
+          return {};
+        }),
+      };
+      const voucherService = new OrderService(
+        { forUser: () => userClient, admin: () => adminClient } as any,
+        mockRealtimeGateway,
+        {} as any,
+        {} as any,
+      );
+
+      const result = await voucherService.payOrder(customerUser, 'token', 'order-1', {
+        payment_method: 'VIETQR',
+        voucher_id: 'voucher-1',
+      });
+
+      expect(adminOrderQuery.update).toHaveBeenCalledWith({
+        discount_amount: 2240,
+        final_amount: 29760,
+      });
+      expect(voucherQuery.update).toHaveBeenCalledWith({ is_used: true });
+      expect(result.message).toBe('Đã thanh toán thành công');
+    });
+
     it('should reject payOrder with COFFEE_PASS if subscription_id or totp_code is missing', async () => {
       mockSupabase.from.mockReturnValue({
         select: vi.fn().mockReturnThis(),

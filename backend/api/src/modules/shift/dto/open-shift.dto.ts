@@ -3,15 +3,21 @@ import { Type } from 'class-transformer';
 import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
 
 export class OpenShiftDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsUuidLoose()
-  branch_id!: string;
+  branch_id?: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  starting_cash!: number;
+  starting_cash?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  initial_cash?: number;
 
   @IsOptional()
   @IsString()

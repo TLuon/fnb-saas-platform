@@ -2,11 +2,17 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator
 import { Type } from 'class-transformer';
 
 export class CloseShiftDto {
-  @IsNotEmpty()
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  ending_cash!: number;
+  ending_cash?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  final_cash?: number;
 
   @IsOptional()
   @IsString()

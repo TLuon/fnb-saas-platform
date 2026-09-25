@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { RealtimeClient, apiClient } from '@fnb/utils';
+import React, { useCallback, useEffect, useState } from 'react';
+import { RealtimeClient, apiClient, authStore } from '@fnb/utils';
+import { useStore } from 'zustand';
+import { getSocketBaseUrl, mapKdsSnapshot } from '../lib/kds';
 
 export interface OrderItem {
   id: string;
@@ -122,46 +124,45 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
   const [now, setNow] = useState(Date.now());
   const [isConnected, setIsConnected] = useState(false);
   const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
-
-  const branchId = localStorage.getItem('branchId') || 'branch-1';
-
-
+  const [loadError, setLoadError] = useState('');
+  const branchId = useStore(authStore, (state) => state.branchId);
+  const accessToken = useStore(authStore, (state) => state.accessToken);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchSnapshot = () => {
+  const fetchSnapshot = useCallback(() => {
+    if (!branchId) {
+      setItems([]);
+      setLoadError('Tài khoản chưa được gán chi nhánh');
+      return;
+    }
     apiClient.get(`/api/v1/orders/kds?branch_id=${branchId}&station=${station}`)
       .then((res: any) => {
-        const fetchedItems = (res.data?.data || res.data || res || []).map((item: any) => ({
-          id: item.id,
-          orderId: item.order_id,
-          name: item.product_name,
-          quantity: item.quantity,
-          kitchen_status: item.kitchen_status || 'QUEUED',
-          createdAt: new Date(item.created_at || Date.now()).getTime(),
-          station: item.station || station,
-          orderType: item.order_type || 'DINE_IN',
-          tableName: item.table_name || '',
-          note: item.note,
-          modifiers: item.modifiers
-        }));
+        const fetchedItems = mapKdsSnapshot(res.data?.data || res.data || res || [], station);
         setItems(fetchedItems);
+        setLoadError('');
       })
-      .catch(console.error);
-  };
+      .catch((error: any) => {
+        console.error('KDS snapshot error:', error);
+        setLoadError(error?.message || 'Không thể tải danh sách món từ bếp');
+      });
+  }, [branchId, station]);
 
   useEffect(() => {
+    if (!branchId || !accessToken) return;
+
     fetchSnapshot();
 
-    const token = localStorage.getItem('jwt');
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const socketUrl = getSocketBaseUrl(apiUrl);
     const client = new RealtimeClient({
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
       supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-      socketUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-      token: token || undefined,
+      socketUrl,
+      token: accessToken,
     });
 
     client.socket.on('connect', () => {
@@ -173,6 +174,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
     client.socket.on('disconnect', () => setIsConnected(false));
 
     client.socket.on('kds_new_ticket', (ticket: any) => {
+      if (ticket.station && ticket.station !== station) return;
       const createdAt = ticket.createdAt ? new Date(ticket.createdAt).getTime() : Date.now();
       const newItems = (ticket.items || [])
         .filter((i: any) => i.station === station || !i.station)
@@ -206,10 +208,13 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
 
     client.connect();
 
+    const snapshotInterval = window.setInterval(fetchSnapshot, 10000);
+
     return () => {
+      window.clearInterval(snapshotInterval);
       client.disconnect();
     };
-  }, [branchId, station]);
+  }, [accessToken, branchId, fetchSnapshot, station]);
 
   const changeStatus = async (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => {
     const originalItem = items.find(i => i.id === itemId);
@@ -254,6 +259,11 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
       </header>
 
       <div className="flex-1 flex gap-6 overflow-x-auto pb-2">
+        {loadError && (
+          <div className="absolute left-1/2 -translate-x-1/2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700">
+            {loadError}
+          </div>
+        )}
         <div className="min-w-[320px] flex-1">
           <Column title="Chờ chế biến (QUEUED)" status="QUEUED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
         </div>
