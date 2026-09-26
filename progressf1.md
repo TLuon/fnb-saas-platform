@@ -50,3 +50,27 @@ File này ghi lại toàn bộ các tinh chỉnh và logic được xử lý sau
 - **File**: `floors/page.tsx`, `cart/page.tsx`, `cartStore.ts`, `ReservationResult.tsx`, `menu/page.tsx`
 - **Vấn đề**: Giao diện Giỏ hàng (Cart) bị code cứng chữ `"T1-01"`. Dù khách chọn bàn nào, lúc thanh toán cũng ra `T1-01`.
 - **Giải pháp**: Xây dựng luồng đồng bộ "Tên bàn" xuyên suốt: Khách chọn bàn -> URL mang tên bàn sang Modal Cọc tiền -> URL mang tên bàn sang Menu -> Lưu tên bàn vào `cartStore` -> Trang Thanh toán đọc tên bàn thực tế ra để hiển thị thay vì code cứng. Tự động chuyển loại đơn thành `DINE_IN` hoặc `TAKEAWAY` dựa vào việc có mã bàn hay không.
+
+## 10. Fix phân quyền Quản lý Thực đơn (Menu Management)
+- **Vấn đề**: Tài khoản Staff bị lỗi truy cập database (RLS violation) khi thử quản lý menu do vi phạm chính sách của Backend.
+- **Giải pháp**: Khôi phục lại phân quyền chặt chẽ ban đầu (chỉ `OWNER` mới được tạo/sửa món) và ẩn hoàn toàn nút "Quản lý thực đơn" trên thanh Sidebar của tài khoản `STAFF` để đồng bộ UI/UX.
+
+## 11. Cập nhật màu sắc giao diện Thanh trượt (Toggle)
+- **Vấn đề**: Toggle bật/tắt món ăn trên bảng thực đơn màu xanh lá cây không đồng bộ với bộ màu brand (Nâu).
+- **Giải pháp**: Đổi màu active toggle từ `brand-success` sang `brand-primary` trong `ProductFormModal.tsx` và `ProductTable.tsx`.
+
+## 12. Fix logic chuyển hướng sau khi Đặt bàn
+- **Vấn đề**: Theo SPEC.md, khách không được gọi món trước khi đến check-in tại quán, nhưng Frontend lại thiết kế sẵn nút "Đến trang Menu chọn món" ngay sau khi thanh toán cọc gây hiểu lầm.
+- **Giải pháp**: Gỡ bỏ nút gọi món, đổi thành "Quay lại sơ đồ bàn" trong `ReservationResult.tsx` để ép khách hàng tuân thủ quy trình check-in tại quán.
+
+## 13. Sửa lỗi Giao tiếp API thanh toán cọc (CORS/Port error)
+- **Vấn đề**: API giả lập thanh toán gọi nhầm sang cổng 3001 của frontend thay vì 3000 của backend, khiến báo lỗi "Không thể xác nhận thanh toán đặt cọc" (do Next.js trả về trang 404 HTML).
+- **Giải pháp**: Fix cứng `baseUrl` gọi webhook giả lập thanh toán về `http://localhost:3000/api/v1` trong `VietQRDeposit.tsx`.
+
+## 14. Background Job: Tự động giải phóng bàn
+- **Vấn đề**: Khách đặt cọc nhưng không bao giờ đến quán, khiến bàn bị khóa vĩnh viễn ở trạng thái `RESERVED`.
+- **Giải pháp**: Bổ sung luồng Cron Job ngầm (chạy mỗi 5 phút) bằng `setInterval` bên trong `reservation.service.ts` để quét và tự động mở khóa (`AVAILABLE`) cho các bàn `RESERVED` đã quá 60 phút.
+
+## 15. Bàn giao tài liệu thiết kế thiếu sót cho Backend
+- **Vấn đề**: Đội BE thiết kế thiếu sót bảng lưu thông tin giữ bàn (`reservations`), thiếu API check-in cho nhân viên, và thiếu cột lưu ảnh món ăn `image_url` cho bảng `products`.
+- **Giải pháp**: Soạn tài liệu bàn giao `bangiaobe.md` liệt kê rõ ràng yêu cầu. Team Backend sau đó đã triển khai thành công tính năng (tạo `reservations`, Cloudinary storage) và đẩy code lên nhánh `BE`.
