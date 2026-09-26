@@ -100,6 +100,16 @@ export class OrderService {
       throw new AppException('ERR_9001_VALIDATION_FAILED', 'Không tìm thấy chi nhánh cho đơn hàng');
     }
 
+    let tableWasOccupied = false;
+    if (tableId && orderType === 'DINE_IN') {
+      const { data: tData } = await supabaseAdmin.from('tables').select('status, current_order_id').eq('id', tableId).single();
+      if (tData && tData.status === 'OCCUPIED' && !tData.current_order_id) {
+        // Tạm set AVAILABLE để vượt qua block của fn_create_order
+        await supabaseAdmin.from('tables').update({ status: 'AVAILABLE' }).eq('id', tableId);
+        tableWasOccupied = true;
+      }
+    }
+
     const { data: result, error: rpcError } = await supabaseAdmin.rpc('fn_create_order', {
       p_tenant_id:        user.tenant_id,
       p_branch_id:        branchId,
@@ -111,6 +121,9 @@ export class OrderService {
     });
 
     if (rpcError) {
+      if (tableWasOccupied) {
+        await supabaseAdmin.from('tables').update({ status: 'OCCUPIED' }).eq('id', tableId);
+      }
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi khi tạo order: ${rpcError.message}`);
     }
 
@@ -124,6 +137,9 @@ export class OrderService {
     };
 
     if (!rpcResult?.success) {
+      if (tableWasOccupied) {
+        await supabaseAdmin.from('tables').update({ status: 'OCCUPIED' }).eq('id', tableId);
+      }
       const errCode = (rpcResult?.error_code ?? 'ERR_9002_INTERNAL_SERVER_ERROR') as import('../../common/constants/error-codes.js').ErrorCode;
       const errMsg  = rpcResult?.message ?? 'Tạo order thất bại';
       throw new AppException(errCode, errMsg);
@@ -270,7 +286,7 @@ export class OrderService {
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
-        id, status, table_id, branch_id,
+        id, status, table_id, branch_id, order_type,
         tables ( table_code )
       `)
       .eq('id', orderId)
@@ -329,6 +345,8 @@ export class OrderService {
       if (branchId) {
         this.realtimeGateway.emitKdsNewTicket(branchId, {
           order_id: order.id,
+          order_type: order.order_type,
+          table_name: tableCode,
           table_code: tableCode,
           station: station,
           items: items
@@ -353,8 +371,8 @@ export class OrderService {
       throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
     }
 
-    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
-      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã đóng');
+    if (order.status === 'CANCELLED') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã bị hủy');
     }
 
     // 2. Fetch existing order item to check existence & valid transition
@@ -594,6 +612,7 @@ export class OrderService {
       .eq('id', orderId);
 
     if (updateError) {
+      console.error('LỖI UPDATE ORDER:', updateError);
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi cập nhật order thành COMPLETED');
     }
 
@@ -754,6 +773,9 @@ export class OrderService {
 
     const supabase = this.supabaseService.forUser(accessToken);
 
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
     const { data: orders, error } = await supabase
       .from('orders')
       .select(`
@@ -778,7 +800,8 @@ export class OrderService {
       `)
       .eq('tenant_id', user.tenant_id)
       .eq('branch_id', branchId)
-      .in('status', ['PENDING', 'IN_PROGRESS'])
+      .in('status', ['PENDING', 'IN_PROGRESS', 'COMPLETED'])
+      .gte('created_at', yesterday.toISOString())
       .order('created_at', { ascending: true });
 
     if (error) {

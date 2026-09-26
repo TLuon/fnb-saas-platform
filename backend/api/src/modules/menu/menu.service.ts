@@ -141,6 +141,20 @@ export class MenuService {
    */
   async deactivateProduct(accessToken: string, id: string) {
     const client = this.supabase.forUser(accessToken);
+    
+    // Attempt hard delete first
+    const { data: deleteData, error: deleteError } = await client
+      .from('products')
+      .delete()
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (!deleteError && deleteData) {
+      return deleteData;
+    }
+
+    // If it fails (likely due to foreign key constraint from order_items), do a soft-delete
     const { data, error } = await client
       .from('products')
       .update({ is_active: false })

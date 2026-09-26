@@ -10,6 +10,8 @@ export function mapApiTableToCanvas(t: any) {
     width: t.width,
     height: t.height,
     shape: t.shape || 'rectangle',
-    capacity: t.capacity || 4
+    capacity: t.capacity || 4,
+    reservation_time: t.reservation_time,
+    current_order_id: t.current_order_id
   };
 }

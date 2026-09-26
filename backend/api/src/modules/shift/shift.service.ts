@@ -107,8 +107,7 @@ export class ShiftService {
       .from('orders')
       .select('final_amount')
       .eq('shift_id', shiftId)
-      .eq('status', 'COMPLETED')
-      .eq('payment_method', 'CASH');
+      .eq('status', 'COMPLETED');
 
     if (ordersError) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', ordersError.message);
 
@@ -214,6 +213,19 @@ export class ShiftService {
       .maybeSingle();
 
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    
+    if (data) {
+      // Calculate live expected_cash for the open shift
+      const { data: cashOrders } = await client
+        .from('orders')
+        .select('final_amount')
+        .eq('shift_id', data.id)
+        .eq('status', 'COMPLETED');
+        
+      const totalCashOrders = cashOrders?.reduce((sum, order) => sum + Number(order.final_amount), 0) ?? 0;
+      data.expected_cash = Number(data.starting_cash ?? data.initial_cash ?? 0) + totalCashOrders;
+    }
+
     return data ?? null;
   }
 

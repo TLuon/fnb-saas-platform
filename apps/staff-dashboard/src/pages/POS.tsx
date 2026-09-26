@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient, RealtimeClient } from '@fnb/utils';
 import { FloorMapCanvas, FloorTableCanvas } from '@fnb/ui-shared';
 import { authStore } from '@fnb/utils';
@@ -98,9 +99,9 @@ const POS: React.FC = () => {
     });
 
     // Setup realtime listener for inventory
-    const token = localStorage.getItem('jwt');
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-    const socketUrl = getSocketBaseUrl(apiUrl);
+    const token = authStore.getState().accessToken || localStorage.getItem('access_token') || localStorage.getItem('jwt');
+    const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl);
     
     const client = new RealtimeClient({
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
@@ -129,13 +130,23 @@ const POS: React.FC = () => {
     };
   }, [branchId]);
 
+  // Use search params to auto-select floor and table
+  const [searchParams] = useSearchParams();
+  const initialFloorId = searchParams.get('floor_id');
+  const initialTableId = searchParams.get('table_id');
+  const [hasAutoSelectedTable, setHasAutoSelectedTable] = useState(false);
+
   // Fetch Floors and Branch Name
   useEffect(() => {
     const query = branchId && branchId.includes('-') ? `?branch_id=${branchId}` : '';
     apiClient.get(`/floors${query}`).then((res: any) => {
         const floorList = res.data?.data || res.data || res || [];
         setFloors(floorList);
-        if (floorList.length > 0) setSelectedFloor(floorList[0].id);
+        if (initialFloorId && floorList.some((f: any) => f.id === initialFloorId)) {
+          setSelectedFloor(initialFloorId);
+        } else if (floorList.length > 0) {
+          setSelectedFloor(floorList[0].id);
+        }
       })
       .catch(console.error);
 
@@ -144,10 +155,11 @@ const POS: React.FC = () => {
       const currentBranch = branches.find((b: any) => b.id === branchId);
       if (currentBranch) setBranchName(currentBranch.name);
     }).catch(console.error);
-  }, [branchId]);
+  }, [branchId, initialFloorId]);
 
   // State for active order of current table
   const [activeTableOrder, setActiveTableOrder] = useState<any | null>(null);
+  const [activeReservation, setActiveReservation] = useState<any | null>(null);
 
   const fetchTables = () => {
     if (!selectedFloor) return;
@@ -165,13 +177,22 @@ const POS: React.FC = () => {
         current_order_id: t.current_order_id || null,
       }));
       setTables(mappedTables);
+      
+      // Auto-select table if passed via URL
+      if (initialTableId && !hasAutoSelectedTable) {
+        const targetTable = mappedTables.find((t: any) => t.id === initialTableId);
+        if (targetTable) {
+          setSelectedTable(targetTable);
+          setHasAutoSelectedTable(true);
+        }
+      }
     }).catch(console.error);
   };
 
   // Fetch Tables for selected Floor
   useEffect(() => {
     fetchTables();
-  }, [selectedFloor]);
+  }, [selectedFloor, initialTableId, hasAutoSelectedTable]);
 
   // When selectedTable changes, inspect if it has an active order
   useEffect(() => {
@@ -179,7 +200,7 @@ const POS: React.FC = () => {
       setActiveOrderId(selectedTable.current_order_id);
       apiClient.get(`/orders/${selectedTable.current_order_id}`)
         .then((res: any) => {
-          const ord = res.data?.data?.order || res.data?.order || res.data || res;
+          const ord = res?.order || res.data?.data?.order || res.data?.order || res.data || res;
           setActiveTableOrder(ord);
         })
         .catch(err => {
@@ -189,6 +210,22 @@ const POS: React.FC = () => {
     } else {
       setActiveOrderId(null);
       setActiveTableOrder(null);
+    }
+    
+    // Fetch reservation if table is reserved
+    if (selectedTable && (selectedTable.status === 'RESERVED' || selectedTable.status === 'PENDING_LOCK')) {
+      apiClient.get(`/reservations?table_id=${selectedTable.id}&limit=5`)
+        .then((res: any) => {
+          const reservations = Array.isArray(res) ? res : (res.data?.data || res.data || res || []);
+          const activeRes = reservations.find((r: any) => r.status === 'PAID' || r.status === 'PENDING');
+          setActiveReservation(activeRes || null);
+        })
+        .catch(err => {
+          console.error('Failed to load reservation for table:', err);
+          setActiveReservation(null);
+        });
+    } else {
+      setActiveReservation(null);
     }
   }, [selectedTable]);
 
@@ -352,7 +389,7 @@ const POS: React.FC = () => {
         return;
       }
 
-      // Process payment with VIETQR
+      // Process payment with VIETQR by default as requested
       await apiClient.post(`/orders/${orderId}/pay`, {
         payment_method: 'VIETQR',
       });
@@ -361,7 +398,7 @@ const POS: React.FC = () => {
       
       const updatedOrdRes: any = await apiClient.get(`/orders/${orderId}`).catch(() => null);
       if (updatedOrdRes) {
-        setActiveTableOrder(updatedOrdRes.data?.data?.order || updatedOrdRes.data?.order || updatedOrdRes.data);
+        setActiveTableOrder(updatedOrdRes?.order || updatedOrdRes.data?.data?.order || updatedOrdRes.data?.order || updatedOrdRes.data || updatedOrdRes);
       }
 
       if (orderType === 'TAKEAWAY') {
@@ -558,6 +595,29 @@ const POS: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#FAF7F3]">
+          {activeReservation && (
+            <div className="mb-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm shadow-sm">
+              <div className="font-bold text-[#1E3A8A] border-b border-blue-200 pb-2 mb-2 flex items-center justify-between">
+                <span>Thông tin Đặt bàn</span>
+                <span>#{activeReservation.reservation_code}</span>
+              </div>
+              <div className="space-y-1 text-gray-700">
+                <div className="flex justify-between">
+                  <span>Khách:</span>
+                  <span className="font-bold">{activeReservation.customer_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>SĐT:</span>
+                  <span className="font-medium">{activeReservation.customer_phone || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between text-[#B42318] font-bold border-t border-blue-100 pt-1 mt-1">
+                  <span>Đã cọc:</span>
+                  <span>{Number(activeReservation.deposit_amount || 0).toLocaleString('vi-VN')}đ</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {cart.length === 0 ? (
             <div className="h-full flex items-center justify-center text-gray-400 flex-col">
               <span className="text-4xl mb-2">🛒</span>
@@ -636,7 +696,7 @@ const POS: React.FC = () => {
               disabled={(!activeOrderId && cart.length === 0) || isSubmitting || (orderType === 'DINE_IN' && !selectedTable)}
               className="flex-1 bg-white border-2 border-[#543310] text-[#543310] py-3 rounded-xl font-bold text-sm hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
             >
-              {isSubmitting ? 'Đang gửi...' : 'Gửi Bếp'}
+              {isSubmitting ? 'Đang gửi...' : 'Lưu Đơn & Gửi Bếp'}
             </button>
             <button 
               onClick={checkoutAndPay}
@@ -722,21 +782,7 @@ const POS: React.FC = () => {
                 </div>
               </div>
 
-              {/* Giả lập list đường/đá */}
-              <div>
-                <h3 className="font-bold text-sm text-gray-700 mb-2">Lượng đá</h3>
-                <div className="flex gap-2">
-                  {['Bình thường', 'Ít đá', 'Không đá'].map(s => (
-                    <button 
-                      key={s}
-                      onClick={() => setSelectedModifiers(prev => ({...prev, ice: s}))}
-                      className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition ${selectedModifiers.ice === s ? 'border-[#D67D3E] bg-orange-50 text-[#D67D3E]' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
+
 
               <div>
                 <h3 className="font-bold text-sm text-gray-700 mb-2">Ghi chú cho Bếp</h3>

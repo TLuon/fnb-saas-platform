@@ -11,6 +11,7 @@ interface StaffFormModalProps {
 
 export function StaffFormModal({ isOpen, onClose, onSubmit, initialData }: StaffFormModalProps) {
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Role>('STAFF');
   const [loading, setLoading] = useState(false);
@@ -20,10 +21,12 @@ export function StaffFormModal({ isOpen, onClose, onSubmit, initialData }: Staff
     if (isOpen) {
       if (initialData) {
         setName(initialData.name);
+        setEmail((initialData as any).email || '');
         setPhone(initialData.phone || '');
         setRole(initialData.role);
       } else {
         setName('');
+        setEmail('');
         setPhone('');
         setRole('STAFF');
       }
@@ -35,8 +38,8 @@ export function StaffFormModal({ isOpen, onClose, onSubmit, initialData }: Staff
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError('Vui lòng nhập tên nhân viên');
+    if (!name.trim() || (!initialData && !email.trim())) {
+      setError('Vui lòng nhập tên và email nhân viên');
       return;
     }
 
@@ -45,9 +48,10 @@ export function StaffFormModal({ isOpen, onClose, onSubmit, initialData }: Staff
       setError('');
       await onSubmit({
         name: name.trim(),
+        email: email.trim(),
         phone: phone.trim(),
         role
-      });
+      } as any);
       // onClose is handled by parent after successful submission
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra');
@@ -88,6 +92,20 @@ export function StaffFormModal({ isOpen, onClose, onSubmit, initialData }: Staff
             />
           </div>
 
+          {!initialData && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-1">Email đăng nhập *</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[var(--color-brand-secondary)] focus:border-transparent outline-none transition-all"
+                placeholder="VD: nv.a@example.com"
+                disabled={loading}
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1">Số điện thoại</label>
             <input
@@ -110,7 +128,6 @@ export function StaffFormModal({ isOpen, onClose, onSubmit, initialData }: Staff
             >
               <option value="STAFF">Nhân viên (Staff)</option>
               <option value="SUPPORT">Chăm sóc khách hàng (Support)</option>
-              <option value="OWNER">Chủ quán (Owner)</option>
             </select>
           </div>
 

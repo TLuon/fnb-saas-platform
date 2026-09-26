@@ -12,6 +12,7 @@ export interface FloorTableCanvas {
   shape?: 'circle' | 'rectangle' | 'square';
   capacity?: number;
   current_order_id?: string | null;
+  reservation_time?: string | null;
 }
 
 export interface FloorMapCanvasProps {
@@ -119,6 +120,28 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(table.name, x + w/2, y + h/2);
+
+      if (table.status === 'RESERVED' && table.reservation_time) {
+        const reserveTime = new Date(table.reservation_time).getTime();
+        const cancelTime = reserveTime + 60 * 60 * 1000;
+        const now = Date.now();
+        
+        ctx.font = 'bold 12px sans-serif';
+        if (cancelTime > now) {
+          const diff = Math.floor((cancelTime - now) / 1000);
+          const mins = Math.floor(diff / 60);
+          const secs = diff % 60;
+          ctx.fillStyle = mins < 15 ? '#B42318' : '#D67D3E'; // Red if < 15 mins, orange otherwise
+          ctx.fillText(`${mins}:${secs.toString().padStart(2, '0')}`, x + w/2, y + h + 16);
+        } else {
+          ctx.fillStyle = '#B42318';
+          ctx.fillText('Hết hạn', x + w/2, y + h + 16);
+        }
+      } else if ((table.status === 'OCCUPIED' || table.status === 'CLEANING') && table.current_order_id) {
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillStyle = '#D67D3E';
+        ctx.fillText(`#${table.current_order_id.slice(0, 6).toUpperCase()}`, x + w/2, y + h + 16);
+      }
     });
 
     ctx.restore();
@@ -126,6 +149,8 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
 
   useEffect(() => {
     drawCanvas();
+    const interval = setInterval(drawCanvas, 1000);
+    return () => clearInterval(interval);
   }, [drawCanvas]);
 
   const getCanvasMousePosition = (clientX: number, clientY: number) => {

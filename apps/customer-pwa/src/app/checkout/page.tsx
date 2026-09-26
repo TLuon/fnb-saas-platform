@@ -148,7 +148,7 @@ export default function CheckoutPage() {
         <OrderTypeSelector 
           type={orderType} 
           onChange={setOrderType} 
-          tableName={orderData.table_name || orderData.tables?.table_code || 'T1-01'}
+          tableName={orderData.table_name || orderData.tables?.table_code || ''}
         />
 
         <OrderReviewList

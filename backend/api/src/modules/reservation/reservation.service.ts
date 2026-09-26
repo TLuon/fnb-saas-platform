@@ -607,6 +607,7 @@ export class ReservationService implements OnModuleInit {
     }
 
     const { data, error } = await q.order('reservation_time', { ascending: false });
+    console.log('listReservations QUERY RESULT', { data, error });
     if (error) {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
     }

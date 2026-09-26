@@ -139,7 +139,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
       setLoadError('Tài khoản chưa được gán chi nhánh');
       return;
     }
-    apiClient.get(`/api/v1/orders/kds?branch_id=${branchId}&station=${station}`)
+    apiClient.get(`/orders/kds?branch_id=${branchId}&station=${station}`)
       .then((res: any) => {
         const fetchedItems = mapKdsSnapshot(res.data?.data || res.data || res || [], station);
         setItems(fetchedItems);
@@ -156,8 +156,8 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
 
     fetchSnapshot();
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-    const socketUrl = getSocketBaseUrl(apiUrl);
+    const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl);
     const client = new RealtimeClient({
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
       supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
@@ -226,7 +226,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
     setPendingActions(prev => new Set(prev).add(itemId));
     
     try {
-      await apiClient.patch(`/api/v1/orders/${orderId}/items/${itemId}/kitchen-status`, { kitchen_status: newStatus });
+      await apiClient.patch(`/orders/${orderId}/items/${itemId}/kitchen-status`, { kitchen_status: newStatus });
     } catch (e) {
       // Revert on failure
       setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, kitchen_status: oldStatus } : item)));
@@ -241,7 +241,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#FAF7F3] p-6">
+    <div className="flex flex-col min-h-screen bg-[#FAF7F3] p-6">
       <header className="mb-6 flex justify-between items-end border-b border-[#E8DED5] pb-4">
         <div>
           <h1 className="text-3xl font-black text-[#543310]">{title}</h1>

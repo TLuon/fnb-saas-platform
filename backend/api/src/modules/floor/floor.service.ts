@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SupabaseService } from '../../config/supabase.service.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { CreateFloorDto } from './dto/create-floor.dto.js';
 import { CreateTableDto } from './dto/create-table.dto.js';
 import { UpdateTableDto } from './dto/update-table.dto.js';
 import { TableStatus, UpdateTableStatusDto } from './dto/update-table-status.dto.js';
+import { RealtimeGateway } from '../../common/realtime/realtime.gateway.js';
 
 /**
  * State machine cho chuyển trạng thái THỦ CÔNG bởi STAFF qua
@@ -30,7 +31,10 @@ const ALLOWED_MANUAL_TRANSITIONS: Record<TableStatus, TableStatus[]> = {
 
 @Injectable()
 export class FloorService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    @Optional() private readonly realtimeGateway?: RealtimeGateway,
+  ) {}
 
   /** Lấy danh sách chi nhánh của tenant hiện tại */
   async listBranches(accessToken: string, tenantId: string) {
@@ -193,6 +197,10 @@ export class FloorService {
       .single();
 
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    
+    // Broadcast status change to clients via WebSocket
+    this.realtimeGateway?.emitTableStatusChanged?.(tableId, dto.status);
+    
     return data;
   }
 }

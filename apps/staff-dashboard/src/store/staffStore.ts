@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authStore } from '@fnb/utils';
+import { apiClient } from '@fnb/utils';
 
 export type Role = 'OWNER' | 'STAFF' | 'SUPPORT';
 
@@ -26,53 +26,34 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   
   fetchStaff: async (branchId = '22222222-2222-2222-2222-222222222222') => {
     try {
-      const token = authStore.getState().accessToken;
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${baseUrl}/staff?branch_id=${branchId}`, {
-        headers,
-      });
-      if (res.ok) {
-        const rawStaff = await res.json();
-        const rawList = Array.isArray(rawStaff)
-          ? rawStaff
-          : (rawStaff.data ?? []);
-        const staff: StaffMember[] = rawList.map((s: any) => ({
-          id: s.id,
-          name: s.full_name || s.name || 'Nhân viên',
-          role: s.role,
-          active: s.is_active !== undefined ? s.is_active : (s.active !== undefined ? s.active : true),
-          phone: s.phone,
-          branch_id: s.branch_id,
-        }));
-        set({ staff });
-      }
+      const res: any = await apiClient.get(`/staff?branch_id=${branchId}`);
+      const rawList = Array.isArray(res) 
+        ? res 
+        : (res?.data?.data || res?.data || []);
+      const staff: StaffMember[] = rawList.map((s: any) => ({
+        id: s.id,
+        name: s.full_name || s.name || 'Nhân viên',
+        role: s.role,
+        active: s.is_active !== undefined ? s.is_active : (s.active !== undefined ? s.active : true),
+        phone: s.phone,
+        branch_id: s.branch_id,
+      }));
+      set({ staff });
     } catch (e) {
       console.error('Failed to fetch staff', e);
     }
   },
 
-  createStaff: async (staffData) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/staff`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(staffData)
-    });
+  createStaff: async (staffData: any) => {
+    const payload = {
+      ...staffData,
+      full_name: staffData.name,
+      email: staffData.email,
+    };
+    const res: any = await apiClient.post(`/staff`, payload);
     
-    if (!res.ok) {
-      throw new Error('Create staff failed');
-    }
-    
-    const newStaffRaw = await res.json();
-    const finalData = newStaffRaw.data || newStaffRaw;
+    // apiClient interceptor already unwraps data.data, so res might be the actual object
+    const finalData = res?.data?.data || res?.data || res;
     
     set(state => ({ staff: [...state.staff, {
       id: finalData.id,
@@ -87,18 +68,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   },
 
   updateStaff: async (id, data) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/staff/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(data)
-    });
-    
-    if (!res.ok) throw new Error('Update staff failed');
+    await apiClient.patch(`/staff/${id}`, data);
     
     set(state => ({
       staff: state.staff.map(x => x.id === id ? { ...x, ...data } : x)
@@ -106,17 +76,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
   },
 
   deactivateStaff: async (id) => {
-    const token = authStore.getState().accessToken;
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-
-    const res = await fetch(`${baseUrl}/staff/${id}/deactivate`, {
-      method: 'PATCH',
-      headers
-    });
-    
-    if (!res.ok) throw new Error('Deactivate staff failed');
+    await apiClient.patch(`/staff/${id}/deactivate`);
     
     set(state => ({
       staff: state.staff.map(x => x.id === id ? { ...x, active: false } : x)
@@ -135,20 +95,12 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
     }));
 
     try {
-      const token = authStore.getState().accessToken;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
       const endpoint = newStatus ? `/staff/${id}` : `/staff/${id}/deactivate`;
-      const res = await fetch(`${baseUrl}${endpoint}`, {
-        method: 'PATCH',
-        headers,
-        ...(newStatus ? { body: JSON.stringify({ is_active: true }) } : {}),
-      });
-      if (!res.ok) throw new Error('API failed');
+      if (newStatus) {
+        await apiClient.patch(endpoint, { is_active: true });
+      } else {
+        await apiClient.patch(endpoint);
+      }
     } catch (e) {
       set(state => ({
         staff: state.staff.map(x => 

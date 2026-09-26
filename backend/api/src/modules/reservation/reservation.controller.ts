@@ -88,6 +88,7 @@ export class ReservationController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: ListReservationsDto,
   ) {
+    console.log('listReservations CALLED', { user_tenant: user.tenant_id, query });
     return this.reservationService.listReservations(user, query);
   }
 

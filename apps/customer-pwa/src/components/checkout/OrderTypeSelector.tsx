@@ -36,7 +36,11 @@ export function OrderTypeSelector({ type, onChange, tableName }: OrderTypeSelect
       {type === 'DINE_IN' && (
         <div className="mt-3 p-3 bg-[#FAF7F3] rounded-lg border border-[#E8DED5] flex justify-between items-center text-sm">
           <span className="text-[#6B625B]">Số bàn</span>
-          <span className="font-bold text-[#543310]">{tableName || 'Đang chọn...'}</span>
+          {tableName ? (
+            <span className="font-bold text-[#543310]">{tableName}</span>
+          ) : (
+            <span className="font-medium text-[#D67D3E] italic">Vui lòng quét mã QR tại bàn</span>
+          )}
         </div>
       )}
     </div>
