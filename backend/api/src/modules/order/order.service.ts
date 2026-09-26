@@ -607,7 +607,7 @@ export class OrderService {
             current_order_id: null
           })
           .eq('id', order.table_id);
-        this.realtimeGateway.emitTableStatusChanged(order.table_id, 'OCCUPIED');
+        this.realtimeGateway?.emitTableStatusChanged?.(order.table_id, 'OCCUPIED');
       } else {
         await supabase
           .from('tables')
@@ -616,7 +616,7 @@ export class OrderService {
             current_order_id: null
           })
           .eq('id', order.table_id);
-        this.realtimeGateway.emitTableStatusChanged(order.table_id, 'AVAILABLE');
+        this.realtimeGateway?.emitTableStatusChanged?.(order.table_id, 'AVAILABLE');
       }
     }
 

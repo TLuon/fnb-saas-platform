@@ -48,6 +48,7 @@ describe('OrderService & OrderController Tests', () => {
     mockRealtimeGateway = {
       emitKdsNewTicket: vi.fn(),
       emitKdsItemStatusChanged: vi.fn(),
+      emitTableStatusChanged: vi.fn(),
     };
 
     const mockWalletService: any = {};

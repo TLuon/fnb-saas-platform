@@ -6,10 +6,14 @@ import { CreateCategoryDto } from './dto/create-category.dto.js';
 import { UpdateCategoryDto } from './dto/update-category.dto.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import { CloudinaryService, type UploadedImageFile } from '../../common/cloudinary/cloudinary.service.js';
 
 @Injectable()
 export class MenuService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   /** API_CONTRACT.md mục 3 — GET /categories. RLS tự lọc theo tenant. */
   async listCategories(accessToken: string) {
@@ -91,7 +95,7 @@ export class MenuService {
     const client = this.supabase.forUser(accessToken);
     let query = client
       .from('products')
-      .select('id, name, price, category_id, is_active, default_modifiers, created_at')
+      .select('id, name, price, category_id, is_active, default_modifiers, image_url, created_at')
       .order('name', { ascending: true });
 
     if (categoryId) query = query.eq('category_id', categoryId);
@@ -193,7 +197,7 @@ export class MenuService {
     // 4. Lấy products đang active
     const { data: products, error: prodError } = await admin
       .from('products')
-      .select('id, category_id, name, price, default_modifiers')
+      .select('id, category_id, name, price, default_modifiers, image_url')
       .eq('tenant_id', tenant.id)
       .eq('is_active', true)
       .order('name', { ascending: true });
@@ -209,5 +213,10 @@ export class MenuService {
       categories: categories ?? [],
       products: products ?? [],
     };
+  }
+
+  /** Upload product image to Cloudinary */
+  async uploadImage(file: UploadedImageFile) {
+    return this.cloudinaryService.uploadImage(file, 'products');
   }
 }

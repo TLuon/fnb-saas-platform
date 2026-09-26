@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authStore, apiClient } from '@fnb/utils';
+import { apiClient } from '@fnb/utils';
 
 export interface Category {
   id: string;
@@ -14,6 +14,7 @@ export interface Product {
   category_id?: string;
   active: boolean;
   is_active?: boolean;
+  image_url?: string;
 }
 
 interface MenuStore {
@@ -27,6 +28,7 @@ interface MenuStore {
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   toggleProduct: (id: string) => Promise<void>;
+  uploadImage: (file: File) => Promise<string>;
 }
 
 export const useMenuStore = create<MenuStore>((set, get) => ({
@@ -55,30 +57,27 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
           id: p.id,
           name: p.name,
           price: Number(p.price ?? 0),
-
           categoryId:
             p.category_id ??
             p.categoryId ??
             '',
-
           category_id:
             p.category_id ??
             p.categoryId ??
             '',
-
           active:
             p.is_active !== undefined
               ? p.is_active
               : p.active !== undefined
                 ? p.active
                 : true,
-
           is_active:
             p.is_active !== undefined
               ? p.is_active
               : p.active !== undefined
                 ? p.active
                 : true,
+          image_url: p.image_url || '',
         }),
       );
 
@@ -86,7 +85,6 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
         categories,
         products,
       });
-
       console.log('MENU LOADED:', {
         categories,
         products,
@@ -96,7 +94,6 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
         'Failed to fetch menu:',
         error,
       );
-
       set({
         categories: [],
         products: [],
@@ -129,17 +126,19 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
       ...productData,
       category_id: productData.categoryId,
     };
-
     const res = await apiClient.post('/products', payload);
     const finalProd = res.data?.data || res.data || (res as any);
-    set((state) => ({ 
+    set((state) => ({
       products: [...state.products, {
         id: finalProd.id,
         name: finalProd.name,
         price: Number(finalProd.price),
         categoryId: finalProd.category_id || productData.categoryId,
+        category_id: finalProd.category_id || productData.categoryId,
         active: finalProd.is_active ?? true,
-      }] 
+        is_active: finalProd.is_active ?? true,
+        image_url: finalProd.image_url || productData.image_url || '',
+      }]
     }));
   },
 
@@ -149,11 +148,41 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
       payload.category_id = data.categoryId;
       delete payload.categoryId;
     }
-
-    await apiClient.patch(`/products/${id}`, payload);
+    const res = await apiClient.patch(`/products/${id}`, payload);
+    const finalProd = res.data?.data || res.data || (res as any);
     set((state) => ({
-      products: state.products.map((p) => (p.id === id ? { ...p, ...data } : p)),
+      products: state.products.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              ...data,
+              image_url:
+                finalProd?.image_url !== undefined
+                  ? finalProd.image_url
+                  : data.image_url !== undefined
+                    ? data.image_url
+                    : p.image_url,
+            }
+          : p,
+      ),
     }));
+  },
+
+  uploadImage: async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await apiClient.post('/products/upload-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    const data = (res as any)?.data?.data ?? (res as any)?.data ?? res;
+    if (!data?.secure_url) {
+      throw new Error(data?.message || 'Không thể lấy URL hình ảnh từ máy chủ');
+    }
+    return data.secure_url;
   },
 
   deleteProduct: async (id) => {
@@ -167,7 +196,6 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
     const product = get().products.find(
       (p) => p.id === id,
     );
-
     if (!product) {
       return;
     }
@@ -197,7 +225,6 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
         'Failed to toggle product:',
         error,
       );
-
       // rollback optimistic update
       set((state) => ({
         products: state.products.map(
@@ -213,4 +240,4 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
       }));
     }
   },
-}));
+}));

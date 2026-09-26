@@ -14,13 +14,22 @@ declare module 'axios' {
 
 // Detect environment base URL (Next.js vs Vite)
 const getBaseURL = () => {
-  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  let url = '';
+  if (typeof process !== 'undefined') {
+    url = process.env?.NEXT_PUBLIC_API_URL || process.env?.NEXT_PUBLIC_API_BASE_URL || '';
   }
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) {
-    return (import.meta as any).env.VITE_API_BASE_URL;
+  if (!url && typeof import.meta !== 'undefined') {
+    const metaEnv = (import.meta as any).env;
+    url = metaEnv?.VITE_API_URL || metaEnv?.VITE_API_BASE_URL || '';
   }
-  return 'http://localhost:3000/api/v1';
+  if (!url) {
+    url = 'http://localhost:3001/api/v1';
+  }
+  url = url.trim().replace(/\/+$/, '');
+  if (!url.endsWith('/api/v1')) {
+    url = `${url}/api/v1`;
+  }
+  return url;
 };
 
 export interface CreateApiClientOptions {
@@ -30,15 +39,25 @@ export interface CreateApiClientOptions {
 }
 
 export function createApiClient(options: CreateApiClientOptions = {}): AxiosInstance {
+  const resolvedBaseURL = options.baseURL
+    ? options.baseURL.trim().replace(/\/+$/, '')
+    : getBaseURL();
+
   const instance = axios.create({
-    baseURL: options.baseURL || getBaseURL(),
+    baseURL: resolvedBaseURL,
   });
 
   instance.interceptors.request.use(async (reqConfig) => {
-    if (reqConfig.url?.startsWith('/api/v1/')) {
-      reqConfig.url = reqConfig.url.substring('/api/v1'.length);
-    } else if (reqConfig.url === '/api/v1') {
-      reqConfig.url = '/';
+    if (reqConfig.url) {
+      if (reqConfig.url.startsWith('/api/v1/')) {
+        reqConfig.url = reqConfig.url.substring('/api/v1'.length);
+      } else if (reqConfig.url === '/api/v1') {
+        reqConfig.url = '/';
+      } else if (reqConfig.url.startsWith('api/v1/')) {
+        reqConfig.url = '/' + reqConfig.url.substring('api/v1/'.length);
+      } else if (reqConfig.url === 'api/v1') {
+        reqConfig.url = '/';
+      }
     }
 
     let token: string | null | undefined = null;

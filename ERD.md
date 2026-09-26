@@ -27,6 +27,9 @@ erDiagram
     orders ||--o{ support_tickets : may_raise
     customers ||--o{ support_tickets : files
     customers ||--o{ customer_vouchers : receives
+    tables ||--o{ reservations : reserved_for
+    customers ||--o{ reservations : reserves
+    tenants ||--o{ reservations : owns
 ```
 
 ## 2. DDL đầy đủ
@@ -117,6 +120,25 @@ CREATE TABLE tables (
 );
 CREATE INDEX idx_tables_floor ON tables(floor_id);
 
+CREATE TABLE reservations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    table_id UUID REFERENCES tables(id) ON DELETE CASCADE,
+    customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+    customer_name VARCHAR(150),
+    customer_phone VARCHAR(20),
+    reservation_code VARCHAR(50) UNIQUE NOT NULL,
+    reservation_time TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deposit_amount NUMERIC(15,2) DEFAULT 0.00,
+    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING','PAID','CHECKED_IN','CANCELLED','EXPIRED')),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_reservations_tenant ON reservations(tenant_id);
+CREATE INDEX idx_reservations_table ON reservations(table_id);
+CREATE INDEX idx_reservations_code ON reservations(reservation_code);
+CREATE INDEX idx_reservations_status ON reservations(status);
+
 -- ============ MENU ============
 
 CREATE TABLE categories (
@@ -134,6 +156,7 @@ CREATE TABLE products (
     category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     price NUMERIC(15,2) NOT NULL,
+    image_url TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     default_modifiers JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

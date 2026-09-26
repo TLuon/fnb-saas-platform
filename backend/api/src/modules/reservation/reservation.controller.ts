@@ -1,12 +1,13 @@
-import { Body, Controller, Delete, Headers, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ReservationService } from './reservation.service.js';
 import { LockTableDto } from './dto/lock-table.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
+import { CheckInDto } from './dto/check-in.dto.js';
+import { ListReservationsDto } from './dto/list-reservations.dto.js';
 import { CurrentUser, CurrentAccessToken } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
-
 import { AppException } from '../../common/exceptions/app.exception.js';
 
 @Controller('reservations')
@@ -55,15 +56,56 @@ export class ReservationController {
     if (!tenantId) {
       throw new AppException(
         'ERR_1003_TENANT_MISMATCH',
-        'Thiếu tenantId (cần truyền qua route param, query tenant_id, body tenant_id, hoặc header x-tenant-id)'
+        'Thiếu tenantId (cần truyền qua route param, query tenant_id, body tenant_id, hoặc header x-tenant-id)',
       );
     }
     const providedSecret = secretHeader || secretQuery;
     return this.reservationService.processMockPayment(tenantId, dto, providedSecret);
   }
 
+  /**
+   * Check-in cho Staff:
+   * POST /reservations/:code/check-in
+   * POST /reservations/check-in
+   */
+  @Post([':code/check-in', 'check-in'])
+  @Roles('STAFF', 'OWNER')
+  async checkIn(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code?: string,
+    @Body() dto?: CheckInDto,
+  ) {
+    return this.reservationService.checkIn(user, code, dto);
+  }
+
+  /**
+   * Lấy danh sách đặt bàn (STAFF / OWNER)
+   * GET /reservations
+   */
+  @Get()
+  @Roles('STAFF', 'OWNER')
+  async listReservations(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListReservationsDto,
+  ) {
+    return this.reservationService.listReservations(user, query);
+  }
+
+  /**
+   * Lấy chi tiết đặt bàn theo mã code
+   * GET /reservations/:code
+   */
+  @Get(':code')
+  @Roles('STAFF', 'OWNER', 'CUSTOMER')
+  async getReservation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+  ) {
+    return this.reservationService.getReservation(user, code);
+  }
+
   @Delete(':code')
-  @Roles('CUSTOMER')
+  @Roles('CUSTOMER', 'STAFF', 'OWNER')
   async cancelReservation(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,

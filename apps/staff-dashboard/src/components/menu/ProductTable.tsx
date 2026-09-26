@@ -1,4 +1,4 @@
-import { Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2, Image as ImageIcon } from 'lucide-react';
 import type { Product, Category } from '../../store/menuStore';
 
 interface ProductTableProps {
@@ -14,7 +14,7 @@ export function ProductTable({
   categories,
   onToggleProduct,
   onEditProduct,
-  onDeleteProduct
+  onDeleteProduct,
 }: ProductTableProps) {
   if (products.length === 0) {
     return (
@@ -46,11 +46,26 @@ export function ProductTable({
               return (
                 <tr
                   key={p.id}
+                  data-testid={`product-row-${p.id}`}
                   className={`transition-colors hover:bg-gray-50 ${!isActive ? 'opacity-60 grayscale' : ''}`}
                 >
                   <td className="p-4">
-                    <div className="font-bold text-[var(--color-brand-primary)]">
-                      {p.name}
+                    <div className="flex items-center gap-3">
+                      {p.image_url ? (
+                        <img
+                          data-testid={`product-img-${p.id}`}
+                          src={p.image_url}
+                          alt={p.name}
+                          className="w-11 h-11 object-cover rounded-xl border border-gray-100 shadow-sm shrink-0"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 shrink-0">
+                          <ImageIcon size={20} />
+                        </div>
+                      )}
+                      <div className="font-bold text-[var(--color-brand-primary)]">
+                        {p.name}
+                      </div>
                     </div>
                   </td>
 
@@ -60,13 +75,11 @@ export function ProductTable({
                     </span>
                   </td>
 
-                  <td className="p-4 text-right">
-                    <div className="font-bold text-[var(--color-brand-secondary)]">
-                      {Number(p.price).toLocaleString('vi-VN')} ₫
-                    </div>
+                  <td className="p-4 text-right font-bold text-[var(--color-brand-primary)]">
+                    {Number(p.price).toLocaleString('vi-VN')}đ
                   </td>
 
-                  <td className="p-4">
+                  <td className="p-4 text-center">
                     <div className="flex justify-center">
                       <button
                         onClick={() => onToggleProduct(p.id)}
@@ -89,7 +102,8 @@ export function ProductTable({
 
                   <td className="p-4">
                     <div className="flex justify-end gap-2">
-                      <button 
+                      <button
+                        data-testid={`edit-product-${p.id}`}
                         onClick={() => onEditProduct(p)}
                         className="p-2 text-gray-400 hover:text-[var(--color-brand-primary)] transition bg-white rounded-lg border border-gray-200 hover:border-[var(--color-brand-primary)] shadow-sm"
                         title="Sửa"
@@ -97,7 +111,7 @@ export function ProductTable({
                         <Edit2 size={16} />
                       </button>
 
-                      <button 
+                      <button
                         onClick={() => onDeleteProduct(p)}
                         className="p-2 text-gray-400 hover:text-[var(--color-brand-error)] transition bg-white rounded-lg border border-gray-200 hover:border-[var(--color-brand-error)] shadow-sm"
                         title="Xóa"

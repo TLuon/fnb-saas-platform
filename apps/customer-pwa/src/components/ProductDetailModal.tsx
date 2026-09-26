@@ -46,7 +46,7 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
           <img 
             src={
               (product.image_url && product.image_url !== 'null' && product.image_url !== 'undefined' && product.image_url !== '')
-                ? (product.image_url.startsWith('http') ? product.image_url : `http://localhost:3000${product.image_url}`)
+                ? (product.image_url.startsWith('http') ? product.image_url : `http://localhost:3001${product.image_url}`)
                 : `https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=400&q=80`
             } 
             alt={product.name} 

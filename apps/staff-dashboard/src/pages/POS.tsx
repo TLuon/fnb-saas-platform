@@ -521,8 +521,12 @@ const POS: React.FC = () => {
                   onClick={() => handleProductClick(p)}
                   className={`relative border border-[#E8DED5] rounded-xl overflow-hidden bg-white shadow-sm hover:shadow transition cursor-pointer flex flex-col ${!p.is_active ? 'opacity-50' : 'hover:border-[#D67D3E]'}`}
                 >
-                  <div className="h-20 bg-gray-50 flex items-center justify-center text-gray-300">
-                    <span className="text-2xl">🍽️</span>
+                  <div className="h-20 bg-gray-50 flex items-center justify-center text-gray-300 overflow-hidden">
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl">🍽️</span>
+                    )}
                   </div>
                   <div className="p-3">
                     <h3 className="font-bold text-[#543310] text-sm mb-1 leading-tight line-clamp-2">{p.name}</h3>

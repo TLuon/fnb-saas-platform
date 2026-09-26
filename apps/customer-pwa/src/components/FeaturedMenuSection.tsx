@@ -82,7 +82,7 @@ export function FeaturedMenuSection() {
               <img 
                 src={
                   (item.image_url && item.image_url !== 'null' && item.image_url !== 'undefined' && item.image_url !== '')
-                    ? (item.image_url.startsWith('http') ? item.image_url : `http://localhost:3000${item.image_url}`)
+                    ? (item.image_url.startsWith('http') ? item.image_url : `http://localhost:3001${item.image_url}`)
                     : `https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=400&q=80`
                 } 
                 alt={item.name} 

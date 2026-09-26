@@ -86,7 +86,43 @@ export class FloorService {
       .order('table_code', { ascending: true });
 
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
-    return data;
+    if (!data || data.length === 0) return [];
+
+    const reservedTableIds = data.filter((t) => t.status === 'RESERVED').map((t) => t.id);
+    if (reservedTableIds.length === 0) return data;
+
+    // Fetch active reservations for RESERVED tables
+    const admin = this.supabase.admin();
+    const { data: reservations } = await admin
+      .from('reservations')
+      .select('id, table_id, customer_name, customer_phone, reservation_time, reservation_code, deposit_amount')
+      .in('table_id', reservedTableIds)
+      .eq('status', 'PAID')
+      .order('created_at', { ascending: false });
+
+    if (!reservations || reservations.length === 0) return data;
+
+    const resMap = new Map<string, any>();
+    for (const r of reservations) {
+      if (!resMap.has(r.table_id)) {
+        resMap.set(r.table_id, r);
+      }
+    }
+
+    return data.map((t) => {
+      const res = resMap.get(t.id);
+      if (res) {
+        return {
+          ...t,
+          customer_name: res.customer_name,
+          customer_phone: res.customer_phone,
+          reservation_time: res.reservation_time,
+          reservation_code: res.reservation_code,
+          reservation: res,
+        };
+      }
+      return t;
+    });
   }
 
   /** API_CONTRACT.md mục 2 — POST /tables (OWNER). */

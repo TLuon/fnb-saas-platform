@@ -17,4 +17,8 @@ export class CreateProductDto {
   @IsOptional()
   @IsArray()
   default_modifiers?: unknown[];
+
+  @IsOptional()
+  @IsString()
+  image_url?: string;
 }

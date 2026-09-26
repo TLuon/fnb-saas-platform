@@ -61,4 +61,27 @@ describe('createApiClient', () => {
     expect(caughtError).not.toBeNull();
     expect(caughtError.code).toBe('ERR_1001_UNAUTHORIZED');
   });
+
+  it('should default to port 3001 with /api/v1 suffix', () => {
+    const client = createApiClient();
+    expect(client.defaults.baseURL).toBe('http://localhost:3001/api/v1');
+  });
+
+  it('should prevent duplicating /api/v1 in request URL', async () => {
+    const client = createApiClient({ baseURL: 'http://localhost:3001/api/v1' });
+    let capturedUrl = '';
+    client.defaults.adapter = async (config) => {
+      capturedUrl = config.url || '';
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config } as any;
+    };
+
+    await client.get('/api/v1/auth/login');
+    expect(capturedUrl).toBe('/auth/login');
+
+    await client.get('api/v1/products');
+    expect(capturedUrl).toBe('/products');
+
+    await client.get('/categories');
+    expect(capturedUrl).toBe('/categories');
+  });
 });

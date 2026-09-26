@@ -24,6 +24,7 @@ describe('ReservationService - Webhook & Idempotency Tests', () => {
 
     mockRealtimeGateway = {
       emitUnmatchedTransactionCreated: vi.fn(),
+      emitTableStatusChanged: vi.fn(),
     };
 
     mockSupabaseAdmin = {

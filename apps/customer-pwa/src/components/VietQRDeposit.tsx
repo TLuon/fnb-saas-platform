@@ -19,7 +19,7 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
     async function loadRealQr() {
       if (!reservationCode) return;
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
         let token = '';
         if (typeof document !== 'undefined') {
           const match = document.cookie.match(/(?:^|;\s*)jwt=([^;]*)/);
@@ -57,7 +57,7 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
     setIsProcessing(true);
     setPaymentError('');
     try {
-      const baseUrl = 'http://localhost:3000/api/v1';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
       // Call backend simulated payment webhook
       const response = await fetch(`${baseUrl}/reservations/webhook/mock-payment/${tenantId}?secret=dev-mock-secret-key-12345`, {
         method: 'POST',

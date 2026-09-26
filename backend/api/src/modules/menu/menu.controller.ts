@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MenuService } from './menu.service.js';
+import type { UploadedImageFile } from '../../common/cloudinary/cloudinary.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentAccessToken, CurrentUser } from '../../common/decorators/current-user.decorator.js';
@@ -54,6 +56,13 @@ export class MenuController {
     @CurrentAccessToken() token: string,
   ) {
     return this.menuService.listProducts(token, user.role_app, query.category_id);
+  }
+
+  @Roles('OWNER', 'STAFF')
+  @Post(['products/upload-image', 'products/upload'])
+  @UseInterceptors(FileInterceptor('file'))
+  uploadProductImage(@UploadedFile() file: UploadedImageFile) {
+    return this.menuService.uploadImage(file);
   }
 
   @Roles('OWNER')

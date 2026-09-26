@@ -52,6 +52,7 @@ export function MenuToolbar({
           Thêm danh mục
         </button>
         <button 
+          data-testid="add-product-btn"
           onClick={onAddProduct}
           className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-[var(--color-brand-primary)] text-white font-semibold rounded-xl hover:bg-[var(--color-brand-secondary)] transition-colors shadow-sm"
         >
