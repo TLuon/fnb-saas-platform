@@ -1,6 +1,7 @@
 export interface KdsSnapshotItem {
   order_item_id: string;
   order_id: string;
+  order_code?: string;
   product_name: string;
   quantity: number;
   kitchen_status?: 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
@@ -17,6 +18,7 @@ export function mapKdsSnapshot(items: KdsSnapshotItem[], fallbackStation: 'KITCH
   return items.map((item) => ({
     id: item.order_item_id,
     orderId: item.order_id,
+    orderCode: item.order_code || (item.order_id ? 'ORD-' + item.order_id.slice(0, 6).toUpperCase() : ''),
     name: item.product_name,
     quantity: item.quantity,
     kitchen_status: item.kitchen_status || 'QUEUED',

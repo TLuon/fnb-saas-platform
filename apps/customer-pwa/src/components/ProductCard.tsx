@@ -17,15 +17,13 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onClick, onAdd }: ProductCardProps) {
-  const { requireAuth } = useAuthGuard();
   const isAvailable = product.is_available !== false;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
-    requireAuth(() => {
-      onAdd(e);
-    });
+    onAdd(e);
   };
+
 
   return (
     <div 

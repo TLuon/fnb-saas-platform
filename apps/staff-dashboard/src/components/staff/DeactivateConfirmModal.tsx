@@ -69,21 +69,21 @@ export function DeactivateConfirmModal({ isOpen, onClose, onConfirm, staff, tota
             </div>
           )}
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-2">
             <button
               onClick={onClose}
               disabled={loading}
-              className="px-5 py-2.5 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 transition-colors"
+              className="px-5 py-2.5 text-gray-700 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               Hủy
             </button>
             <button
               onClick={handleConfirm}
               disabled={loading || isLastOwner}
-              className={`px-5 py-2.5 font-bold rounded-xl shadow-sm transition-colors ${
+              className={`px-5 py-2.5 font-bold rounded-xl shadow-md transition-all ${
                 isLastOwner 
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-[var(--color-brand-error)] text-white hover:bg-red-700'
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300' 
+                  : 'bg-[#B42318] text-white hover:bg-red-800'
               }`}
             >
               {loading ? 'Đang xử lý...' : 'Vô hiệu hóa'}

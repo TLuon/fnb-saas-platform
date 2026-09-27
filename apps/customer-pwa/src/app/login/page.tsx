@@ -90,6 +90,15 @@ export default function LoginPage() {
               disabled={loading}
               required
             />
+            <div className="flex justify-end mt-1.5">
+              <button
+                type="button"
+                onClick={() => router.push('/forgot-password')}
+                className="text-xs text-[#D67D3E] font-medium hover:underline"
+              >
+                Quên mật khẩu?
+              </button>
+            </div>
           </div>
           <button 
             type="submit" 

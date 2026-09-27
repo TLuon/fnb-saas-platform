@@ -4,11 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { apiClient } from '@fnb/utils';
 import { EmptyState, LoadingSkeleton } from '@fnb/ui-shared';
 import { normalizePublicCatalog, type CatalogProduct } from '../lib/catalog';
+import { useCartStore } from '../stores/cartStore';
+import { useToast } from './ToastProvider';
 
 export function FeaturedMenuSection() {
   const [items, setItems] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const addItem = useCartStore((state) => state.addItem);
+  const { showInfo } = useToast();
 
   useEffect(() => {
     const fetchCatalog = async () => {
@@ -75,6 +79,9 @@ export function FeaturedMenuSection() {
         {items.map((item, index) => (
           <div 
             key={item.id} 
+            onClick={() => {
+              window.location.href = '/menu';
+            }}
             className="menu-card bg-white/60 backdrop-blur-md rounded-2xl border border-white/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(84,51,16,0.12)] transition-all duration-500 group cursor-pointer"
             style={{ animationDelay: `${index * 100}ms` }}
           >
@@ -98,7 +105,20 @@ export function FeaturedMenuSection() {
                 <span className="font-bold text-[#543310] text-lg">
                   {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.base_price)}
                 </span>
-                <button className="flex items-center gap-1 text-[var(--color-brand-secondary)] font-bold text-sm hover:text-[var(--color-brand-primary)] transition-colors opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 duration-300">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addItem({
+                      productId: item.id,
+                      name: item.name,
+                      price: item.base_price,
+                      quantity: 1,
+                      imageUrl: item.image_url
+                    });
+                    showInfo(`Đã thêm ${item.name} vào giỏ hàng`);
+                  }}
+                  className="flex items-center gap-1 text-[var(--color-brand-secondary)] font-bold text-sm hover:text-[var(--color-brand-primary)] transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 translate-x-0 md:translate-x-2 group-hover:translate-x-0 duration-300 bg-[#FAF7F3] px-3 py-1.5 rounded-lg border border-[#E8DED5]"
+                >
                   <span>Thêm</span>
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                 </button>
@@ -110,3 +130,5 @@ export function FeaturedMenuSection() {
     </section>
   );
 }
+
+

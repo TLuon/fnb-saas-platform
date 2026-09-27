@@ -30,19 +30,19 @@ export class MenuController {
     return this.menuService.listCategories(token);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Post('categories')
   createCategory(@Body() dto: CreateCategoryDto, @CurrentUser() user: AuthenticatedUser, @CurrentAccessToken() token: string) {
     return this.menuService.createCategory(token, user.tenant_id, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Patch('categories/:id')
   updateCategory(@Param('id') id: string, @Body() dto: UpdateCategoryDto, @CurrentAccessToken() token: string) {
     return this.menuService.updateCategory(token, id, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Delete('categories/:id')
   deleteCategory(@Param('id') id: string, @CurrentAccessToken() token: string) {
     return this.menuService.deleteCategory(token, id);
@@ -65,19 +65,19 @@ export class MenuController {
     return this.menuService.uploadImage(file);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Post('products')
   createProduct(@Body() dto: CreateProductDto, @CurrentUser() user: AuthenticatedUser, @CurrentAccessToken() token: string) {
     return this.menuService.createProduct(token, user.tenant_id, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Patch('products/:id')
   updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto, @CurrentAccessToken() token: string) {
     return this.menuService.updateProduct(token, id, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Delete('products/:id')
   deactivateProduct(@Param('id') id: string, @CurrentAccessToken() token: string) {
     return this.menuService.deactivateProduct(token, id);

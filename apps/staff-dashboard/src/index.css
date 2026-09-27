@@ -5,6 +5,8 @@
   --color-brand-secondary: #D67D3E;
   --color-brand-accent: #FED8B1;
   --color-brand-neutral: #FAF7F3;
+  --color-brand-error: #B42318;
+  --color-brand-success: #237A57;
   --font-sans: "Plus Jakarta Sans", sans-serif;
   --font-serif: "Playfair Display", serif;
 }

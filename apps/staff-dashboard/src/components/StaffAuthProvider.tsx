@@ -43,8 +43,16 @@ export const StaffAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     void validateSession();
 
+    const handleUnauthorized = () => {
+      authStore.getState().clearAuth();
+      window.location.href = '/login';
+    };
+
+    window.addEventListener('api:unauthorized', handleUnauthorized);
+
     return () => {
       mounted = false;
+      window.removeEventListener('api:unauthorized', handleUnauthorized);
     };
   }, []);
 

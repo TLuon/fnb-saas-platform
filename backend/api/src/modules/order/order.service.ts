@@ -286,7 +286,7 @@ export class OrderService {
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
-        id, status, table_id, branch_id, order_type,
+        id, order_code, status, table_id, branch_id, order_type,
         tables ( table_code )
       `)
       .eq('id', orderId)
@@ -340,11 +340,13 @@ export class OrderService {
 
     const tableCode = (order.tables as any)?.table_code || 'Unknown';
     const branchId = order.branch_id;
+    const orderCode = (order as any).order_code || ('ORD-' + order.id.slice(0, 6).toUpperCase());
 
     for (const [station, items] of stations.entries()) {
       if (branchId) {
         this.realtimeGateway.emitKdsNewTicket(branchId, {
           order_id: order.id,
+          order_code: orderCode,
           order_type: order.order_type,
           table_name: tableCode,
           table_code: tableCode,
@@ -601,12 +603,11 @@ export class OrderService {
       await this.coffeePassService.redeemForOrder(user, accessToken, dto.coffee_pass_subscription_id, dto.totp_code, orderId);
     }
 
-    // CASH / VIETQR / COFFEE_PASS: Update order status thông thường
-    // (COFFEE_PASS redeemForOrder đã xử lý validation, chỉ cần mark COMPLETED)
+    const targetStatus = dto.status || (order.status === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED');
     const { error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'COMPLETED',
+        status: targetStatus,
         payment_method: dto.payment_method
       })
       .eq('id', orderId);
@@ -664,6 +665,42 @@ export class OrderService {
     return { message: 'Đã thanh toán thành công' };
   }
 
+  async cancelOrder(user: AuthenticatedUser, accessToken: string, orderId: string) {
+    const supabase = this.supabaseService.forUser(accessToken);
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status, table_id')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
+    }
+
+    if (order.status === 'CANCELLED') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã bị hủy trước đó');
+    }
+
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ status: 'CANCELLED' })
+      .eq('id', orderId);
+
+    if (updateError) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khi hủy đơn hàng');
+    }
+
+    if (order.table_id) {
+      await supabase
+        .from('tables')
+        .update({ status: 'AVAILABLE', current_order_id: null })
+        .eq('id', order.table_id);
+    }
+
+    return { message: 'Đã hủy đơn hàng' };
+  }
+
   async getOrder(user: AuthenticatedUser, accessToken: string, orderId: string) {
     const supabase = this.supabaseService.forUser(accessToken);
 
@@ -715,7 +752,7 @@ export class OrderService {
 
     let queryBuilder = supabase
       .from('orders')
-      .select('*, order_items(*)', { count: 'exact' })
+      .select('*, order_items(*), tables(table_code)', { count: 'exact' })
       .eq('tenant_id', user.tenant_id);
 
     // Role scoping
@@ -800,7 +837,7 @@ export class OrderService {
       `)
       .eq('tenant_id', user.tenant_id)
       .eq('branch_id', branchId)
-      .in('status', ['PENDING', 'IN_PROGRESS', 'COMPLETED'])
+      .in('status', ['IN_PROGRESS'])
       .gte('created_at', yesterday.toISOString())
       .order('created_at', { ascending: true });
 
@@ -849,7 +886,7 @@ export class OrderService {
 
         kdsItems.push({
           order_id: order.id,
-          order_code: order.order_code,
+          order_code: order.order_code || ('ORD-' + order.id.slice(0, 6).toUpperCase()),
           table_id: order.table_id ?? null,
           table_code: tableCode,
           order_type: order.order_type ?? 'DINE_IN',

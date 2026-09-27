@@ -14,8 +14,11 @@ interface CheckoutButtonProps {
   orderNote?: string;
 }
 
+import { useToast } from '../ToastProvider';
+
 export function CheckoutButton({ isDisabled, itemCount, totalAmount, items, orderNote }: CheckoutButtonProps) {
   const router = useRouter();
+  const { showError } = useToast();
   const isAuthenticated = useStore(authStore, (state) => state.isAuthenticated);
   const reservationCode = useCartStore((state) => state.reservationCode);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -61,7 +64,7 @@ export function CheckoutButton({ isDisabled, itemCount, totalAmount, items, orde
       router.push(`/checkout?order_id=${orderId}`);
     } catch (err: any) {
       console.error('Checkout creation error:', err);
-      alert(err.response?.data?.message || err.message || 'Lỗi khi tạo đơn hàng');
+      showError(err.response?.data?.message || err.message || 'Lỗi khi tạo đơn hàng');
     } finally {
       setIsSubmitting(false);
     }

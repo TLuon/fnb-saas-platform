@@ -82,7 +82,7 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
           <ArrowLeft size={24} />
         </button>
         <div>
-          <h1 className="text-xl font-bold font-serif text-[#543310] uppercase">#{order.id}</h1>
+          <h1 className="text-xl font-bold font-serif text-[#543310] uppercase">#{order.order_code || order.order_number || ('ORD-' + order.id?.slice(0, 6).toUpperCase())}</h1>
           <p className="text-xs text-[#6B625B]">{new Date(order.created_at).toLocaleString('vi-VN')}</p>
         </div>
       </div>
@@ -90,12 +90,12 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
       <div className="max-w-screen-xl mx-auto w-full p-4 space-y-4">
         <OrderStatusTimeline currentStatus={order.status} />
 
-        <OrderDetailItems items={order.items || []} />
+        <OrderDetailItems items={order.order_items || order.items || []} />
 
         <PaymentSummary 
-          subtotal={order.total_amount} 
-          discount={order.discount} 
-          total={order.total_amount} 
+          subtotal={Number(order.subtotal || order.total_amount || order.final_amount || 0)} 
+          discount={Number(order.discount_amount || order.discount || 0)} 
+          total={Number(order.final_amount || order.total_amount || order.subtotal || 0)} 
           paymentMethod={order.payment_method} 
         />
 

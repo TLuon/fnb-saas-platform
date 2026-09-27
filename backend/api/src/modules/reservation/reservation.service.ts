@@ -213,15 +213,16 @@ export class ReservationService implements OnModuleInit {
       throw new AppException('ERR_1001_UNAUTHORIZED', 'Không có quyền truy cập reservation code này');
     }
 
-    const qrString = `VIETQR_MOCK|${code}|${resData.amount}`;
-    const qrDataUrl = await QRCode.toDataURL(qrString);
+    const memo = `DATBAN ${code}`;
+    const qrString = `VIETQR|${code}|${resData.amount}`;
+    const realQrImageUrl = `https://img.vietqr.io/image/vietcombank-9344566957-compact2.png?amount=${Math.round(resData.amount)}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent('TRAN THANH LUON')}`;
 
     return {
       code,
       amount: Number(resData.amount),
       expires_at: resData.expires_at,
       qr_string: qrString,
-      qr_image: qrDataUrl,
+      qr_image: realQrImageUrl,
     };
   }
 

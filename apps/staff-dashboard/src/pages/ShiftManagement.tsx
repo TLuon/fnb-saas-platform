@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
 import { useShiftStore, type ShiftRecord } from '../store/shiftStore';
+import { useModal } from '../components/ModalProvider';
 
 const DEFAULT_BRANCH_ID = '22222222-2222-2222-2222-222222222222';
 
@@ -133,6 +134,8 @@ function ShiftManagementContent() {
   const activeShift = currentShift?.status === 'OPEN' ? currentShift : null;
   const expectedCash = activeShift?.expectedCash ?? activeShift?.startingCash ?? 0;
 
+  const { showAlert } = useModal();
+
   useEffect(() => {
     void fetchCurrentShift(branchId);
     void fetchShifts(branchId);
@@ -149,9 +152,9 @@ function ShiftManagementContent() {
     try {
       await openShift(branchId, initialCash);
       await fetchShifts(branchId);
-      alert('Đã mở ca thành công!');
+      showAlert('Đã mở ca làm việc thành công!', 'success', 'Thành Công');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Không thể mở ca');
+      showAlert(err instanceof Error ? err.message : 'Không thể mở ca', 'error', 'Lỗi Mở Ca');
     } finally {
       setIsSubmitting(false);
     }
@@ -165,9 +168,9 @@ function ShiftManagementContent() {
       await closeShift(activeShift.id, finalCash);
       await fetchCurrentShift(branchId);
       await fetchShifts(branchId);
-      alert('Đã đóng ca thành công!');
+      showAlert('Đã kết thúc ca làm việc thành công!', 'success', 'Thành Công');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Không thể đóng ca');
+      showAlert(err instanceof Error ? err.message : 'Không thể đóng ca', 'error', 'Lỗi Đóng Ca');
     } finally {
       setIsSubmitting(false);
     }

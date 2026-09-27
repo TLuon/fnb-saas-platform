@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { RealtimeClient, apiClient, authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
 import { getSocketBaseUrl, mapKdsSnapshot } from '../lib/kds';
+import { useModal } from './ModalProvider';
 
 export interface OrderItem {
   id: string;
   orderId: string;
+  orderCode?: string;
   name: string;
   quantity: number;
   kitchen_status: 'QUEUED' | 'PREPARING' | 'READY' | 'SERVED';
@@ -25,9 +27,10 @@ interface ColumnProps {
   lateThresholdMins: number;
   changeStatus: (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => void;
   pendingActions: Set<string>;
+  isReadOnly?: boolean;
 }
 
-const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThresholdMins, changeStatus, pendingActions }) => (
+const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThresholdMins, changeStatus, pendingActions, isReadOnly }) => (
   <div className="flex-1 flex flex-col bg-white border border-[#E8DED5] rounded-xl p-4 shadow-sm min-h-[500px]">
     <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
       <h3 className="text-lg font-bold text-[#543310]">{title}</h3>
@@ -52,7 +55,7 @@ const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThreshol
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-lg text-[#543310]">#{item.orderId.slice(0, 5)}</span>
+                    <span className="font-bold text-lg text-[#543310]">#{item.orderCode || (item.orderId ? 'ORD-' + item.orderId.slice(0, 6).toUpperCase() : '')}</span>
                     {item.orderType === 'TAKEAWAY' ? (
                       <span className="bg-[#D67D3E] text-white text-xs font-bold px-2 py-0.5 rounded uppercase">Mang đi</span>
                     ) : item.tableName ? (
@@ -76,33 +79,42 @@ const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThreshol
                   {elapsedMins} phút
                 </span>
               </div>
+              
               <div className="mt-2 flex gap-2">
-                {status === 'QUEUED' && (
-                  <button
-                    onClick={() => changeStatus(item.orderId, item.id, 'PREPARING')}
-                    disabled={isPending}
-                    className="flex-1 text-sm bg-[#D67D3E] text-white py-2 rounded-md font-bold shadow-sm hover:bg-orange-700 transition"
-                  >
-                    Bắt đầu làm
-                  </button>
-                )}
-                {status === 'PREPARING' && (
-                  <button
-                    onClick={() => changeStatus(item.orderId, item.id, 'READY')}
-                    disabled={isPending}
-                    className="flex-1 text-sm bg-[#237A57] text-white py-2 rounded-md font-bold shadow-sm hover:bg-green-700 transition"
-                  >
-                    Hoàn thành
-                  </button>
-                )}
-                {status === 'READY' && (
-                  <button
-                    onClick={() => changeStatus(item.orderId, item.id, 'SERVED')}
-                    disabled={isPending}
-                    className="flex-1 text-sm bg-gray-200 text-gray-800 py-2 rounded-md font-bold shadow-sm hover:bg-gray-300 transition"
-                  >
-                    Đã giao (Served)
-                  </button>
+                {isReadOnly ? (
+                  <div className="flex-1 text-center py-1.5 px-2 bg-gray-100 text-gray-500 rounded text-xs font-bold border border-gray-200">
+                    Chỉ xem tiến trình (Read-Only)
+                  </div>
+                ) : (
+                  <>
+                    {status === 'QUEUED' && (
+                      <button
+                        onClick={() => changeStatus(item.orderId, item.id, 'PREPARING')}
+                        disabled={isPending}
+                        className="flex-1 text-sm bg-[#D67D3E] text-white py-2 rounded-md font-bold shadow-sm hover:bg-orange-700 transition"
+                      >
+                        Bắt đầu làm
+                      </button>
+                    )}
+                    {status === 'PREPARING' && (
+                      <button
+                        onClick={() => changeStatus(item.orderId, item.id, 'READY')}
+                        disabled={isPending}
+                        className="flex-1 text-sm bg-[#237A57] text-white py-2 rounded-md font-bold shadow-sm hover:bg-green-700 transition"
+                      >
+                        Hoàn thành
+                      </button>
+                    )}
+                    {status === 'READY' && (
+                      <button
+                        onClick={() => changeStatus(item.orderId, item.id, 'SERVED')}
+                        disabled={isPending}
+                        className="flex-1 text-sm bg-gray-200 text-gray-800 py-2 rounded-md font-bold shadow-sm hover:bg-gray-300 transition"
+                      >
+                        Đã giao (Served)
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -120,6 +132,7 @@ export interface KDSBoardProps {
 }
 
 export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description, lateThresholdMins }) => {
+  const { showAlert } = useModal();
   const [items, setItems] = useState<OrderItem[]>([]);
   const [now, setNow] = useState(Date.now());
   const [isConnected, setIsConnected] = useState(false);
@@ -127,6 +140,15 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
   const [loadError, setLoadError] = useState('');
   const branchId = useStore(authStore, (state) => state.branchId);
   const accessToken = useStore(authStore, (state) => state.accessToken);
+  const profile = useStore(authStore, (state) => state.profile);
+  const userEmail = profile?.email || '';
+
+  const isReadOnly = React.useMemo(() => {
+    if (profile?.role_app === 'OWNER') return false;
+    if (userEmail.toLowerCase().includes('bep')) return station !== 'KITCHEN';
+    if (userEmail.toLowerCase().includes('bar')) return station !== 'BAR';
+    return true; // Cashier Staff (staff.runtime@example.com) is Read-Only!
+  }, [profile, userEmail, station]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60000);
@@ -147,7 +169,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
       })
       .catch((error: any) => {
         console.error('KDS snapshot error:', error);
-        setLoadError(error?.message || 'Không thể tải danh sách món từ bếp');
+        setLoadError(error?.message || 'Không thể tải danh sách món');
       });
   }, [branchId, station]);
 
@@ -181,6 +203,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
         .map((item: any) => ({
           id: item.order_item_id || item.id || crypto.randomUUID(),
           orderId: ticket.order_id || ticket.orderId || '',
+          orderCode: ticket.order_code || ticket.orderCode || (ticket.order_id ? 'ORD-' + ticket.order_id.slice(0, 6).toUpperCase() : ''),
           name: item.product_name || item.name || 'Món',
           quantity: item.quantity,
           kitchen_status: item.kitchen_status || 'QUEUED',
@@ -217,6 +240,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
   }, [accessToken, branchId, fetchSnapshot, station]);
 
   const changeStatus = async (orderId: string, itemId: string, newStatus: OrderItem['kitchen_status']) => {
+    if (isReadOnly) return;
     const originalItem = items.find(i => i.id === itemId);
     if (!originalItem) return;
     const oldStatus = originalItem.kitchen_status;
@@ -230,7 +254,7 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
     } catch (e) {
       // Revert on failure
       setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, kitchen_status: oldStatus } : item)));
-      alert('Không thể cập nhật trạng thái');
+      showAlert('Không thể cập nhật trạng thái món ăn lúc này', 'error', 'Lỗi Cập Nhật');
     } finally {
       setPendingActions(prev => {
         const next = new Set(prev);
@@ -244,7 +268,14 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
     <div className="flex flex-col min-h-screen bg-[#FAF7F3] p-6">
       <header className="mb-6 flex justify-between items-end border-b border-[#E8DED5] pb-4">
         <div>
-          <h1 className="text-3xl font-black text-[#543310]">{title}</h1>
+          <h1 className="text-3xl font-black text-[#543310] flex items-center gap-3">
+            {title}
+            {isReadOnly && (
+              <span className="text-xs bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1 rounded-full font-bold">
+                👁️ Màn hình theo dõi tiến trình (Read-Only)
+              </span>
+            )}
+          </h1>
           <p className="text-gray-500 font-medium mt-1">{description}</p>
         </div>
         <div className="flex items-center gap-6">
@@ -265,18 +296,19 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
           </div>
         )}
         <div className="min-w-[320px] flex-1">
-          <Column title="Chờ chế biến (QUEUED)" status="QUEUED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+          <Column title="Chờ chế biến (QUEUED)" status="QUEUED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} isReadOnly={isReadOnly} />
         </div>
         <div className="min-w-[320px] flex-1">
-          <Column title="Đang làm (PREPARING)" status="PREPARING" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+          <Column title="Đang làm (PREPARING)" status="PREPARING" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} isReadOnly={isReadOnly} />
         </div>
         <div className="min-w-[320px] flex-1">
-          <Column title="Sẵn sàng (READY)" status="READY" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+          <Column title="Sẵn sàng (READY)" status="READY" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} isReadOnly={isReadOnly} />
         </div>
         <div className="min-w-[320px] flex-1 opacity-60">
-          <Column title="Đã phục vụ (SERVED)" status="SERVED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} />
+          <Column title="Đã phục vụ (SERVED)" status="SERVED" items={items} now={now} lateThresholdMins={lateThresholdMins} changeStatus={changeStatus} pendingActions={pendingActions} isReadOnly={isReadOnly} />
         </div>
       </div>
     </div>
   );
 };
+

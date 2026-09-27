@@ -11,24 +11,35 @@ interface AuthGuardProps {
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requiredRole }) => {
   const accessToken = useStore(authStore, state => state.accessToken);
   const role = useStore(authStore, state => state.role);
+  const profile = useStore(authStore, state => state.profile);
   const location = useLocation();
 
   if (!accessToken) {
     return <Navigate to="/login" replace />;
   }
 
-  // Determine access based on role
+  const email = (profile?.email || '').toLowerCase();
+
+  // Determine access based on role & sub-role station
   let authorized = false;
 
   if (role === 'OWNER') {
     authorized = true; // OWNER has access to all routes
   } else if (role === 'SUPPORT') {
-    // SUPPORT can only access routes under /support
     authorized = location.pathname.startsWith('/support');
   } else if (role === 'STAFF') {
-    // STAFF can only access operation routes like /kds
-    authorized = requiredRole === 'STAFF'; 
+    if (requiredRole === 'STAFF') {
+      if (email.includes('bep')) {
+        authorized = location.pathname === '/kds/kitchen';
+      } else if (email.includes('bar')) {
+        authorized = location.pathname === '/kds/bar';
+      } else {
+        // Cashier Staff (staff.runtime@example.com)
+        authorized = ['/pos', '/floor-map', '/kds/kitchen', '/kds/bar', '/orders-history'].includes(location.pathname);
+      }
+    }
   }
+
 
   if (!authorized) {
     return (

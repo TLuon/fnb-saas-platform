@@ -153,4 +153,42 @@ export class StaffService {
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
     return data;
   }
+
+  /** API_CONTRACT.md mục 4 — POST /staff/:id/reset-password (OWNER). */
+  async resetStaffPassword(accessToken: string, id: string, customPassword?: string) {
+    const client = this.supabase.forUser(accessToken);
+    const { data: target, error } = await client
+      .from('users')
+      .select('id, auth_user_id, full_name, role')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !target) {
+      throw new AppException('ERR_8001_STAFF_NOT_FOUND', 'Không tìm thấy thông tin nhân viên');
+    }
+
+    if (!target.auth_user_id) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Tài khoản nhân viên chưa liên kết Auth ID');
+    }
+
+    const newPassword = customPassword && customPassword.trim().length >= 6
+      ? customPassword.trim()
+      : randomBytes(6).toString('hex');
+
+    const admin = this.supabase.admin();
+    const { error: updateError } = await admin.auth.admin.updateUserById(target.auth_user_id, {
+      password: newPassword,
+    });
+
+    if (updateError) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', updateError.message || 'Không thể đặt lại mật khẩu');
+    }
+
+    return {
+      id: target.id,
+      full_name: target.full_name,
+      new_password: newPassword,
+    };
+  }
 }
+

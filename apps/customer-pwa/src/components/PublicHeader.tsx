@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ShoppingBag, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import { authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
 import { usePathname } from 'next/navigation';
@@ -40,34 +40,27 @@ export function PublicHeader() {
           >
             Đặt bàn
           </Link>
-          <Link 
-            href="/promotions"
-            className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname?.startsWith('/promotions') ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
-          >
-            Khuyến mãi
-          </Link>
+          {isAuthenticated && (
+            <Link 
+              href="/orders" 
+              className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname?.startsWith('/orders') ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
+            >
+              Lịch sử đặt hàng
+            </Link>
+          )}
         </nav>
 
         {/* Actions */}
         <div className="flex items-center gap-4">
           {isAuthenticated ? (
-            <>
-              <Link href="/cart" className="relative p-2 text-[#543310] hover:text-[#D67D3E] transition-colors">
-                <ShoppingBag size={24} />
-                {/* Dummy cart count for UI */}
-                <span className="absolute top-0 right-0 bg-[#B42318] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                  0
-                </span>
-              </Link>
-              <Link href="/profile" className="flex items-center gap-2 text-[#543310] hover:text-[#D67D3E] transition-colors">
-                <div className="w-8 h-8 rounded-full bg-[#FAF7F3] border border-[#E8DED5] flex items-center justify-center">
-                  <User size={18} />
-                </div>
-                <span className="text-sm font-bold hidden md:block">
-                  {profile?.full_name?.split(' ').pop() || 'Tài khoản'}
-                </span>
-              </Link>
-            </>
+            <Link href="/profile" className="flex items-center gap-2 text-[#543310] hover:text-[#D67D3E] transition-colors">
+              <div className="w-8 h-8 rounded-full bg-[#FAF7F3] border border-[#E8DED5] flex items-center justify-center">
+                <User size={18} />
+              </div>
+              <span className="text-sm font-bold hidden md:block">
+                {profile?.full_name?.split(' ').pop() || 'Tài khoản'}
+              </span>
+            </Link>
           ) : (
             <Link 
               href="/login"
@@ -81,3 +74,4 @@ export function PublicHeader() {
     </header>
   );
 }
+

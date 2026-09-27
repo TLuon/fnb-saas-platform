@@ -6,6 +6,7 @@ export interface DashboardData {
   ordersCount: number;
   occupiedTables: number;
   averageOrderValue: number;
+  totalIngredientCost: number;
   revenueTrend: number;
   ordersTrend: number;
   chartData: { time: string; revenue: number }[];
@@ -156,6 +157,7 @@ export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
       const averageOrderValue = Number(
         data.average_order_value ?? (ordersCount > 0 ? Math.round(revenue / ordersCount) : 0),
       );
+      const totalIngredientCost = Number(data.total_ingredient_cost ?? 0);
       const revenueTrend = Number(data.revenue_trend ?? 0);
       const ordersTrend = Number(data.orders_trend ?? 0);
 
@@ -176,6 +178,7 @@ export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
           ordersCount,
           occupiedTables,
           averageOrderValue,
+          totalIngredientCost,
           revenueTrend,
           ordersTrend,
           chartData,

@@ -8,12 +8,13 @@ export class CreateTableDto {
   @IsUuidLoose()
   floor_id: string;
 
+  @IsOptional()
   @IsString()
-  table_code: string;
+  table_code?: string;
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(0)
   capacity?: number;
 
   @IsNumber()
@@ -31,6 +32,10 @@ export class CreateTableDto {
   height?: number;
 
   @IsOptional()
-  @IsIn(TABLE_SHAPES)
-  shape?: (typeof TABLE_SHAPES)[number];
+  @IsString()
+  shape?: string;
+
+  @IsOptional()
+  @IsNumber()
+  rotation?: number;
 }

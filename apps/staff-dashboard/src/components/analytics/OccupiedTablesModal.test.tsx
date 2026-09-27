@@ -39,7 +39,9 @@ describe('OccupiedTablesModal', () => {
         chartData: [],
         topProducts: [],
         paymentBreakdown: [],
+        totalIngredientCost: 0,
       },
+
     });
     vi.restoreAllMocks();
   });

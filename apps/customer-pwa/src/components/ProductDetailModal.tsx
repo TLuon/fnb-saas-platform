@@ -23,11 +23,10 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
   };
 
   const handleAdd = () => {
-    requireAuth(() => {
-      onAddToCart(product, quantity, note);
-      handleClose();
-    });
+    onAddToCart(product, quantity, note);
+    handleClose();
   };
+
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 transition-opacity">

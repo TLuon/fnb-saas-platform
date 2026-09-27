@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInventoryStore, type Ingredient } from '../store/inventoryStore';
+import { useAnalyticsStore } from '../store/analyticsStore';
 import { IngredientTable } from '../components/inventory/IngredientTable';
 import { InventoryTransactions } from '../components/inventory/InventoryTransactions';
+import { InventoryFinancialSummary } from '../components/inventory/InventoryFinancialSummary';
 import { FileText, Package, Receipt, X } from 'lucide-react';
+import { useModal } from '../components/ModalProvider';
 
 type Tab = 'INGREDIENTS' | 'RECIPES' | 'TRANSACTIONS';
 
@@ -318,8 +321,10 @@ function TransactionPanel() {
 }
 
 export default function Inventory() {
+  const { showConfirm } = useModal();
   const {
     ingredients,
+    transactions,
     loading,
     error,
     fetchIngredients,
@@ -327,6 +332,9 @@ export default function Inventory() {
     fetchProducts,
     deleteIngredient,
   } = useInventoryStore();
+
+  const { dashboardData, fetchDashboard } = useAnalyticsStore();
+
   const [activeTab, setActiveTab] = useState<Tab>('INGREDIENTS');
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
   const [isIngredientModalOpen, setIsIngredientModalOpen] = useState(false);
@@ -335,7 +343,8 @@ export default function Inventory() {
     void fetchIngredients();
     void fetchTransactions();
     void fetchProducts();
-  }, [fetchIngredients, fetchProducts, fetchTransactions]);
+    void fetchDashboard('all', 'today');
+  }, [fetchDashboard, fetchIngredients, fetchProducts, fetchTransactions]);
 
   const tabButtonClass = useMemo(
     () => (tab: Tab) =>
@@ -356,8 +365,15 @@ export default function Inventory() {
   };
 
   const confirmDelete = async (ingredient: Ingredient) => {
-    if (!window.confirm(`Xóa nguyên vật liệu "${ingredient.name}"?`)) return;
-    await deleteIngredient(ingredient.id);
+    showConfirm({
+      title: 'Xóa nguyên vật liệu',
+      message: `Bạn có chắc chắn muốn xóa nguyên vật liệu "${ingredient.name}"?`,
+      confirmLabel: 'Xóa',
+      cancelLabel: 'Hủy',
+      onConfirm: async () => {
+        await deleteIngredient(ingredient.id);
+      }
+    });
   };
 
   return (
@@ -366,6 +382,12 @@ export default function Inventory() {
         <h2 className="text-4xl font-black font-serif text-[var(--color-brand-primary)]">Quản lý Kho & Định lượng</h2>
         <p className="text-gray-500 mt-2">Kiểm soát nguyên vật liệu và tự động trừ kho theo định lượng.</p>
       </div>
+
+      <InventoryFinancialSummary
+        ingredients={ingredients}
+        transactions={transactions}
+        revenue={dashboardData?.revenue ?? 0}
+      />
 
       {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 p-4 text-sm font-bold">{error}</div>}
 

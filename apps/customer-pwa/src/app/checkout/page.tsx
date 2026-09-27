@@ -11,9 +11,10 @@ import { WalletBalanceRow } from '../../components/checkout/WalletBalanceRow';
 import { CoffeePassSelector } from '../../components/checkout/CoffeePassSelector';
 import { PaymentStatusBanner, PaymentStatus } from '../../components/checkout/PaymentStatusBanner';
 import { RetryPaymentButton } from '../../components/checkout/RetryPaymentButton';
-import { apiClient } from '@fnb/utils';
+import { apiClient, generateVietQRUrl, VIETCOMBANK_CONFIG } from '@fnb/utils';
 import { useCartStore } from '../../stores/cartStore';
 import { unwrapOrderDetails } from '../../lib/checkout';
+import { Copy, Check } from 'lucide-react';
 
 export default function CheckoutPage() {
   const searchParams = useSearchParams();
@@ -31,6 +32,7 @@ export default function CheckoutPage() {
   
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('IDLE');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orderId) {
@@ -59,6 +61,12 @@ export default function CheckoutPage() {
     fetchOrder();
   }, [orderId]);
 
+  const handleCopy = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
   const handlePayment = async () => {
     if (!orderId || isProcessing || paymentStatus === 'SUCCESS') return;
 
@@ -66,30 +74,24 @@ export default function CheckoutPage() {
       setIsProcessing(true);
       setPaymentStatus('PENDING');
 
-      // Generate Idempotency Key
-      const idempotencyKey = crypto.randomUUID();
+      if (paymentMethod === 'WALLET') {
+        const idempotencyKey = crypto.randomUUID();
+        await apiClient.post(
+          `/orders/${orderId}/pay`, 
+          {
+            payment_method: paymentMethod,
+            voucher_id: selectedVoucher?.id,
+          },
+          { headers: { 'Idempotency-Key': idempotencyKey } }
+        );
+      }
 
-      // POST /api/v1/orders/:id/pay
-      const res = await apiClient.post(
-        `/orders/${orderId}/pay`, 
-        {
-          payment_method: paymentMethod,
-          voucher_id: selectedVoucher?.id,
-        },
-        { headers: { 'Idempotency-Key': idempotencyKey } }
-      );
-
-      // Theo task: Chỉ clear cart SAU KHI backend trả success
+      // Clear cart after customer submits transfer info
       clearCart();
       sessionStorage.removeItem('selected_voucher_id');
       
-      // Gửi bếp sau khi thanh toán thành công (Bất kể tại bàn hay mang đi)
-      try {
-        await apiClient.post(`/orders/${orderId}/submit-kitchen`);
-      } catch (err) {
-        console.error('Failed to submit to kitchen after payment', err);
-      }
-      
+      // DO NOT automatically submit to kitchen here for VIETQR!
+      // Cashier must inspect bank app & confirm in POS first to prevent fraud.
       setPaymentStatus('SUCCESS');
 
     } catch (err) {
@@ -109,6 +111,10 @@ export default function CheckoutPage() {
     ? Math.round(subtotal * selectedVoucher.discount_percent / 100)
     : Number(orderData?.discount_amount ?? 0);
   const payableAmount = Math.max(0, subtotal - discountAmount);
+
+  const orderCode = orderData?.order_code || orderData?.order_number || (orderId ? 'ORD-' + orderId.slice(0, 6).toUpperCase() : '');
+  const transferMemo = `DH ${orderCode}`;
+  const vietQrUrl = generateVietQRUrl(payableAmount, transferMemo);
 
   // Nếu API bị lỗi, ta chỉ hiển thị lỗi vì yêu cầu không dùng mock dữ liệu.
   if (error) {
@@ -180,13 +186,60 @@ export default function CheckoutPage() {
           <CoffeePassSelector hasPass={true} passName="Gói Cà phê Sáng (Còn 5 ly)" onSelect={() => {}} />
         )}
 
-        {/* Thanh toán VietQR có thể hiện Inline panel nếu cần, hoặc xử lý sau khi bấm nút Thanh Toán */}
-        {paymentMethod === 'VIETQR' && paymentStatus === 'PENDING' && (
-          <div className="bg-white p-4 rounded-xl border border-[#FED8B1] shadow-sm text-center">
-             <p className="text-[#D67D3E] font-bold mb-2">Quét mã QR bằng ứng dụng ngân hàng</p>
-             <div className="w-48 h-48 bg-gray-100 mx-auto border-2 border-dashed border-[#E8DED5] flex items-center justify-center">
-               <span className="text-[#6B625B]">QR Code</span>
-             </div>
+        {/* Thanh toán VietQR Thực tế (Vietcombank) */}
+        {paymentMethod === 'VIETQR' && paymentStatus !== 'SUCCESS' && (
+          <div className="bg-white p-6 rounded-2xl border border-[#FED8B1] shadow-sm max-w-md mx-auto text-center space-y-4">
+            <h3 className="font-bold text-[#543310] text-lg">Quét mã VietQR để thanh toán</h3>
+            <p className="text-xs text-[#6B625B]">Số tiền & Nội dung chuyển khoản đã được tạo tự động</p>
+            
+            <div className="bg-[#FAF7F3] p-4 rounded-xl border border-[#E8DED5] flex justify-center">
+              <img 
+                src={vietQrUrl} 
+                alt="Vietcombank VietQR Payment Code" 
+                className="w-[240px] h-[240px] object-contain rounded-lg"
+              />
+            </div>
+
+            <div className="bg-[#FDFBF7] border border-[#FED8B1] rounded-xl p-4 text-left space-y-2.5 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B625B]">Ngân hàng:</span>
+                <span className="font-semibold text-[#543310]">{VIETCOMBANK_CONFIG.bankName}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B625B]">Số tài khoản:</span>
+                <div className="flex items-center gap-1.5 font-bold text-[#543310] font-mono">
+                  <span>{VIETCOMBANK_CONFIG.accountNo}</span>
+                  <button 
+                    onClick={() => handleCopy(VIETCOMBANK_CONFIG.accountNo, 'acc')}
+                    className="p-1 text-gray-400 hover:text-[#D67D3E] transition"
+                    title="Sao chép số tài khoản"
+                  >
+                    {copiedField === 'acc' ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B625B]">Chủ tài khoản:</span>
+                <span className="font-bold text-[#543310]">{VIETCOMBANK_CONFIG.accountName}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B625B]">Nội dung CK:</span>
+                <div className="flex items-center gap-1.5 font-bold text-[#D67D3E] font-mono">
+                  <span>{transferMemo}</span>
+                  <button 
+                    onClick={() => handleCopy(transferMemo, 'memo')}
+                    className="p-1 text-gray-400 hover:text-[#D67D3E] transition"
+                    title="Sao chép nội dung chuyển khoản"
+                  >
+                    {copiedField === 'memo' ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-[#FED8B1] flex justify-between items-center font-bold">
+                <span className="text-[#543310]">Tổng thanh toán:</span>
+                <span className="text-[#D67D3E] text-lg">{formatPrice(payableAmount)}</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -198,22 +251,34 @@ export default function CheckoutPage() {
           <button
             onClick={handlePayment}
             disabled={isProcessing}
-            className="w-full py-4 bg-[#543310] text-white font-bold rounded-xl hover:bg-[#D67D3E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-8 text-lg"
+            className="w-full py-4 bg-[#543310] text-white font-bold rounded-xl hover:bg-[#D67D3E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-8 text-lg shadow-md"
           >
-            Thanh toán {formatPrice(payableAmount)}
+            {isProcessing ? 'Đang gửi thông tin...' : `Tôi đã chuyển khoản (${formatPrice(payableAmount)})`}
           </button>
         )}
 
         {paymentStatus === 'SUCCESS' && (
-          <button
-            onClick={() => router.push('/')}
-            className="w-full py-4 bg-[#237A57] text-white font-bold rounded-xl hover:bg-[#1c6346] transition-colors mt-8 text-lg flex items-center justify-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Về trang chủ
-          </button>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4 shadow-sm animate-fade-in">
+            <div className="w-14 h-14 bg-emerald-100 text-[#237A57] rounded-full flex items-center justify-center mx-auto">
+              <Check size={32} />
+            </div>
+            <div>
+              <h3 className="font-bold text-xl text-[#543310]">Đã gửi thông tin thanh toán!</h3>
+              <p className="text-sm text-gray-600 mt-2 max-w-md mx-auto leading-relaxed">
+                Nhà hàng đã nhận được yêu cầu của bạn. Nhân viên quầy thu ngân sẽ đối soát giao dịch chuyển khoản (Nội dung: <strong className="text-[#D67D3E] font-mono">{transferMemo}</strong>) và chuyển đơn xuống Bếp chế biến.
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/')}
+              className="w-full py-4 bg-[#237A57] text-white font-bold rounded-xl hover:bg-[#1c6346] transition-colors text-lg flex items-center justify-center gap-2 shadow-md mt-4"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              Quay về Trang chủ
+            </button>
+          </div>
         )}
       </div>
     </main>
   );
 }
+

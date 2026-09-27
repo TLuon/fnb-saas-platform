@@ -36,6 +36,12 @@ export default function Login() {
         throw new Error('Tài khoản không có quyền truy cập Staff Dashboard');
       }
       
+      if (profileInfo.is_active === false) {
+        authStore.getState().clearAuth();
+        setError('Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ Quản lý!');
+        return;
+      }
+
       authStore.getState().setProfile({
         id: profileInfo.id || meData.sub || 'unknown',
         auth_user_id: meData.sub,
@@ -49,17 +55,34 @@ export default function Login() {
       });
       
       const role = meData.role_app || authStore.getState().role;
+      const lowerEmail = email.toLowerCase();
       
       if (role === 'SUPPORT') {
         navigate('/support/board');
       } else if (role === 'STAFF') {
-        navigate('/kds/kitchen');
+        if (lowerEmail.includes('bep')) {
+          navigate('/kds/kitchen');
+        } else if (lowerEmail.includes('bar')) {
+          navigate('/kds/bar');
+        } else {
+          navigate('/pos');
+        }
       } else {
         navigate('/analytics');
       }
+
     } catch (err: any) {
       authStore.getState().clearAuth();
-      setError(err?.message || 'Lỗi kết nối máy chủ');
+      const serverMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || '';
+      if (
+        err?.code === 'ERR_1001_UNAUTHORIZED' ||
+        serverMsg.includes('vô hiệu hóa') ||
+        err?.message?.includes('vô hiệu hóa')
+      ) {
+        setError('Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ Quản lý!');
+      } else {
+        setError(serverMsg || 'Lỗi kết nối máy chủ');
+      }
     } finally {
       setLoading(false);
     }
@@ -121,6 +144,17 @@ export default function Login() {
                 disabled={loading}
                 autoComplete="current-password"
               />
+            </div>
+            <div className="text-right mt-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setError('Vui lòng liên hệ Quản lý (Owner) để được cấp lại mật khẩu.');
+                }}
+                className="text-xs text-[var(--color-brand-secondary)] font-medium hover:underline"
+              >
+                Quên mật khẩu?
+              </button>
             </div>
           </div>
 

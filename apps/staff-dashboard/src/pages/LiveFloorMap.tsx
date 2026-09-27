@@ -10,7 +10,10 @@ interface Floor {
   name: string;
 }
 
+import { useModal } from '../components/ModalProvider';
+
 const LiveFloorMap: React.FC = () => {
+  const { showAlert } = useModal();
   const [floors, setFloors] = useState<Floor[]>([]);
   const [selectedFloor, setSelectedFloor] = useState<string>('');
   const [tables, setTables] = useState<FloorTableCanvas[]>([]);
@@ -144,7 +147,7 @@ const LiveFloorMap: React.FC = () => {
       setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: newStatus as any } : t));
       setSelectedTable({ ...selectedTable, status: newStatus as any });
     } catch (err) {
-      alert('Không thể cập nhật trạng thái');
+      showAlert('Không thể cập nhật trạng thái bàn lúc này', 'error', 'Lỗi Cập Nhật');
     }
   };
 

@@ -18,4 +18,9 @@ export class PayOrderDto {
   @IsOptional()
   @IsUuidLoose()
   voucher_id?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['IN_PROGRESS', 'COMPLETED'])
+  status?: string;
 }

@@ -46,7 +46,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     fetchProfile();
-  }, []);
+
+    const handleUnauthorized = () => {
+      authStore.getState().clearAuth();
+      setShowLoginModal(true);
+    };
+
+    window.addEventListener('api:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('api:unauthorized', handleUnauthorized);
+    };
+  }, [setShowLoginModal]);
 
   if (!isHydrated || isLoading) {
     return (

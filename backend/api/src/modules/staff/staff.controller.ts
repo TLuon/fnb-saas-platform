@@ -8,7 +8,7 @@ import { UpdateStaffDto } from './dto/update-staff.dto.js';
 import { ListStaffQueryDto } from './dto/list-staff-query.dto.js';
 
 @Controller('staff')
-@Roles('OWNER')
+@Roles('OWNER', 'STAFF')
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 
@@ -35,4 +35,14 @@ export class StaffController {
   deactivateStaff(@Param('id') id: string, @CurrentAccessToken() token: string) {
     return this.staffService.deactivateStaff(token, id);
   }
+
+  @Post(':id/reset-password')
+  resetStaffPassword(
+    @Param('id') id: string,
+    @Body('password') password: string | undefined,
+    @CurrentAccessToken() token: string,
+  ) {
+    return this.staffService.resetStaffPassword(token, id, password);
+  }
 }
+

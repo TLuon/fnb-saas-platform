@@ -43,7 +43,7 @@ export class InventoryController {
     return this.inventoryService.getIngredient(token, id);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Post('ingredients')
   createIngredient(
     @Body() dto: CreateIngredientDto,
@@ -53,7 +53,7 @@ export class InventoryController {
     return this.inventoryService.createIngredient(token, user, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Patch('ingredients/:id')
   updateIngredient(
     @Param('id') id: string,
@@ -64,7 +64,7 @@ export class InventoryController {
     return this.inventoryService.updateIngredient(token, user, id, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Delete('ingredients/:id')
   deleteIngredient(
     @Param('id') id: string,
@@ -94,7 +94,7 @@ export class InventoryController {
     return this.inventoryService.getRecipes(token, productId);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Post('recipes')
   createRecipe(
     @Body() dto: CreateRecipeDto,
@@ -104,7 +104,7 @@ export class InventoryController {
     return this.inventoryService.createRecipe(token, user, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Delete('recipes/:productId/ingredients/:ingredientId')
   deleteRecipe(
     @Param('productId') productId: string,

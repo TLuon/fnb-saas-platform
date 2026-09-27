@@ -184,6 +184,23 @@ export class AuthService {
       );
     }
 
+    const authUserId = data.session.user?.id;
+    if (authUserId) {
+      const admin = this.supabase.admin();
+      const { data: userRecord } = await admin
+        .from('users')
+        .select('is_active')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+      if (userRecord && userRecord.is_active === false) {
+        throw new AppException(
+          'ERR_1001_UNAUTHORIZED',
+          'Tài khoản của bạn đã bị quản lý vô hiệu hóa',
+        );
+      }
+    }
+
     return {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
@@ -207,6 +224,23 @@ export class AuthService {
         'ERR_1001_UNAUTHORIZED',
         'Refresh token không hợp lệ hoặc đã hết hạn',
       );
+    }
+
+    const authUserId = data.session.user?.id;
+    if (authUserId) {
+      const admin = this.supabase.admin();
+      const { data: userRecord } = await admin
+        .from('users')
+        .select('is_active')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+      if (userRecord && userRecord.is_active === false) {
+        throw new AppException(
+          'ERR_1001_UNAUTHORIZED',
+          'Tài khoản của bạn đã bị quản lý vô hiệu hóa',
+        );
+      }
     }
 
     return {
@@ -262,5 +296,45 @@ export class AuthService {
       ...user,
       profile,
     };
+  }
+
+  /**
+   * POST /api/v1/auth/forgot-password
+   */
+  async forgotPassword(dto: { email: string }) {
+    if (!dto.email) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Vui lòng cung cấp email');
+    }
+
+    const { error } = await this.supabase
+      .anon()
+      .auth.resetPasswordForEmail(dto.email);
+
+    if (error) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message || 'Không thể gửi email đặt lại mật khẩu');
+    }
+
+    return { message: 'Đã gửi hướng dẫn đặt lại mật khẩu về email của bạn' };
+  }
+
+  /**
+   * POST /api/v1/auth/reset-password
+   */
+  async resetPassword(dto: { token?: string; new_password?: string }) {
+    if (!dto.new_password) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Vui lòng cung cấp mật khẩu mới');
+    }
+
+    const { error } = await this.supabase
+      .admin()
+      .auth.admin.updateUserById(dto.token || '', {
+        password: dto.new_password,
+      });
+
+    if (error) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message || 'Không thể đặt lại mật khẩu');
+    }
+
+    return { message: 'Đặt lại mật khẩu thành công' };
   }
 }

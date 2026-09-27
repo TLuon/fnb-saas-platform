@@ -1,52 +1,26 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthGuard } from '../hooks/useAuthGuard';
 import { PublicHeader } from '../components/PublicHeader';
 import { BranchInfoBar } from '../components/BranchInfoBar';
 import { FeaturedMenuSection } from '../components/FeaturedMenuSection';
 import { ContactFooter } from '../components/ContactFooter';
-import gsap from 'gsap';
-import { useGSAP } from '@gsap/react';
+import { CartSummaryBar } from '../components/CartSummaryBar';
+import { useCartStore } from '../stores/cartStore';
 import { ArrowRight, Coffee } from 'lucide-react';
-
-if (typeof window !== 'undefined') {
-  gsap.registerPlugin(useGSAP);
-}
 
 export default function Home() {
   const router = useRouter();
-  const { requireAuth } = useAuthGuard();
-  const container = useRef<HTMLElement>(null);
-
-  useGSAP(() => {
-    const tl = gsap.timeline();
-    tl.from('.hero-title', { y: 50, opacity: 0, duration: 1, ease: 'power3.out', stagger: 0.2 })
-      .from('.hero-subtitle', { y: 20, opacity: 0, duration: 0.8, ease: 'power2.out' }, '-=0.6')
-      .from('.hero-btn', { scale: 0.9, opacity: 0, duration: 0.5, ease: 'back.out(1.7)', stagger: 0.1 }, '-=0.4')
-      .from('.floating-bean', { y: 100, opacity: 0, duration: 1.5, ease: 'power2.out', stagger: 0.2 }, '-=1');
-
-    gsap.to('.floating-bean', {
-      y: 'random(-20, 20)',
-      x: 'random(-10, 10)',
-      rotation: 'random(-15, 15)',
-      duration: 'random(3, 5)',
-      yoyo: true,
-      repeat: -1,
-      ease: 'sine.inOut',
-      stagger: 0.5,
-    });
-  }, { scope: container });
+  const cartCount = useCartStore((state) => state.getTotalItems());
+  const cartTotal = useCartStore((state) => state.getSubtotal());
 
   const handleReservation = () => {
-    requireAuth(() => {
-      router.push('/floors');
-    });
+    router.push('/floors');
   };
 
   return (
-    <main ref={container} className="min-h-screen bg-[var(--color-brand-neutral)] flex flex-col relative overflow-hidden">
+    <main className="min-h-screen bg-[var(--color-brand-neutral)] flex flex-col relative overflow-hidden pb-16">
       {/* Background gradients for depth */}
       <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-brand-neutral)] via-[#FFF] to-[var(--color-brand-accent)]/30 z-0"></div>
       
@@ -101,7 +75,7 @@ export default function Home() {
               
               <button 
                 onClick={handleReservation}
-                className="hero-btn group px-8 py-4 backdrop-blur-md bg-white/50 text-[var(--color-brand-primary)] font-bold text-lg border-2 border-white/80 rounded-2xl hover:bg-white/80 transition-all duration-300 shadow-sm hover:shadow-md"
+                className="hero-btn group px-8 py-4 backdrop-blur-md bg-white/50 text-[var(--color-brand-primary)] font-bold text-lg border-2 border-white/80 rounded-2xl hover:bg-white/80 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
               >
                 Đặt bàn ngay
               </button>
@@ -114,6 +88,9 @@ export default function Home() {
         <FeaturedMenuSection />
         <ContactFooter />
       </div>
+
+      <CartSummaryBar itemCount={cartCount} totalPrice={cartTotal} />
     </main>
   );
 }
+

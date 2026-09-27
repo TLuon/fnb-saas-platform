@@ -159,22 +159,8 @@ export default function FloorMapCanvas({ tables, onTableClick }: FloorMapCanvasP
     }
   };
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const handleWheelNative = (e: WheelEvent) => {
-      e.preventDefault();
-      const newScale = e.deltaY > 0 ? scale * 0.9 : scale * 1.1;
-      setScale(Math.max(0.5, Math.min(newScale, 3)));
-    };
-    
-    canvas.addEventListener('wheel', handleWheelNative, { passive: false });
-    return () => canvas.removeEventListener('wheel', handleWheelNative);
-  }, [scale]);
-
   return (
-    <div className="w-full h-[500px] rounded-3xl overflow-hidden border border-gray-200 shadow-inner bg-[var(--color-brand-neutral)] relative cursor-grab active:cursor-grabbing">
+    <div className="w-full h-[500px] rounded-3xl overflow-hidden border border-gray-200 shadow-inner bg-[var(--color-brand-neutral)] relative cursor-default">
       <canvas
         ref={canvasRef}
         onMouseDown={handleMouseDown}
@@ -183,9 +169,6 @@ export default function FloorMapCanvas({ tables, onTableClick }: FloorMapCanvasP
         onMouseLeave={() => setIsDragging(false)}
         className="block"
       />
-      <div className="absolute top-4 right-4 bg-white/80 p-2 rounded-lg text-xs font-medium text-gray-500 backdrop-blur-sm pointer-events-none">
-        Cuộn để Zoom - Kéo để Di chuyển
-      </div>
     </div>
   );
 }

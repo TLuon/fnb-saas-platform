@@ -19,6 +19,7 @@ interface StaffStore {
   updateStaff: (id: string, data: Partial<StaffMember>) => Promise<void>;
   deactivateStaff: (id: string) => Promise<void>;
   toggleStaff: (id: string) => Promise<void>;
+  resetPassword: (id: string, customPassword?: string) => Promise<{ new_password?: string }>;
 }
 
 export const useStaffStore = create<StaffStore>((set, get) => ({
@@ -101,6 +102,7 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
       } else {
         await apiClient.patch(endpoint);
       }
+      await get().fetchStaff();
     } catch (e) {
       set(state => ({
         staff: state.staff.map(x => 
@@ -108,5 +110,13 @@ export const useStaffStore = create<StaffStore>((set, get) => ({
         )
       }));
     }
-  }
+  },
+
+  resetPassword: async (id: string, customPassword?: string) => {
+    const res: any = await apiClient.post(`/staff/${id}/reset-password`, {
+      password: customPassword || undefined,
+    });
+    const finalData = res?.data?.data || res?.data || res;
+    return finalData;
+  },
 }));

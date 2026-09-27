@@ -219,7 +219,9 @@ describe('useAnalyticsStore', () => {
         chartData: [],
         topProducts: [],
         paymentBreakdown: [],
+        totalIngredientCost: 0,
       },
+
       occupiedTablesList: [
         { id: 'tbl-1', table_code: 'Bàn 01', capacity: 4, status: 'OCCUPIED' },
         { id: 'tbl-2', table_code: 'Bàn 02', capacity: 4, status: 'OCCUPIED' },

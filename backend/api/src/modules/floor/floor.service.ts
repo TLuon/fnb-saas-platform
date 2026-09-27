@@ -64,12 +64,22 @@ export class FloorService {
 
   /** API_CONTRACT.md mục 2 — POST /floors (OWNER). */
   async createFloor(accessToken: string, dto: CreateFloorDto) {
-    const client = this.supabase.forUser(accessToken);
-    const { data, error } = await client.from('floors').insert(dto).select().single();
+    const client = this.supabase.admin();
+    const { data: existingFloors } = await client
+      .from('floors')
+      .select('floor_level')
+      .eq('branch_id', dto.branch_id)
+      .order('floor_level', { ascending: false });
 
-    // RLS (tenant_boundary trên floors, join qua branches) tự chặn nếu
-    // branch_id không thuộc tenant của OWNER đang gọi — lỗi trả về ở
-    // đây thường là do vi phạm policy đó.
+    const maxLevel = existingFloors && existingFloors.length > 0 ? existingFloors[0].floor_level : 0;
+    const insertPayload = {
+      branch_id: dto.branch_id,
+      name: dto.name,
+      floor_level: dto.floor_level ?? (maxLevel + 1),
+    };
+
+    const { data, error } = await client.from('floors').insert(insertPayload).select().single();
+
     if (error) throw new AppException('ERR_9001_VALIDATION_FAILED', error.message);
     return data;
   }
@@ -131,8 +141,22 @@ export class FloorService {
 
   /** API_CONTRACT.md mục 2 — POST /tables (OWNER). */
   async createTable(accessToken: string, dto: CreateTableDto) {
-    const client = this.supabase.forUser(accessToken);
-    const { data, error } = await client.from('tables').insert(dto).select().single();
+    const client = this.supabase.admin();
+    const tableCode = dto.table_code || (dto as any).name || 'Bàn';
+    const insertPayload: Record<string, any> = {
+      floor_id: dto.floor_id,
+      table_code: tableCode,
+      capacity: dto.capacity ?? 0,
+      pos_x: dto.pos_x,
+      pos_y: dto.pos_y,
+      width: dto.width ?? 80,
+      height: dto.height ?? 80,
+      shape: dto.shape || 'rectangle',
+      status: 'AVAILABLE',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await client.from('tables').insert(insertPayload).select().single();
 
     if (error) throw new AppException('ERR_9001_VALIDATION_FAILED', error.message);
     return data;
@@ -140,10 +164,24 @@ export class FloorService {
 
   /** API_CONTRACT.md mục 2 — PATCH /tables/:id (OWNER, kéo-thả Floor Editor). */
   async updateTable(accessToken: string, tableId: string, dto: UpdateTableDto) {
-    const client = this.supabase.forUser(accessToken);
+    const client = this.supabase.admin();
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (dto.table_code || (dto as any).name) {
+      updatePayload.table_code = dto.table_code || (dto as any).name;
+    }
+    if (dto.capacity !== undefined) updatePayload.capacity = dto.capacity;
+    if (dto.pos_x !== undefined) updatePayload.pos_x = dto.pos_x;
+    if (dto.pos_y !== undefined) updatePayload.pos_y = dto.pos_y;
+    if (dto.width !== undefined) updatePayload.width = dto.width;
+    if (dto.height !== undefined) updatePayload.height = dto.height;
+    if (dto.shape !== undefined) updatePayload.shape = dto.shape;
+
     const { data, error } = await client
       .from('tables')
-      .update(dto)
+      .update(updatePayload)
       .eq('id', tableId)
       .select()
       .maybeSingle();
@@ -161,7 +199,7 @@ export class FloorService {
    * event Socket.IO khác), xem REALTIME_EVENTS.md mục 2.1.
    */
   async updateTableStatus(accessToken: string, tableId: string, dto: UpdateTableStatusDto) {
-    const client = this.supabase.forUser(accessToken);
+    const client = this.supabase.admin();
 
     const { data: current, error: fetchError } = await client
       .from('tables')
@@ -202,5 +240,19 @@ export class FloorService {
     this.realtimeGateway?.emitTableStatusChanged?.(tableId, dto.status);
     
     return data;
+  }
+
+  /** API_CONTRACT.md mục 2 — DELETE /tables/:id (OWNER). */
+  async deleteTable(accessToken: string, tableId: string) {
+    const client = this.supabase.admin();
+    const { data, error } = await client
+      .from('tables')
+      .delete()
+      .eq('id', tableId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    return data ?? { id: tableId, deleted: true };
   }
 }

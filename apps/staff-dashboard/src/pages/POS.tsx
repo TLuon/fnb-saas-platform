@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { apiClient, RealtimeClient } from '@fnb/utils';
+import { apiClient, RealtimeClient, mapApiTableToCanvas, authStore, generateVietQRUrl, VIETCOMBANK_CONFIG } from '@fnb/utils';
 import { FloorMapCanvas, FloorTableCanvas } from '@fnb/ui-shared';
-import { authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
 import { getSocketBaseUrl } from '../lib/kds';
+
 
 interface Category {
   id: string;
@@ -30,15 +30,22 @@ interface CartItem {
 
 interface ActiveOrder {
   id: string;
-  order_code: string;
-  type: string;
+  order_code?: string;
+  order_number?: string;
+  type?: string;
   status: string;
-  total_amount: number;
+  total_amount?: number;
+  final_amount?: number;
+  subtotal?: number;
   created_at: string;
-  items: any[];
+  items?: any[];
+  order_items?: any[];
 }
 
+import { useModal } from '../components/ModalProvider';
+
 const POS: React.FC = () => {
+  const { showAlert, showConfirm } = useModal();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('');
@@ -55,6 +62,7 @@ const POS: React.FC = () => {
   }, [cart]);
 
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY'>('DINE_IN');
+  const [posMainTab, setPosMainTab] = useState<'MENU' | 'TABLES'>('MENU');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -73,11 +81,22 @@ const POS: React.FC = () => {
   const [isTakeawayDrawerOpen, setIsTakeawayDrawerOpen] = useState(false);
   const [activeTakeawayOrders, setActiveTakeawayOrders] = useState<ActiveOrder[]>([]);
 
+  // Payment Modal States
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentModalData, setPaymentModalData] = useState<{
+    orderId: string;
+    orderCode: string;
+    amount: number;
+    isPaid: boolean;
+  } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
   // Modifiers
   const [modifierModalOpen, setModifierModalOpen] = useState(false);
   const [selectedProductForModifier, setSelectedProductForModifier] = useState<Product | null>(null);
   const [itemNote, setItemNote] = useState('');
   const [selectedModifiers, setSelectedModifiers] = useState<Record<string, string>>({});
+
 
   const profile = useStore(authStore, (state) => state.profile);
   const branchId = profile?.branch_id || localStorage.getItem('branchId') || '22222222-2222-2222-2222-222222222222';
@@ -164,18 +183,7 @@ const POS: React.FC = () => {
   const fetchTables = () => {
     if (!selectedFloor) return;
     apiClient.get(`/floors/${selectedFloor}/tables`).then((res: any) => {
-      const mappedTables = (res.data?.data || res.data || res || []).map((t: any) => ({
-        id: t.id,
-        name: t.name || t.table_code,
-        status: t.status || 'AVAILABLE',
-        coord_x: t.pos_x,
-        coord_y: t.pos_y,
-        width: t.width,
-        height: t.height,
-        shape: t.shape || 'rectangle',
-        capacity: t.capacity || 4,
-        current_order_id: t.current_order_id || null,
-      }));
+      const mappedTables: FloorTableCanvas[] = (res.data?.data || res.data || res || []).map(mapApiTableToCanvas);
       setTables(mappedTables);
       
       // Auto-select table if passed via URL
@@ -248,7 +256,7 @@ const POS: React.FC = () => {
 
   const handleProductClick = (product: Product) => {
     if (!product.is_active || outOfStockIds.has(product.id)) {
-      alert('Sản phẩm đã hết hoặc ngừng bán');
+      showAlert('Sản phẩm đã hết hoặc ngừng bán', 'warning', 'Thông báo');
       return;
     }
     setSelectedProductForModifier(product);
@@ -295,8 +303,8 @@ const POS: React.FC = () => {
   };
 
   const sendToKitchen = async () => {
-    if (cart.length === 0 && !activeOrderId) return alert('Giỏ hàng trống!');
-    if (orderType === 'DINE_IN' && !selectedTable) return alert('Vui lòng chọn bàn!');
+    if (cart.length === 0 && !activeOrderId) return showAlert('Giỏ hàng trống!', 'warning', 'Chưa có món');
+    if (orderType === 'DINE_IN' && !selectedTable) return showAlert('Vui lòng chọn bàn trên sơ đồ!', 'warning', 'Chưa chọn bàn');
 
     setIsSubmitting(true);
     try {
@@ -327,7 +335,7 @@ const POS: React.FC = () => {
       // Submit kitchen
       await apiClient.post(`/orders/${orderId}/submit-kitchen`);
 
-      alert(`Đã gửi đơn hàng #${orderCode || orderId?.slice(0, 8)} xuống bếp thành công!`);
+      showAlert(`Đã gửi đơn hàng #${orderCode || orderId?.slice(0, 8)} xuống bếp thành công!`, 'success', 'Gửi Bếp Thành Công');
       setCart([]);
       if (orderType === 'TAKEAWAY') {
         fetchTakeawayOrders();
@@ -341,11 +349,40 @@ const POS: React.FC = () => {
         }
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi tạo đơn');
+      showAlert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi tạo đơn', 'error', 'Lỗi Tạo Đơn');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const openPaymentModalForOrder = async (orderId: string, fallbackAmount?: number) => {
+    try {
+      const res: any = await apiClient.get(`/orders/${orderId}`);
+      const ord = res.data?.data?.order || res.data?.order || res.data || res;
+      const isPaid = ord.status === 'COMPLETED';
+      const orderCode = ord.order_code || ord.order_number || ord.code || (orderId ? 'ORD-' + orderId.slice(0, 6).toUpperCase() : '');
+      
+      const items = ord.order_items || ord.items || [];
+      let calculatedItemsTotal = 0;
+      if (Array.isArray(items) && items.length > 0) {
+        calculatedItemsTotal = items.reduce((sum: number, it: any) => sum + (Number(it.quantity || 1) * Number(it.unit_price || it.price || 0)), 0);
+      }
+
+      const rawAmount = Number(ord.final_amount || ord.total_amount || ord.subtotal || 0);
+      const amount = (rawAmount > 0 ? rawAmount : (calculatedItemsTotal > 0 ? calculatedItemsTotal : (fallbackAmount || 0)));
+
+      setPaymentModalData({
+        orderId,
+        orderCode,
+        amount,
+        isPaid,
+      });
+      setPaymentModalOpen(true);
+    } catch (err: any) {
+      showAlert(err.response?.data?.message || err.message || 'Không thể lấy thông tin đơn hàng', 'error', 'Lỗi Thanh Toán');
+    }
+  };
+
 
   const checkoutAndPay = async () => {
     setIsSubmitting(true);
@@ -385,29 +422,42 @@ const POS: React.FC = () => {
       }
 
       if (!orderId) {
-        alert('Không có đơn hàng nào cần thanh toán!');
+        showAlert('Không có đơn hàng nào cần thanh toán!', 'info', 'Thông báo');
         return;
       }
 
-      // Process payment with VIETQR by default as requested
-      await apiClient.post(`/orders/${orderId}/pay`, {
-        payment_method: 'VIETQR',
+      await openPaymentModalForOrder(orderId, totalAmountToPay);
+    } catch (err: any) {
+      showAlert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi thanh toán', 'error', 'Lỗi Thanh Toán');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmPosPayment = async (method: 'VIETQR' | 'CASH') => {
+    if (!paymentModalData) return;
+    setIsSubmitting(true);
+    try {
+      await apiClient.post(`/orders/${paymentModalData.orderId}/pay`, {
+        payment_method: method,
       });
 
-      alert('Đã thanh toán thành công!');
-      
-      const updatedOrdRes: any = await apiClient.get(`/orders/${orderId}`).catch(() => null);
-      if (updatedOrdRes) {
-        setActiveTableOrder(updatedOrdRes?.order || updatedOrdRes.data?.data?.order || updatedOrdRes.data?.order || updatedOrdRes.data || updatedOrdRes);
-      }
+      showAlert('Đã thanh toán thành công!', 'success', 'Thanh Toán Hoàn Tất');
+      setPaymentModalOpen(false);
 
       if (orderType === 'TAKEAWAY') {
         fetchTakeawayOrders();
       } else {
         fetchTables();
+        if (paymentModalData.orderId) {
+          const updatedOrdRes: any = await apiClient.get(`/orders/${paymentModalData.orderId}`).catch(() => null);
+          if (updatedOrdRes) {
+            setActiveTableOrder(updatedOrdRes.data?.data?.order || updatedOrdRes.data?.order || updatedOrdRes.data);
+          }
+        }
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi thanh toán');
+      showAlert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi thanh toán', 'error', 'Lỗi Thanh Toán');
     } finally {
       setIsSubmitting(false);
     }
@@ -420,7 +470,9 @@ const POS: React.FC = () => {
     apiClient.get(`/orders${query}`)
       .then((res: any) => {
         const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
-        setActiveTakeawayOrders(list);
+        // Lọc bỏ các đơn COMPLETED và CANCELLED để chỉ giữ lại đơn chưa hoàn thành
+        const activeOnly = list.filter((o: any) => o.status !== 'COMPLETED' && o.status !== 'CANCELLED');
+        setActiveTakeawayOrders(activeOnly);
       })
       .catch(console.error);
   };
@@ -429,15 +481,69 @@ const POS: React.FC = () => {
     fetchTakeawayOrders();
   }, [branchId]);
 
-  const completeOrder = async (orderId: string) => {
+  const handleVerifyAndSubmitKitchen = async (orderId: string, orderCode: string) => {
     try {
-      await apiClient.post(`/orders/${orderId}/pay`, { payment_method: 'VIETQR' });
+      setIsSubmitting(true);
+      // 1. Chuyển bếp trước -> order.status đổi thành IN_PROGRESS và bắn event kds_new_ticket xuống Bếp
+      await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+
+      // 2. Cập nhật thông tin thanh toán VIETQR và giữ status IN_PROGRESS
+      try {
+        await apiClient.post(`/orders/${orderId}/pay`, { 
+          payment_method: 'VIETQR',
+          status: 'IN_PROGRESS'
+        });
+      } catch (payErr) {
+        console.warn('Cập nhật thanh toán trước đó:', payErr);
+      }
+      
+      showAlert(`Đã xác nhận thanh toán & chuyển đơn #${orderCode} xuống Bếp!`, 'success', 'Duyệt Đơn Thành Công');
       fetchTakeawayOrders();
-      alert('Đã xác nhận thanh toán & hoàn tất đơn hàng!');
-    } catch (e: any) {
-      alert(e.response?.data?.message || e.message || 'Lỗi khi hoàn tất đơn');
+    } catch (err: any) {
+      showAlert(err.response?.data?.message || err.message || 'Lỗi khi duyệt đơn hàng', 'error', 'Lỗi Duyệt Đơn');
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  const completeTakeawayDelivery = async (orderId: string, orderCode: string) => {
+    try {
+      setIsSubmitting(true);
+      await apiClient.post(`/orders/${orderId}/pay`, { 
+        payment_method: 'VIETQR',
+        status: 'COMPLETED'
+      });
+      showAlert(`Đã giao đơn #${orderCode} thành công!`, 'success', 'Hoàn Tất Giao Đồ');
+      fetchTakeawayOrders(); // Tự động xóa khỏi danh sách chờ giao
+    } catch (err: any) {
+      showAlert(err.response?.data?.message || err.message || 'Lỗi khi giao đồ', 'error', 'Lỗi Giao Đồ');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelTakeawayOrder = (orderId: string, orderCode: string) => {
+    showConfirm({
+      title: 'Xác nhận hủy đơn hàng',
+      message: `Bạn có chắc chắn muốn hủy đơn hàng #${orderCode}? Thao tác này sẽ hủy đơn và cập nhật ngay lập tức.`,
+      confirmLabel: 'Hủy đơn hàng',
+      cancelLabel: 'Quay lại',
+      onConfirm: async () => {
+        try {
+          setIsSubmitting(true);
+          await apiClient.post(`/orders/${orderId}/cancel`);
+          showAlert(`Đã hủy đơn hàng #${orderCode} thành công!`, 'info', 'Đã Hủy Đơn');
+          fetchTakeawayOrders();
+        } catch (err: any) {
+          showAlert(err.response?.data?.message || err.message || 'Không thể hủy đơn hàng', 'error', 'Lỗi Hủy Đơn');
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    });
+  };
+
+
 
 
   return (
@@ -461,125 +567,217 @@ const POS: React.FC = () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Column 1: Table Selector (Left) */}
-        {orderType === 'DINE_IN' && (
-        <div className="w-[220px] lg:w-[280px] flex flex-col border-r border-[#E8DED5] bg-white shrink-0">
-          <header className="p-4 border-b border-[#E8DED5] bg-[#FAF7F3]">
-            <h2 className="font-bold text-[#543310] mb-2">Sơ đồ bàn</h2>
-            <select 
-              className="w-full border border-[#E8DED5] rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#D67D3E]"
-              value={selectedFloor}
-              onChange={(e) => setSelectedFloor(e.target.value)}
-            >
-              {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          </header>
-          <div className="flex-1 overflow-hidden p-2 relative">
-            <FloorMapCanvas 
-              tables={tables}
-              editable={false}
-              selectedTableId={selectedTable?.id}
-              onTableClick={setSelectedTable}
-              onTableSelect={setSelectedTable}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Column 2: Menu & Products (Center) */}
-      <div className="flex-1 flex flex-col border-r border-[#E8DED5] bg-white min-w-0">
-        <header className="p-4 border-b border-[#E8DED5] flex flex-col gap-3">
-          <div className="flex gap-4 items-center">
-            <input 
-              type="text" 
-              placeholder="Tìm món ăn..." 
-              className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-[#D67D3E] focus:outline-none bg-gray-50"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <div className="flex bg-gray-100 p-1 rounded-lg">
-              <button 
-                className={`px-4 py-1.5 rounded-md font-bold text-sm transition ${orderType === 'DINE_IN' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
-                onClick={() => setOrderType('DINE_IN')}
-              >
-                Tại bàn
-              </button>
-              <button 
-                className={`px-4 py-1.5 rounded-md font-bold text-sm transition ${orderType === 'TAKEAWAY' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
-                onClick={() => setOrderType('TAKEAWAY')}
-              >
-                Mang đi
-              </button>
-            </div>
-            <button 
-              onClick={() => setIsTakeawayDrawerOpen(true)}
-              className="ml-auto flex items-center gap-2 bg-orange-50 text-[#D67D3E] px-4 py-2 rounded-lg font-bold hover:bg-orange-100 transition"
-            >
-              <span>Đơn Online/Mang đi</span>
-              <span className="bg-[#D67D3E] text-white text-xs px-2 py-0.5 rounded-full">{activeTakeawayOrders.length}</span>
-            </button>
-          </div>
+        {/* Main Area: Dedicated View Modes (MENU vs TABLES) */}
+        <div className="flex-1 flex flex-col border-r border-[#E8DED5] bg-[#FAF7F3] min-w-0 overflow-hidden">
           
-          {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-
-          {/* Categories */}
-          <div className="flex overflow-x-auto gap-2 hide-scrollbar pb-1">
-            <button 
-              className={`whitespace-nowrap px-4 py-1.5 rounded-full font-bold text-sm transition ${activeCategory === '' ? 'bg-[#543310] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              onClick={() => setActiveCategory('')}
-            >
-              Tất cả
-            </button>
-            {categories.map(c => (
+          {/* Main Top Mode Switcher Bar */}
+          <header className="p-3 border-b border-[#E8DED5] bg-white flex justify-between items-center flex-wrap gap-3 shadow-sm z-20 shrink-0">
+            <div className="flex bg-gray-100 p-1 rounded-xl">
               <button 
-                key={c.id}
-                className={`whitespace-nowrap px-4 py-1.5 rounded-full font-bold text-sm transition ${activeCategory === c.id ? 'bg-[#D67D3E] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                onClick={() => setActiveCategory(c.id)}
+                className={`px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-2 ${posMainTab === 'MENU' ? 'bg-[#543310] text-white shadow' : 'text-gray-600 hover:text-gray-800'}`}
+                onClick={() => setPosMainTab('MENU')}
               >
-                {c.name}
+                <span>🍔</span>
+                <span>Thực đơn gọi món</span>
               </button>
-            ))}
-          </div>
-        </header>
-
-        {/* Product Grid */}
-        <div className="flex-1 overflow-y-auto p-4 bg-[#FAF7F3]">
-          {isLoadingMenu ? (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1,2,3,4,5,6].map(i => (
-                <div key={i} className="h-32 bg-gray-200 animate-pulse rounded-xl"></div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-4">
-              {filteredProducts.map(p => (
-                <div 
-                  key={p.id} 
-                  onClick={() => handleProductClick(p)}
-                  className={`relative border border-[#E8DED5] rounded-xl overflow-hidden bg-white shadow-sm hover:shadow transition cursor-pointer flex flex-col ${!p.is_active ? 'opacity-50' : 'hover:border-[#D67D3E]'}`}
+              {orderType === 'DINE_IN' && (
+                <button 
+                  className={`px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-2 ${posMainTab === 'TABLES' ? 'bg-[#D67D3E] text-white shadow' : 'text-gray-600 hover:text-gray-800'}`}
+                  onClick={() => setPosMainTab('TABLES')}
                 >
-                  <div className="h-20 bg-gray-50 flex items-center justify-center text-gray-300 overflow-hidden">
-                    {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl">🍽️</span>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <h3 className="font-bold text-[#543310] text-sm mb-1 leading-tight line-clamp-2">{p.name}</h3>
-                    <p className="text-[#D67D3E] font-bold text-sm">{p.price.toLocaleString('vi-VN')}đ</p>
-                  </div>
-                  {(!p.is_active || outOfStockIds.has(p.id)) && (
-                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center font-bold text-red-600">
-                      Hết món
-                    </div>
+                  <span>📍</span>
+                  <span>Sơ đồ chọn bàn</span>
+                  {selectedTable && (
+                    <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold ml-1">
+                      {selectedTable.name}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex bg-gray-100 p-1 rounded-xl">
+                <button 
+                  className={`px-3.5 py-1.5 rounded-lg font-bold text-xs transition ${orderType === 'DINE_IN' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
+                  onClick={() => {
+                    setOrderType('DINE_IN');
+                  }}
+                >
+                  🍽️ Tại bàn
+                </button>
+                <button 
+                  className={`px-3.5 py-1.5 rounded-lg font-bold text-xs transition ${orderType === 'TAKEAWAY' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
+                  onClick={() => {
+                    setOrderType('TAKEAWAY');
+                    setPosMainTab('MENU');
+                  }}
+                >
+                  🥡 Mang đi
+                </button>
+              </div>
+
+              <button 
+                onClick={() => {
+                  fetchTakeawayOrders();
+                  setIsTakeawayDrawerOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-orange-50 text-[#D67D3E] px-3.5 py-1.5 rounded-xl font-bold border border-orange-200 hover:bg-orange-100 transition shadow-sm text-xs"
+              >
+                <span>Đơn Online/Mang đi</span>
+                <span className="bg-[#D67D3E] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">{activeTakeawayOrders.length}</span>
+              </button>
+            </div>
+          </header>
+
+          {/* VIEW MODE 1: 🍔 GỌI MÓN (MENU) */}
+          {posMainTab === 'MENU' && (
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Filter Sub-header */}
+              <div className="p-3 border-b border-[#E8DED5] bg-white flex flex-col gap-2 shrink-0 shadow-sm">
+                <div className="flex gap-3 items-center">
+                  <input 
+                    type="text" 
+                    placeholder="🔍 Tìm món ăn theo tên..." 
+                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-[#D67D3E] focus:outline-none bg-gray-50 font-medium"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {orderType === 'DINE_IN' && (
+                    <button 
+                      onClick={() => setPosMainTab('TABLES')}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 ${selectedTable ? 'bg-amber-50 text-[#543310] border-amber-300' : 'bg-red-50 text-red-600 border-red-200 animate-pulse'}`}
+                    >
+                      <span>📍</span>
+                      <span>{selectedTable ? `Bàn: ${selectedTable.name}` : 'Chưa chọn bàn'}</span>
+                      <span className="text-[10px] underline ml-1">Đổi bàn ➔</span>
+                    </button>
                   )}
                 </div>
-              ))}
+
+                {error && <p className="text-red-500 text-xs font-medium">{error}</p>}
+
+                {/* Categories Pill Bar */}
+                <div className="flex overflow-x-auto gap-2 hide-scrollbar pb-0.5">
+                  <button 
+                    className={`whitespace-nowrap px-3.5 py-1 rounded-full font-bold text-xs transition ${activeCategory === '' ? 'bg-[#543310] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    onClick={() => setActiveCategory('')}
+                  >
+                    Tất cả ({products.length})
+                  </button>
+                  {categories.map(c => (
+                    <button 
+                      key={c.id}
+                      className={`whitespace-nowrap px-3.5 py-1 rounded-full font-bold text-xs transition ${activeCategory === c.id ? 'bg-[#D67D3E] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                      onClick={() => setActiveCategory(c.id)}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Products Dedicated Scroll Grid */}
+              <div className="flex-1 overflow-y-auto p-4 bg-[#FAF7F3]">
+                {isLoadingMenu ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {[1,2,3,4,5,6,7,8,9,10].map(i => (
+                      <div key={i} className="h-36 bg-gray-200 animate-pulse rounded-2xl"></div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
+                    {filteredProducts.map(p => (
+                      <div 
+                        key={p.id} 
+                        onClick={() => handleProductClick(p)}
+                        className={`relative border border-[#E8DED5] rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition cursor-pointer flex flex-col group ${!p.is_active ? 'opacity-50' : 'hover:border-[#D67D3E]'}`}
+                      >
+                        <div className="h-24 bg-gray-50 flex items-center justify-center text-gray-300 overflow-hidden relative">
+                          {p.image_url ? (
+                            <img src={p.image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                          ) : (
+                            <span className="text-3xl">🍽️</span>
+                          )}
+                        </div>
+                        <div className="p-3 flex-1 flex flex-col justify-between">
+                          <h3 className="font-bold text-[#543310] text-sm mb-1 leading-tight line-clamp-2">{p.name}</h3>
+                          <p className="text-[#D67D3E] font-extrabold text-sm">{p.price.toLocaleString('vi-VN')}đ</p>
+                        </div>
+                        {(!p.is_active || outOfStockIds.has(p.id)) && (
+                          <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center font-bold text-red-600 text-sm">
+                            Hết món
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
+
+          {/* VIEW MODE 2: 📍 SƠ ĐỒ BÀN (TABLE MAP) */}
+          {posMainTab === 'TABLES' && (
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-4 space-y-3">
+              <div className="flex justify-between items-center flex-wrap gap-3 bg-white p-3 rounded-2xl border border-[#E8DED5] shadow-sm shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📍</span>
+                  <div>
+                    <h3 className="font-bold text-[#543310] text-base">Sơ đồ chọn bàn</h3>
+                    <p className="text-xs text-gray-500">Nhấp chọn bàn trên sơ đồ để tạo đơn tại bàn</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <select 
+                    className="border border-[#E8DED5] rounded-xl px-4 py-2 text-sm font-bold text-[#543310] focus:outline-none focus:ring-2 focus:ring-[#D67D3E] bg-gray-50"
+                    value={selectedFloor}
+                    onChange={(e) => setSelectedFloor(e.target.value)}
+                  >
+                    {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+
+                  <div className={`px-4 py-2 rounded-xl text-xs font-bold ${selectedTable ? 'bg-amber-100 text-[#543310] border border-amber-300' : 'bg-gray-100 text-gray-500'}`}>
+                    {selectedTable ? `Đã chọn: Bàn ${selectedTable.name}` : 'Chưa chọn bàn'}
+                  </div>
+
+                  {selectedTable && (
+                    <button 
+                      onClick={() => setPosMainTab('MENU')}
+                      className="bg-[#237A57] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition shadow-sm"
+                    >
+                      Bắt đầu chọn món ➔
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 w-full rounded-2xl overflow-hidden border border-[#E8DED5] shadow-inner relative bg-white">
+                <FloorMapCanvas 
+                  tables={tables}
+                  editable={false}
+                  selectedTableId={selectedTable?.id}
+                  onTableClick={(table) => {
+                    const baseShape = (table.shape || '').split(':')[0].toLowerCase();
+                    const isDecor = table.capacity === 0 || ['door', 'stairs', 'plant', 'window', 'balcony', 'wc', 'counter', 'aquarium'].includes(baseShape);
+                    if (isDecor) return;
+                    setSelectedTable(table);
+                    // Automatically switch to MENU tab once table is selected for smooth workflow
+                    setPosMainTab('MENU');
+                  }}
+                  onTableSelect={(table) => {
+                    const baseShape = (table.shape || '').split(':')[0].toLowerCase();
+                    const isDecor = table.capacity === 0 || ['door', 'stairs', 'plant', 'window', 'balcony', 'wc', 'counter', 'aquarium'].includes(baseShape);
+                    if (isDecor) return;
+                    setSelectedTable(table);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
         </div>
-      </div>
 
       {/* Column 3: Cart (Right) */}
       <div className="w-[280px] lg:w-[340px] flex flex-col bg-white shrink-0">
@@ -723,33 +921,90 @@ const POS: React.FC = () => {
                   <p>Không có đơn Mang đi nào đang hoạt động</p>
                 </div>
               ) : (
-                activeTakeawayOrders.map(order => (
-                  <div key={order.id} className="bg-white p-4 rounded-xl border border-[#E8DED5] shadow-sm flex flex-col gap-3">
-                    <div className="flex justify-between items-start border-b border-gray-100 pb-2">
-                      <div>
-                        <span className="font-black text-[#543310] text-lg">#{order.order_code || order.id.slice(0,5)}</span>
-                        <p className="text-xs text-gray-500 mt-0.5">{new Date(order.created_at).toLocaleTimeString('vi-VN')} - {new Date(order.created_at).toLocaleDateString('vi-VN')}</p>
-                      </div>
-                      <span className="bg-orange-100 text-[#D67D3E] px-2 py-1 rounded text-xs font-bold uppercase">{order.status}</span>
-                    </div>
-                    <div className="text-sm text-gray-700 space-y-1">
-                      {order.items?.map((item: any, idx: number) => (
-                        <div key={idx} className="flex justify-between">
-                          <span>{item.quantity}x {item.product_name}</span>
+                activeTakeawayOrders.map(order => {
+                  const orderItems = order.order_items || order.items || [];
+                  const calculatedItemsTotal = orderItems.reduce((sum: number, it: any) => sum + (Number(it.quantity || 1) * Number(it.unit_price || it.price || 0)), 0);
+                  const displayAmount = Number(order.final_amount || order.total_amount || order.subtotal || calculatedItemsTotal || 0);
+                  const orderCode = order.order_code || order.order_number || (order.id ? 'ORD-' + order.id.slice(0, 6).toUpperCase() : '');
+                  const transferMemo = `DH ${orderCode}`;
+
+                  const isPendingVerification = order.status === 'PENDING';
+
+                  return (
+                    <div key={order.id} className="bg-white p-4 rounded-xl border border-[#E8DED5] shadow-sm flex flex-col gap-3">
+                      {/* Order Header */}
+                      <div className="flex justify-between items-start border-b border-gray-100 pb-2">
+                        <div>
+                          <span className="font-black text-[#543310] text-lg">#{orderCode}</span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {new Date(order.created_at).toLocaleTimeString('vi-VN')} - {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5 text-xs text-[#D67D3E] font-mono bg-orange-50 px-2 py-0.5 rounded border border-[#FED8B1] w-fit">
+                            <span>Nội dung CK: <strong>{transferMemo}</strong></span>
+                          </div>
                         </div>
-                      ))}
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                          isPendingVerification 
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                            : 'bg-blue-100 text-blue-800 border border-blue-300'
+                        }`}>
+                          {isPendingVerification ? 'CHỜ DUYỆT TIỀN' : 'ĐÃ DUYỆT & ĐANG BÁO BẾP'}
+                        </span>
+                      </div>
+
+                      {/* Items List */}
+                      <div className="text-sm text-gray-700 space-y-1 bg-[#FAF7F3] p-2.5 rounded-lg border border-gray-100">
+                        {orderItems.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic">Không có chi tiết món</p>
+                        ) : (
+                          orderItems.map((item: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center text-xs font-medium text-gray-800">
+                              <span>{item.quantity}x {item.product_name || item.name || 'Món ăn'}</span>
+                              <span className="text-gray-500 font-mono">
+                                {(Number(item.unit_price || item.price || 0) * Number(item.quantity || 1)).toLocaleString('vi-VN')}đ
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Footer & Actions */}
+                      <div className="flex flex-col gap-2 pt-2 border-t border-gray-100 mt-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500 font-bold uppercase">Tổng tiền:</span>
+                          <span className="font-bold text-[#D67D3E] text-lg">{displayAmount.toLocaleString('vi-VN')}đ</span>
+                        </div>
+
+                        {isPendingVerification ? (
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              onClick={() => handleCancelTakeawayOrder(order.id, orderCode)}
+                              className="px-3 py-2 border border-red-300 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition"
+                              title="Hủy đơn không hợp lệ"
+                            >
+                              Hủy đơn
+                            </button>
+                            <button
+                              onClick={() => handleVerifyAndSubmitKitchen(order.id, orderCode)}
+                              className="flex-1 bg-[#237A57] text-white px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 transition flex items-center justify-center gap-1"
+                            >
+                              <span>✓</span>
+                              <span>Xác nhận đã nhận tiền & Gửi Bếp</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => completeTakeawayDelivery(order.id, orderCode)}
+                            className="w-full py-2.5 bg-[#237A57] text-white rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 transition flex items-center justify-center gap-1.5 mt-1"
+                          >
+                            <span>✓</span>
+                            <span>Xác nhận giao đồ & Hoàn tất</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-100 mt-1">
-                      <span className="font-bold text-[#D67D3E] text-lg">{order.total_amount?.toLocaleString('vi-VN')}đ</span>
-                      <button 
-                        onClick={() => completeOrder(order.id)}
-                        className="bg-[#237A57] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-green-700 transition"
-                      >
-                        Xác nhận giao đồ
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -813,10 +1068,140 @@ const POS: React.FC = () => {
           </div>
         </div>
       )}
-      
-      </div>
+
+      {/* POS VietQR Payment Modal */}
+      {paymentModalOpen && paymentModalData && (
+
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#FED8B1]">
+            <div className="p-4 border-b bg-[#543310] text-white flex justify-between items-center">
+              <div>
+                <h2 className="font-bold text-lg text-[#FED8B1]">Thanh toán Đơn hàng #{paymentModalData.orderCode}</h2>
+                <p className="text-xs text-amber-200/80">Quét mã Vietcombank hoặc chọn phương thức thanh toán</p>
+              </div>
+              <button 
+                onClick={() => setPaymentModalOpen(false)} 
+                className="text-white/70 hover:text-white text-2xl font-bold leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto bg-[#FAF7F3]">
+              {paymentModalData.isPaid ? (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center space-y-3">
+                  <div className="w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto text-xl font-bold">✓</div>
+                  <h3 className="font-bold text-green-800 text-lg">Đơn hàng đã được thanh toán!</h3>
+                  <p className="text-sm text-green-600">Đơn hàng này đã ở trạng thái hoàn tất.</p>
+                </div>
+              ) : (
+                <>
+                  {/* QR Image Box */}
+                  <div className="bg-white p-4 rounded-xl border border-[#E8DED5] flex flex-col items-center shadow-sm">
+                    <img 
+                      src={generateVietQRUrl(paymentModalData.amount, `DH ${paymentModalData.orderCode}`)} 
+                      alt="Vietcombank VietQR Code" 
+                      className="w-[220px] h-[220px] object-contain rounded-lg"
+                    />
+                    <span className="text-[11px] text-gray-500 mt-2 font-mono">Tự động nhúng số tiền & nội dung</span>
+                  </div>
+
+                  {/* Account Info Box */}
+                  <div className="bg-white border border-[#FED8B1] rounded-xl p-4 space-y-2.5 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Ngân hàng:</span>
+                      <span className="font-semibold text-[#543310]">{VIETCOMBANK_CONFIG.bankName}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Số tài khoản:</span>
+                      <div className="flex items-center gap-1.5 font-bold text-[#543310] font-mono">
+                        <span>{VIETCOMBANK_CONFIG.accountNo}</span>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(VIETCOMBANK_CONFIG.accountNo);
+                            setCopiedField('acc');
+                            setTimeout(() => setCopiedField(null), 2000);
+                          }}
+                          className="text-gray-400 hover:text-[#D67D3E] text-xs underline"
+                        >
+                          {copiedField === 'acc' ? '✓ Đã chép' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Chủ tài khoản:</span>
+                      <span className="font-bold text-[#543310]">{VIETCOMBANK_CONFIG.accountName}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Nội dung CK:</span>
+                      <div className="flex items-center gap-1.5 font-bold text-[#D67D3E] font-mono">
+                        <span>DH {paymentModalData.orderCode}</span>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(`DH ${paymentModalData.orderCode}`);
+                            setCopiedField('memo');
+                            setTimeout(() => setCopiedField(null), 2000);
+                          }}
+                          className="text-gray-400 hover:text-[#D67D3E] text-xs underline"
+                        >
+                          {copiedField === 'memo' ? '✓ Đã chép' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-[#FED8B1] flex justify-between items-center font-bold">
+                      <span className="text-[#543310]">Tổng thanh toán:</span>
+                      <span className="text-[#D67D3E] text-lg">
+                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(paymentModalData.amount)}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex flex-col gap-2">
+              {paymentModalData.isPaid ? (
+                <button 
+                  onClick={() => setPaymentModalOpen(false)}
+                  className="w-full bg-[#543310] text-white py-2.5 rounded-xl font-bold hover:bg-[#D67D3E] transition"
+                >
+                  Đóng
+                </button>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => handleConfirmPosPayment('VIETQR')}
+                    disabled={isSubmitting}
+                    className="w-full bg-[#543310] text-white py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition disabled:opacity-50 shadow-md text-sm"
+                  >
+                    {isSubmitting ? 'Đang ghi nhận...' : '✓ Xác nhận đã nhận Chuyển Khoản (VietQR)'}
+                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleConfirmPosPayment('CASH')}
+                      disabled={isSubmitting}
+                      className="flex-1 bg-[#237A57] text-white py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition disabled:opacity-50 text-sm"
+                    >
+                      Thanh toán Tiền mặt (Cash)
+                    </button>
+                    <button 
+                      onClick={() => setPaymentModalOpen(false)}
+                      disabled={isSubmitting}
+                      className="px-4 bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-100 transition text-sm"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  </div>
+);
 };
 
-export default POS;
+
+export default POS;

@@ -16,7 +16,7 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  @Roles('STAFF', 'CUSTOMER')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async createOrder(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -26,7 +26,7 @@ export class OrderController {
   }
 
   @Post(':id/items')
-  @Roles('STAFF', 'CUSTOMER')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async addOrderItem(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -37,7 +37,7 @@ export class OrderController {
   }
 
   @Patch(':id/items/:itemId')
-  @Roles('STAFF', 'CUSTOMER')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async updateOrderItem(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -49,7 +49,7 @@ export class OrderController {
   }
 
   @Post(':id/submit-kitchen')
-  @Roles('STAFF', 'CUSTOMER')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async submitKitchen(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -59,7 +59,7 @@ export class OrderController {
   }
 
   @Patch(':id/items/:itemId/kitchen-status')
-  @Roles('STAFF')
+  @Roles('STAFF', 'OWNER')
   async updateKitchenStatus(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -71,7 +71,7 @@ export class OrderController {
   }
 
   @Post(':id/pay')
-  @Roles('STAFF', 'CUSTOMER')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async payOrder(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
@@ -79,6 +79,16 @@ export class OrderController {
     @Body() dto: PayOrderDto,
   ) {
     return this.orderService.payOrder(user, accessToken, orderId, dto);
+  }
+
+  @Post(':id/cancel')
+  @Roles('STAFF', 'CUSTOMER', 'OWNER')
+  async cancelOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentAccessToken() accessToken: string,
+    @Param('id') orderId: string,
+  ) {
+    return this.orderService.cancelOrder(user, accessToken, orderId);
   }
 
   @Get('kds')

@@ -6,7 +6,7 @@ import { FloorTabs } from '../../components/FloorTabs';
 import { TableStatusLegend } from '../../components/TableStatusLegend';
 import { TableInfoDrawer } from '../../components/TableInfoDrawer';
 import { FloorMapCanvas } from '@fnb/ui-shared';
-import { apiClient, authStore } from '@fnb/utils';
+import { apiClient, authStore, mapApiTableToCanvas } from '@fnb/utils';
 import { useStore } from 'zustand';
 import { useToast } from '../../components/ToastProvider';
 import { LoadingSkeleton, EmptyState } from '@fnb/ui-shared';
@@ -94,14 +94,8 @@ export default function FloorsPage() {
       setTablesError(false);
       const res = await apiClient.get(`/floors/${floorId}/tables`);
       const data = Array.isArray(res) ? res : (res?.data || []);
-      setTables(data.map((table: any) => ({
-        ...table,
-        name: table.name || table.table_code,
-        code: table.code || table.table_code,
-        coord_x: table.coord_x ?? table.pos_x,
-        coord_y: table.coord_y ?? table.pos_y,
-        shape: typeof table.shape === 'string' ? table.shape.toLowerCase() : table.shape,
-      })));
+      const mappedTables = data.map(mapApiTableToCanvas);
+      setTables(mappedTables);
     } catch (error) {
       console.error('Failed to fetch tables', error);
       setTablesError(true);
@@ -217,7 +211,13 @@ export default function FloorsPage() {
           <FloorMapCanvas 
             editable={false} 
             tables={tables} 
-            onTableClick={(t) => !lockingTable && setSelectedTable(t)}
+            onTableClick={(t) => {
+              if (lockingTable) return;
+              const shapeBase = (t.shape || '').split(':')[0].toLowerCase();
+              const isDecor = t.capacity === 0 || ['door', 'stairs', 'plant', 'window', 'balcony', 'wc', 'counter', 'aquarium'].includes(shapeBase);
+              if (isDecor) return;
+              setSelectedTable(t);
+            }}
           />
         )}
 

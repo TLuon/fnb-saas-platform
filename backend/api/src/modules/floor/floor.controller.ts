@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { FloorService } from './floor.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentAccessToken, CurrentUser } from '../../common/decorators/current-user.decorator.js';
@@ -25,7 +25,7 @@ export class FloorController {
     return this.floorService.listFloors(token, query.branch_id);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Post('floors')
   createFloor(@Body() dto: CreateFloorDto, @CurrentAccessToken() token: string) {
     return this.floorService.createFloor(token, dto);
@@ -37,13 +37,13 @@ export class FloorController {
     return this.floorService.getFloorTables(token, floorId);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Post('tables')
   createTable(@Body() dto: CreateTableDto, @CurrentAccessToken() token: string) {
     return this.floorService.createTable(token, dto);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'STAFF')
   @Patch('tables/:id')
   updateTable(
     @Param('id') tableId: string,
@@ -51,6 +51,12 @@ export class FloorController {
     @CurrentAccessToken() token: string,
   ) {
     return this.floorService.updateTable(token, tableId, dto);
+  }
+
+  @Roles('OWNER', 'STAFF')
+  @Delete('tables/:id')
+  deleteTable(@Param('id') tableId: string, @CurrentAccessToken() token: string) {
+    return this.floorService.deleteTable(token, tableId);
   }
 
   @Roles('STAFF', 'OWNER')
@@ -63,3 +69,4 @@ export class FloorController {
     return this.floorService.updateTableStatus(token, tableId, dto);
   }
 }
+

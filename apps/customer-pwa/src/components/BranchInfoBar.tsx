@@ -14,8 +14,34 @@ export function BranchInfoBar({
   address = '123 Nguyễn Thị Minh Khai, P. Bến Thành, Q.1',
   openTime = '08:00',
   closeTime = '22:00',
-  isOpen = true
+  isOpen: overrideIsOpen
 }: BranchInfoBarProps) {
+  const [isOpen, setIsOpen] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
+    if (typeof overrideIsOpen === 'boolean') {
+      setIsOpen(overrideIsOpen);
+      return;
+    }
+
+    const checkOpenStatus = () => {
+      const now = new Date();
+      const currentMins = now.getHours() * 60 + now.getMinutes();
+
+      const [openH, openM] = openTime.split(':').map(Number);
+      const [closeH, closeM] = closeTime.split(':').map(Number);
+
+      const startMins = (openH ?? 8) * 60 + (openM ?? 0);
+      const endMins = (closeH ?? 22) * 60 + (closeM ?? 0);
+
+      setIsOpen(currentMins >= startMins && currentMins < endMins);
+    };
+
+    checkOpenStatus();
+    const timer = setInterval(checkOpenStatus, 30000);
+    return () => clearInterval(timer);
+  }, [openTime, closeTime, overrideIsOpen]);
+
   return (
     <div className="bg-[#FAF7F3] border-b border-[#E8DED5] py-2 px-4 text-sm">
       <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-0">
@@ -43,3 +69,4 @@ export function BranchInfoBar({
     </div>
   );
 }
+

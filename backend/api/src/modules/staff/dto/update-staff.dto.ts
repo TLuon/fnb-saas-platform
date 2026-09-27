@@ -1,5 +1,5 @@
 import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.js';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 
 /**
  * API_CONTRACT.md mục 4 — PATCH /staff/:id (OWNER).
@@ -23,4 +23,9 @@ export class UpdateStaffDto {
   @IsOptional()
   @IsIn(['STAFF', 'SUPPORT'])
   role?: 'STAFF' | 'SUPPORT';
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
 }
+

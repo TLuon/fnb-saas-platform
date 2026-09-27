@@ -378,6 +378,25 @@ export class CdpService {
     // 8. Real chart data
     const chartData = buildChartData(period, ordersList, vnYear, vnMonth);
 
+    // 9. Total ingredient cost from inventory_transactions (type = 'IN')
+    let inventoryQuery = client
+      .from('inventory_transactions')
+      .select('quantity, unit_price, total_cost')
+      .eq('tenant_id', user.tenant_id)
+      .eq('type', 'IN')
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+
+    if (branchId) {
+      inventoryQuery = inventoryQuery.eq('branch_id', branchId);
+    }
+
+    const { data: invTxList } = await inventoryQuery;
+    const totalIngredientCost = (invTxList || []).reduce((acc: number, tx: any) => {
+      const cost = Number(tx.total_cost ?? (Number(tx.quantity || 0) * Number(tx.unit_price || 0)));
+      return acc + cost;
+    }, 0);
+
     return {
       revenue_today: totalRevenue,
       revenue: totalRevenue,
@@ -386,6 +405,7 @@ export class CdpService {
       total_tables: totalTables,
       occupancy_rate: occupancyRate,
       average_order_value: averageOrderValue,
+      total_ingredient_cost: totalIngredientCost,
       revenue_trend: revenueTrend,
       orders_trend: ordersTrend,
       chart_data: chartData,

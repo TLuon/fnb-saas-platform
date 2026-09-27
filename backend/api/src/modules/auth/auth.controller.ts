@@ -31,6 +31,20 @@ export class AuthController {
     return this.authService.refresh(dto);
   }
 
+  @Public()
+  @HttpCode(200)
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: { email: string }) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Post('reset-password')
+  resetPassword(@Body() dto: { token?: string; new_password?: string }) {
+    return this.authService.resetPassword(dto);
+  }
+
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser, @CurrentAccessToken() token: string) {
     return this.authService.me(user, token);

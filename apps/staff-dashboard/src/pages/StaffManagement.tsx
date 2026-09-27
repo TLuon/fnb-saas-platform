@@ -6,9 +6,10 @@ import { StaffTable } from '../components/staff/StaffTable';
 import { StaffFormModal } from '../components/staff/StaffFormModal';
 import { TemporaryCredentialModal } from '../components/staff/TemporaryCredentialModal';
 import { DeactivateConfirmModal } from '../components/staff/DeactivateConfirmModal';
+import { ResetStaffPasswordModal } from '../components/staff/ResetStaffPasswordModal';
 
 export default function StaffManagement() {
-  const { staff, fetchStaff, createStaff, updateStaff, deactivateStaff } = useStaffStore();
+  const { staff, fetchStaff, createStaff, updateStaff, deactivateStaff, toggleStaff, resetPassword } = useStaffStore();
   const [loading, setLoading] = useState(true);
 
   // Filter state
@@ -27,6 +28,11 @@ export default function StaffManagement() {
   }>({ isOpen: false, name: '' });
 
   const [deactivateState, setDeactivateState] = useState<{
+    isOpen: boolean;
+    staff: StaffMember | null;
+  }>({ isOpen: false, staff: null });
+
+  const [resetPasswordState, setResetPasswordState] = useState<{
     isOpen: boolean;
     staff: StaffMember | null;
   }>({ isOpen: false, staff: null });
@@ -71,7 +77,7 @@ export default function StaffManagement() {
       setTempCredentialState({
         isOpen: true,
         name: result.full_name || result.name || data.name || 'Nhân viên',
-        password: result.temporary_password
+        password: result.temp_password || result.temporary_password
       });
     }
   };
@@ -115,6 +121,8 @@ export default function StaffManagement() {
         staff={filteredStaff}
         onEditStaff={(s) => { setEditingStaff(s); setFormOpen(true); }}
         onDeactivateStaff={(s) => setDeactivateState({ isOpen: true, staff: s })}
+        onToggleStaff={(s) => toggleStaff(s.id)}
+        onResetPassword={(s) => setResetPasswordState({ isOpen: true, staff: s })}
       />
 
       <StaffFormModal 
@@ -137,6 +145,13 @@ export default function StaffManagement() {
         onConfirm={handleDeactivate}
         staff={deactivateState.staff}
         totalActiveOwners={totalActiveOwners}
+      />
+
+      <ResetStaffPasswordModal
+        isOpen={resetPasswordState.isOpen}
+        onClose={() => setResetPasswordState({ isOpen: false, staff: null })}
+        staff={resetPasswordState.staff}
+        onConfirmReset={(id, customPassword) => resetPassword(id, customPassword)}
       />
     </div>
   );
