@@ -58,36 +58,64 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const [isWaiting, setIsWaiting] = useState<boolean>(false);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isWaiting) {
+      interval = setInterval(async () => {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+          let token = '';
+          if (typeof document !== 'undefined') {
+            const match = document.cookie.match(/(?:^|;\s*)jwt=([^;]*)/);
+            token = match ? decodeURIComponent(match[1]) : (localStorage.getItem('access_token') || '');
+          }
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
+          const res = await fetch(`${baseUrl}/reservations/${encodeURIComponent(reservationCode)}`, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            const payload = data?.data ?? data;
+            if (payload?.status === 'PAID') {
+              onMockSuccess();
+            } else if (payload?.status === 'CANCELLED') {
+              window.location.reload(); // Simple reload will show expired state
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [isWaiting, reservationCode, onMockSuccess]);
+
   const handleConfirmPayment = async () => {
     setIsProcessing(true);
     setPaymentError('');
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
-      const response = await fetch(`${baseUrl}/reservations/webhook/mock-payment/${tenantId}?secret=dev-mock-secret-key-12345`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-webhook-secret': 'dev-mock-secret-key-12345',
-        },
-        body: JSON.stringify({
-          raw_transfer_content: reservationCode,
-          amount: amount,
-          bank_reference: `BANK_TX_${Date.now()}`,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error?.message || 'Không thể xác nhận thanh toán đặt cọc');
-      }
-      onMockSuccess();
-    } catch (err) {
-      console.error('Lỗi xác nhận thanh toán:', err);
-      // Even if webhook mock fails in some environments, allow user to complete flow smoothly
-      onMockSuccess();
-    } finally {
+    // Instead of auto-confirming via webhook, we just show a waiting state
+    // The staff will confirm it manually on their dashboard.
+    setTimeout(() => {
+      setIsWaiting(true);
       setIsProcessing(false);
-    }
+    }, 1000);
   };
+
+  if (isWaiting) {
+    return (
+      <div className="flex flex-col items-center bg-white p-6 rounded-2xl shadow-lg border border-[#FED8B1] max-w-md w-full mx-auto text-center">
+        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+        </div>
+        <h3 className="text-[#543310] font-bold text-xl mb-2">Đang xử lý thanh toán</h3>
+        <p className="text-sm text-[#6B625B] mb-6">
+          Hệ thống đã nhận được yêu cầu. Nhân viên đang kiểm tra và xác nhận tiền cọc của bạn. Vui lòng không đóng trang này...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center bg-white p-6 rounded-2xl shadow-lg border border-[#FED8B1] max-w-md w-full mx-auto">

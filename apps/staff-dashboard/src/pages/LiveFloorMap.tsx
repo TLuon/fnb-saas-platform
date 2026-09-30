@@ -298,16 +298,74 @@ const LiveFloorMap: React.FC = () => {
                 </button>
               )}
 
-              {(selectedTable.status === 'RESERVED' || selectedTable.status === 'PENDING_LOCK') && (
+              {selectedTable.status === 'PENDING_LOCK' && (
                 <>
                   <button 
-                    onClick={() => handleStatusChange('AVAILABLE')}
+                    onClick={async () => {
+                      if (selectedTable.reservation_code) {
+                        try {
+                          await apiClient.delete(`/reservations/${selectedTable.reservation_code}`);
+                          setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'AVAILABLE' } : t));
+                          setSelectedTable({ ...selectedTable, status: 'AVAILABLE' as any });
+                        } catch(e) { console.error(e) }
+                      } else {
+                        handleStatusChange('AVAILABLE');
+                      }
+                    }}
                     className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-300 transition mb-2"
                   >
-                    Hủy đặt / Mở khóa
+                    Hủy cọc / Khách báo ảo
                   </button>
                   <button 
-                    onClick={() => handleStatusChange('OCCUPIED')}
+                    onClick={async () => {
+                      if (selectedTable.reservation_code) {
+                        try {
+                          await apiClient.post(`/reservations/${selectedTable.reservation_code}/confirm-deposit`);
+                          setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'RESERVED' } : t));
+                          setSelectedTable({ ...selectedTable, status: 'RESERVED' as any });
+                        } catch(e) { console.error(e) }
+                      }
+                    }}
+                    className="w-full bg-[#115E59] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-green-700 transition"
+                  >
+                    Xác nhận đã nhận cọc
+                  </button>
+                </>
+              )}
+
+              {selectedTable.status === 'RESERVED' && (
+                <>
+                  <button 
+                    onClick={async () => {
+                      if (selectedTable.reservation_code) {
+                        try {
+                          await apiClient.delete(`/reservations/${selectedTable.reservation_code}`);
+                          setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'AVAILABLE' } : t));
+                          setSelectedTable({ ...selectedTable, status: 'AVAILABLE' as any });
+                        } catch(e) { console.error(e) }
+                      } else {
+                        handleStatusChange('AVAILABLE');
+                      }
+                    }}
+                    className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-300 transition mb-2"
+                  >
+                    Hủy đặt bàn
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (selectedTable.reservation_code) {
+                        try {
+                          await apiClient.post(`/reservations/${selectedTable.reservation_code}/check-in`);
+                          setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'OCCUPIED' } : t));
+                          setSelectedTable({ ...selectedTable, status: 'OCCUPIED' as any });
+                        } catch(e: any) {
+                          console.error(e);
+                          showAlert(e.response?.data?.message || 'Không thể nhận bàn lúc này', 'error', 'Lỗi Cập Nhật');
+                        }
+                      } else {
+                        handleStatusChange('OCCUPIED');
+                      }
+                    }}
                     className="w-full bg-[#D67D3E] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-orange-700 transition"
                   >
                     Nhận bàn (Check-in)
@@ -315,12 +373,22 @@ const LiveFloorMap: React.FC = () => {
                 </>
               )}
               
-              <button 
-                onClick={() => navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}`)}
-                className="w-full border-2 border-[#543310] text-[#543310] py-2.5 rounded-lg font-bold hover:bg-orange-50 transition mt-4"
-              >
-                {activeOrder ? 'Order Thêm (POS)' : 'Tạo Đơn Hàng (POS)'}
-              </button>
+              <div className="flex gap-2 mt-4">
+                <button 
+                  onClick={() => navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}`)}
+                  className="flex-1 border-2 border-[#543310] text-[#543310] py-2.5 rounded-lg font-bold hover:bg-orange-50 transition text-sm"
+                >
+                  {activeOrder ? 'Order Thêm (POS)' : 'Tạo Đơn (POS)'}
+                </button>
+                {activeOrder && selectedTable.status === 'OCCUPIED' && (
+                  <button 
+                    onClick={() => navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}&action=pay`)}
+                    className="flex-1 bg-[#237A57] text-white py-2.5 rounded-lg font-bold hover:bg-green-700 transition shadow-sm text-sm"
+                  >
+                    Thanh toán
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

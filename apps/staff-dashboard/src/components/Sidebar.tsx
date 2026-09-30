@@ -1,12 +1,51 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Coffee, Users, BarChart3, UsersRound, ClipboardList, MessageSquareWarning, UtensilsCrossed, Clock, Package, Receipt } from 'lucide-react';
-import { authStore } from '@fnb/utils';
+import { authStore, apiClient } from '@fnb/utils';
 import { useStore } from 'zustand';
+import { useModal } from './ModalProvider';
 
 export function Sidebar() {
+  const { showAlert } = useModal();
   const role = useStore(authStore, state => state.role);
   const profile = useStore(authStore, state => state.profile);
   const userEmail = (profile?.email || '').toLowerCase();
+  
+  const [pendingCount, setPendingCount] = useState(0);
+  const [readyCount, setReadyCount] = useState(0);
+
+  useEffect(() => {
+    if (role !== 'STAFF' && role !== 'OWNER') return;
+
+    const fetchPending = async () => {
+      try {
+        const res = await apiClient.get('/reservations?status=PENDING');
+        const list = res.data?.data || res.data || [];
+        setPendingCount(prev => {
+          if (list.length > prev) {
+            showAlert(`Có ${list.length - prev} bàn đặt mới đang chờ xác nhận cọc!`, 'success', '🔔 BÀN ĐẶT MỚI');
+          }
+          return list.length;
+        });
+        
+        // Fetch READY orders for POS badge
+        const kdsRes = await apiClient.get('/orders/kds?status=READY');
+        const kdsList = kdsRes.data?.data || kdsRes.data || [];
+        setReadyCount(prev => {
+          if (kdsList.length > prev) {
+            showAlert(`Có ${kdsList.length - prev} món ăn vừa làm xong. Vui lòng giao cho khách!`, 'success', '🍲 MÓN ĐÃ SẴN SÀNG');
+          }
+          return kdsList.length;
+        });
+      } catch (err) {
+        console.error('Failed to fetch badge counts:', err);
+      }
+    };
+
+    fetchPending();
+    const interval = setInterval(fetchPending, 10000);
+    return () => clearInterval(interval);
+  }, [role]);
 
   const ownerLinks = [
     { to: '/menu-management', icon: <Coffee size={20} />, label: 'Quản lý Thực đơn' },
@@ -75,7 +114,17 @@ export function Sidebar() {
             }
           >
             {link.icon}
-            {link.label}
+            <span className="flex-1">{link.label}</span>
+            {link.to === '/floor-map' && pendingCount > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full animate-pulse shadow-md">
+                {pendingCount}
+              </span>
+            )}
+            {link.to === '/pos' && readyCount > 0 && (
+              <span className="bg-green-600 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full animate-pulse shadow-md" title={`${readyCount} món đã xong`}>
+                {readyCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

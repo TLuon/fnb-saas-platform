@@ -14,7 +14,8 @@ export interface Customer {
 export interface Customer360 extends Customer {
   favoriteItems: { name: string; timesOrdered: number }[];
   dietaryNotes: string[];
-  orderHistory: { id: string; date: string; amount: number; branch: string }[];
+  orderHistory: { id: string; date: string; amount: number; branch: string; status: string }[];
+  reservationHistory: { id: string; code: string; date: string; guests: number; status: string }[];
 }
 
 interface CdpStore {
@@ -73,6 +74,7 @@ export const useCdpStore = create<CdpStore>((set) => ({
           favoriteItems: data.favorite_items || [],
           dietaryNotes: data.dietary_notes || [],
           orderHistory: data.order_history || [],
+          reservationHistory: data.reservation_history || [],
         },
         loading: false,
       });

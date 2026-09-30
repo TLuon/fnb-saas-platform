@@ -173,6 +173,23 @@ export class ReservationService implements OnModuleInit {
       600,
     );
 
+    // Insert into reservations table as PENDING so staff can see it
+    try {
+      await supabaseAdmin.from('reservations')?.insert?.({
+        tenant_id: user.tenant_id,
+        table_id: dto.table_id,
+        customer_id: customerId,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        reservation_code: reservationCode,
+        reservation_time: new Date().toISOString(),
+        deposit_amount: depositAmount,
+        status: 'PENDING',
+      });
+    } catch {
+      // safe fallback
+    }
+
     // Insert into reservations table
     try {
       await supabaseAdmin.from('reservations')?.insert?.({
@@ -431,6 +448,45 @@ export class ReservationService implements OnModuleInit {
   }
 
   /**
+   * Manual deposit confirmation (Staff/Owner)
+   */
+  async confirmDeposit(user: AuthenticatedUser, code: string) {
+    const supabaseAdmin = this.supabaseService.admin();
+    const redisClient = this.redisService.getClient();
+
+    // 1. Fetch reservation
+    const { data: res } = await supabaseAdmin
+      .from('reservations')
+      .select('*')
+      .eq('reservation_code', code)
+      .eq('tenant_id', user.tenant_id)
+      .maybeSingle();
+
+    if (!res) throw new AppException('ERR_404', 'Không tìm thấy đặt bàn');
+    if (res.status !== 'PENDING') throw new AppException('ERR_400', 'Đặt bàn không ở trạng thái chờ cọc');
+
+    // 2. Update reservation to PAID
+    await supabaseAdmin
+      .from('reservations')
+      .update({ status: 'PAID', updated_at: new Date().toISOString() })
+      .eq('reservation_code', code);
+
+    // 3. Update table to RESERVED
+    await supabaseAdmin
+      .from('tables')
+      .update({ status: 'RESERVED' })
+      .eq('id', res.table_id);
+
+    // 4. Free Redis locks
+    await redisClient.del(`lock:${res.tenant_id}:${res.table_id}`, `reservation:${code}`);
+
+    // 5. Notify clients
+    this.realtimeGateway?.emitTableStatusChanged?.(res.table_id, 'RESERVED');
+
+    return { message: 'Đã xác nhận cọc, giữ bàn thành công' };
+  }
+
+  /**
    * Staff Check-in API:
    * 1. Xác thực thông tin khách (mã code, table_id, hoặc số điện thoại)
    * 2. Đổi trạng thái bàn thành OCCUPIED
@@ -539,7 +595,8 @@ export class ReservationService implements OnModuleInit {
         .single();
 
       if (createOrderError) {
-        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khởi tạo đơn hàng khi check-in');
+        console.error('CREATE_ORDER_ERROR_CHECK_IN', createOrderError);
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khởi tạo đơn hàng khi check-in: ' + createOrderError.message);
       }
       order = newOrder;
 
@@ -597,6 +654,10 @@ export class ReservationService implements OnModuleInit {
 
     if (query.status) {
       q = q.eq('status', query.status);
+      if (query.status === 'PENDING') {
+        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        q = q.gte('reservation_time', fifteenMinsAgo);
+      }
     }
     if (query.table_id) {
       q = q.eq('table_id', query.table_id);
@@ -609,6 +670,38 @@ export class ReservationService implements OnModuleInit {
 
     const { data, error } = await q.order('reservation_time', { ascending: false });
     console.log('listReservations QUERY RESULT', { data, error });
+    if (error) {
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    }
+    return data ?? [];
+  }
+
+  /**
+   * Danh sách đặt bàn của khách hàng hiện tại
+   */
+  async getMyReservations(user: AuthenticatedUser) {
+    const supabaseAdmin = this.supabaseService.admin();
+    
+    const { data: customers, error: custErr } = await supabaseAdmin
+      .from('customers')
+      .select('id')
+      .eq('auth_user_id', user.sub);
+      
+    if (custErr) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', custErr.message);
+    if (!customers || customers.length === 0) return [];
+    
+    const customerIds = customers.map(c => c.id);
+    
+    const { data, error } = await supabaseAdmin
+      .from('reservations')
+      .select(`
+        *,
+        table:tables(table_code, name, floor:floors(name)),
+        tenant:tenants(name)
+      `)
+      .in('customer_id', customerIds)
+      .order('created_at', { ascending: false });
+
     if (error) {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
     }

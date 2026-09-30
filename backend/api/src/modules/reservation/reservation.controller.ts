@@ -79,6 +79,19 @@ export class ReservationController {
   }
 
   /**
+   * Xác nhận đã nhận tiền cọc (STAFF / OWNER)
+   * POST /reservations/:code/confirm-deposit
+   */
+  @Post(':code/confirm-deposit')
+  @Roles('STAFF', 'OWNER')
+  async confirmDeposit(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+  ) {
+    return this.reservationService.confirmDeposit(user, code);
+  }
+
+  /**
    * Lấy danh sách đặt bàn (STAFF / OWNER)
    * GET /reservations
    */
@@ -90,6 +103,16 @@ export class ReservationController {
   ) {
     console.log('listReservations CALLED', { user_tenant: user.tenant_id, query });
     return this.reservationService.listReservations(user, query);
+  }
+
+  /**
+   * Lấy danh sách đặt bàn của khách hàng hiện tại
+   * GET /reservations/my
+   */
+  @Get('my')
+  @Roles('CUSTOMER')
+  async getMyReservations(@CurrentUser() user: AuthenticatedUser) {
+    return this.reservationService.getMyReservations(user);
   }
 
   /**

@@ -158,7 +158,38 @@ export class CdpService {
 
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
     if (!data) throw new NotFoundException('Không tìm thấy khách hàng');
-    return data;
+
+    const { data: orders } = await client
+      .from('orders')
+      .select('id, created_at, final_amount, status, branches(name)')
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const { data: reservations } = await client
+      .from('reservations')
+      .select('id, reservation_code, reservation_time, guest_count, status')
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    return {
+      ...data,
+      order_history: (orders || []).map((o: any) => ({
+        id: o.id,
+        date: o.created_at,
+        amount: o.final_amount,
+        branch: o.branches?.name || 'Chi nhánh',
+        status: o.status
+      })),
+      reservation_history: (reservations || []).map(r => ({
+        id: r.id,
+        code: r.reservation_code,
+        date: r.reservation_time,
+        guests: r.guest_count,
+        status: r.status
+      }))
+    };
   }
 
   /** API_CONTRACT.md mục 9 — POST /cdp/customers/:id/vouchers (OWNER, SUPPORT). */

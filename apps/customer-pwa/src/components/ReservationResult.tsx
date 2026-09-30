@@ -53,7 +53,17 @@ export function ReservationResult({ status, reservationCode, tableName }: Reserv
         {config.icon}
       </div>
       <h2 className={`text-2xl font-bold mb-2 ${config.titleColor}`}>{config.title}</h2>
-      <p className="text-[#6B625B] mb-6">{config.desc}</p>
+      <p className="text-[#6B625B] mb-2">{config.desc}</p>
+      
+      {status === 'FAIL' && (
+        <p className="text-xs text-red-600 mb-6 bg-red-50 p-3 rounded-lg text-left">
+          * Nếu quý khách đã hoàn tất chuyển khoản nhưng vẫn nhận được thông báo này, vui lòng liên hệ hotline <strong>1900 1234</strong> để được nhân viên hỗ trợ xử lý ngay.
+        </p>
+      )}
+
+      {status !== 'FAIL' && (
+        <div className="mb-6"></div>
+      )}
       
       <div className="bg-white/60 p-3 rounded-lg inline-block mb-8">
         <span className="text-sm text-[#6B625B] mr-2">Mã đặt bàn:</span>

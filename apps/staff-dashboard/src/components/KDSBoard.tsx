@@ -102,7 +102,7 @@ const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThreshol
                         disabled={isPending}
                         className="flex-1 text-sm bg-[#237A57] text-white py-2 rounded-md font-bold shadow-sm hover:bg-green-700 transition"
                       >
-                        Hoàn thành
+                        Đã chuẩn bị xong
                       </button>
                     )}
                     {status === 'READY' && (
@@ -111,7 +111,7 @@ const Column: React.FC<ColumnProps> = ({ title, status, items, now, lateThreshol
                         disabled={isPending}
                         className="flex-1 text-sm bg-gray-200 text-gray-800 py-2 rounded-md font-bold shadow-sm hover:bg-gray-300 transition"
                       >
-                        Đã giao (Served)
+                        Đã sẵn sàng & báo POS
                       </button>
                     )}
                   </>

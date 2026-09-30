@@ -365,7 +365,7 @@ export class OrderService {
     // 1. Verify order exists and belongs to tenant
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, branch_id, status')
+      .select('id, branch_id, status, order_code')
       .eq('id', orderId)
       .single();
 
@@ -380,7 +380,7 @@ export class OrderService {
     // 2. Fetch existing order item to check existence & valid transition
     const { data: item, error: itemError } = await supabase
       .from('order_items')
-      .select('id, kitchen_status')
+      .select('id, kitchen_status, product_name')
       .eq('id', itemId)
       .eq('order_id', orderId)
       .single();
@@ -426,8 +426,11 @@ export class OrderService {
     // Realtime Emit
     if (order.branch_id) {
       this.realtimeGateway.emitKdsItemStatusChanged(order.branch_id, {
+        order_id: order.id,
         order_item_id: itemId,
         kitchen_status: targetStatus,
+        order_code: order.order_code,
+        product_name: item.product_name,
       });
     }
 
@@ -847,7 +850,7 @@ export class OrderService {
 
     const activeStatuses = query.status
       ? [query.status]
-      : ['QUEUED', 'PREPARING', 'READY'];
+      : ['QUEUED', 'PREPARING', 'READY', 'SERVED'];
 
     const kdsItems: Array<{
       order_id: string;

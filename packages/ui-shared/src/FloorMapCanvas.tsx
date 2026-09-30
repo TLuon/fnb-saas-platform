@@ -14,6 +14,10 @@ export interface FloorTableCanvas {
   capacity?: number;
   current_order_id?: string | null;
   reservation_time?: string | null;
+  reservation_code?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  deposit_amount?: number | null;
 }
 
 export interface FloorMapCanvasProps {
@@ -46,8 +50,8 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
   onTableSelect,
   onTableMove
 }) => {
-  const effectiveMinScale = minScale ?? (editable ? 0.05 : 0.75);
-  const effectiveMaxScale = maxScale ?? (editable ? 10.0 : 1.35);
+  const effectiveMinScale = minScale ?? (editable ? 0.05 : 0.5);
+  const effectiveMaxScale = maxScale ?? (editable ? 10.0 : 3.0);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -119,7 +123,7 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
 
     const fitScaleX = canvasSize.width / (mapWidth + padding * 2);
     const fitScaleY = canvasSize.height / (mapHeight + padding * 2);
-    const fitScale = Math.min(fitScaleX, fitScaleY, 1.0);
+    const fitScale = Math.min(fitScaleX, fitScaleY, effectiveMaxScale);
 
     const contentCenterX = (minX + maxX) / 2;
     const contentCenterY = (minY + maxY) / 2;

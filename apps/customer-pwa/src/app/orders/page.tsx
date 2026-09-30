@@ -15,11 +15,18 @@ export default function OrdersPage() {
     const fetchOrders = async () => {
       try {
         setLoading(true);
-        const res: any = await apiClient.get(`/orders?page=1&limit=20`);
-        const data = res?.data || res;
-        setOrders(Array.isArray(data) ? data : (data?.data || []));
+        const [ordersRes, reservationsRes] = await Promise.all([
+          apiClient.get(`/orders?page=1&limit=20`).catch(() => null),
+          apiClient.get(`/reservations/my`).catch(() => null)
+        ]);
+        
+        const ordersData = (ordersRes?.data?.data || ordersRes?.data || []).map((o: any) => ({...o, itemType: 'order'}));
+        const resData = (reservationsRes?.data?.data || reservationsRes?.data || []).map((r: any) => ({...r, itemType: 'reservation'}));
+        
+        const combined = [...ordersData, ...resData].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setOrders(combined);
       } catch (err) {
-        console.error('Failed to fetch orders', err);
+        console.error('Failed to fetch history', err);
         setOrders([]);
       } finally {
         setLoading(false);
@@ -29,9 +36,17 @@ export default function OrdersPage() {
   }, []);
 
   const filteredOrders = orders.filter(o => {
-    if (filter === 'ACTIVE') return ['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(o.status);
-    if (filter === 'COMPLETED') return o.status === 'COMPLETED';
-    if (filter === 'CANCELLED') return o.status === 'CANCELLED';
+    if (filter === 'ACTIVE') {
+      if (o.itemType === 'reservation') return ['PENDING', 'PAID'].includes(o.status);
+      return ['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(o.status);
+    }
+    if (filter === 'COMPLETED') {
+      if (o.itemType === 'reservation') return o.status === 'COMPLETED' || o.status === 'CHECKED_IN';
+      return o.status === 'COMPLETED';
+    }
+    if (filter === 'CANCELLED') {
+      return o.status === 'CANCELLED';
+    }
     return true;
   });
 

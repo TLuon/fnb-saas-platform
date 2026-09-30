@@ -4,7 +4,7 @@ import { IsUuidLoose } from '../../../common/validators/is-uuid-loose.decorator.
 export class PayOrderDto {
   @IsString()
   @IsNotEmpty()
-  @IsIn(['VIETQR', 'WALLET', 'COFFEE_PASS'])
+  @IsIn(['VIETQR', 'WALLET', 'COFFEE_PASS', 'CASH'])
   payment_method: string;
 
   @IsOptional()

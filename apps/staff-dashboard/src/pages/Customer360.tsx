@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useCdpStore } from '../store/cdpStore';
 import { Customer360Header } from '../components/cdp/Customer360Header';
 import { FavoriteItems, DietaryNotes } from '../components/cdp/CustomerProfileWidgets';
-import { OrderHistoryTable } from '../components/cdp/OrderHistoryTable';
+import { OrderHistoryTable, ReservationHistoryTable } from '../components/cdp/OrderHistoryTable';
 import { IssueVoucherModal } from '../components/cdp/IssueVoucherModal';
 
 export default function Customer360Page() {
@@ -59,6 +59,7 @@ export default function Customer360Page() {
       </div>
 
       <OrderHistoryTable history={customer360.orderHistory} />
+      <ReservationHistoryTable history={customer360.reservationHistory || []} />
 
       <IssueVoucherModal 
         isOpen={isVoucherModalOpen}

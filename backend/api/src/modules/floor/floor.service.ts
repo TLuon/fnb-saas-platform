@@ -102,38 +102,48 @@ export class FloorService {
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
     if (!data || data.length === 0) return [];
 
-    const reservedTableIds = data.filter((t) => t.status === 'RESERVED').map((t) => t.id);
-    if (reservedTableIds.length === 0) return data;
+    const tableIds = data.map((t) => t.id);
+    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-    // Fetch active reservations for RESERVED tables
+    // Fetch active reservations for ALL tables on this floor
     const admin = this.supabase.admin();
     const { data: reservations } = await admin
       .from('reservations')
-      .select('id, table_id, customer_name, customer_phone, reservation_time, reservation_code, deposit_amount')
-      .in('table_id', reservedTableIds)
-      .eq('status', 'PAID')
+      .select('id, table_id, customer_name, customer_phone, reservation_time, reservation_code, deposit_amount, status')
+      .in('table_id', tableIds)
+      .in('status', ['PAID', 'PENDING'])
       .order('created_at', { ascending: false });
 
-    if (!reservations || reservations.length === 0) return data;
-
     const resMap = new Map<string, any>();
-    for (const r of reservations) {
-      if (!resMap.has(r.table_id)) {
-        resMap.set(r.table_id, r);
+    if (reservations) {
+      for (const r of reservations) {
+        if (r.status === 'PENDING' && r.reservation_time < fifteenMinsAgo) {
+          continue; // skip expired pending
+        }
+        if (!resMap.has(r.table_id)) {
+          resMap.set(r.table_id, r);
+        }
       }
     }
 
     return data.map((t) => {
       const res = resMap.get(t.id);
       if (res) {
+        const derivedStatus = res.status === 'PAID' ? 'RESERVED' : 'PENDING_LOCK';
         return {
           ...t,
+          status: derivedStatus,
           customer_name: res.customer_name,
           customer_phone: res.customer_phone,
           reservation_time: res.reservation_time,
           reservation_code: res.reservation_code,
           reservation: res,
         };
+      }
+      
+      // Auto-revert stuck PENDING_LOCK tables if they have no active pending reservation
+      if (t.status === 'PENDING_LOCK') {
+        return { ...t, status: 'AVAILABLE' };
       }
       return t;
     });

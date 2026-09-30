@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { apiClient, RealtimeClient, mapApiTableToCanvas, authStore, generateVietQRUrl, VIETCOMBANK_CONFIG } from '@fnb/utils';
-import { FloorMapCanvas, FloorTableCanvas } from '@fnb/ui-shared';
+import { FloorTableCanvas } from '@fnb/ui-shared';
 import { useStore } from 'zustand';
 import { getSocketBaseUrl } from '../lib/kds';
 
@@ -45,6 +45,30 @@ interface ActiveOrder {
 import { useModal } from '../components/ModalProvider';
 
 const POS: React.FC = () => {
+  const [toastConfig, setToastConfig] = useState<{id: number, text: string, blinkCount: number, isVisible: boolean} | null>(null);
+
+  useEffect(() => {
+    if (!toastConfig) return;
+
+    if (toastConfig.blinkCount >= 3) {
+      setToastConfig(null);
+      return;
+    }
+
+    if (toastConfig.isVisible) {
+      const timer = setTimeout(() => {
+        setToastConfig(prev => prev ? { ...prev, isVisible: false } : null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    } else {
+      const timer = setTimeout(() => {
+        setToastConfig(prev => prev ? { ...prev, isVisible: true, blinkCount: prev.blinkCount + 1 } : null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastConfig]);
+
+  const navigate = useNavigate();
   const { showAlert, showConfirm } = useModal();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -62,7 +86,7 @@ const POS: React.FC = () => {
   }, [cart]);
 
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY'>('DINE_IN');
-  const [posMainTab, setPosMainTab] = useState<'MENU' | 'TABLES'>('MENU');
+  // posMainTab removed
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -70,9 +94,9 @@ const POS: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
 
   // Floor Map states
-  const [floors, setFloors] = useState<{id: string, name: string}[]>([]);
+  const [, setFloors] = useState<{id: string, name: string}[]>([]);
   const [selectedFloor, setSelectedFloor] = useState<string>('');
-  const [tables, setTables] = useState<FloorTableCanvas[]>([]);
+  const [, setTables] = useState<FloorTableCanvas[]>([]);
   const [selectedTable, setSelectedTable] = useState<FloorTableCanvas | null>(null);
   
   const [branchName, setBranchName] = useState('');
@@ -131,6 +155,38 @@ const POS: React.FC = () => {
 
     client.socket.on('product_out_of_stock', (data: { product_id: string }) => {
       setOutOfStockIds(prev => new Set(prev).add(data.product_id));
+    });
+
+
+
+    client.socket.on('kds_item_status_changed', (data: any) => {
+      const orderCode = data.order_code || `ORD-${(data.order_id || '').slice(0, 6).toUpperCase()}`;
+      const productName = data.product_name || 'Một món';
+
+      if (data.kitchen_status === 'READY') {
+        setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã chuẩn bị xong, hãy bấm "Giao món" để phục vụ khách!`, blinkCount: 0, isVisible: true });
+      } else if (data.kitchen_status === 'SERVED') {
+        setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã sẵn sàng & báo POS, vui lòng mang ra cho khách!`, blinkCount: 0, isVisible: true });
+      }
+
+      setActiveTableOrder((prev: any) => {
+        if (!prev) return prev;
+        const newItems = prev.order_items?.map((it: any) => 
+          (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
+            ? { ...it, kitchen_status: data.kitchen_status }
+            : it
+        );
+        return { ...prev, order_items: newItems };
+      });
+
+      setActiveTakeawayOrders((prev: any[]) => prev.map((order: any) => {
+        const newItems = (order.order_items || order.items || []).map((it: any) => 
+          (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
+            ? { ...it, kitchen_status: data.kitchen_status }
+            : it
+        );
+        return { ...order, order_items: newItems, items: newItems };
+      }));
     });
 
     client.socket.on('connect', () => {
@@ -383,6 +439,13 @@ const POS: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (searchParams.get('action') === 'pay' && activeOrderId && !paymentModalOpen) {
+      openPaymentModalForOrder(activeOrderId);
+      navigate(`/pos?floor_id=${selectedFloor}&table_id=${initialTableId}`, { replace: true });
+    }
+  }, [searchParams, activeOrderId, paymentModalOpen, selectedFloor, initialTableId, navigate]);
+
 
   const checkoutAndPay = async () => {
     setIsSubmitting(true);
@@ -407,6 +470,9 @@ const POS: React.FC = () => {
             notes: item.note,
           });
         }
+        if (orderType === 'TAKEAWAY') {
+          await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+        }
         setCart([]);
       } else if (orderId && cart.length > 0) {
         // If there are additional cart items on an existing order, append them first
@@ -417,6 +483,9 @@ const POS: React.FC = () => {
             modifiers: item.modifiers,
             notes: item.note,
           });
+        }
+        if (orderType === 'TAKEAWAY') {
+          await apiClient.post(`/orders/${orderId}/submit-kitchen`);
         }
         setCart([]);
       }
@@ -477,8 +546,24 @@ const POS: React.FC = () => {
       .catch(console.error);
   };
 
+  const [pendingReservationCount, setPendingReservationCount] = useState(0);
+  const fetchPendingReservations = () => {
+    apiClient.get('/reservations?status=PENDING')
+      .then((res: any) => {
+        const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
+        setPendingReservationCount(list.length);
+      })
+      .catch(console.error);
+  };
+
   useEffect(() => {
     fetchTakeawayOrders();
+    fetchPendingReservations();
+    const interval = setInterval(() => {
+      fetchTakeawayOrders();
+      fetchPendingReservations();
+    }, 10000);
+    return () => clearInterval(interval);
   }, [branchId]);
 
   const handleVerifyAndSubmitKitchen = async (orderId: string, orderCode: string) => {
@@ -571,29 +656,13 @@ const POS: React.FC = () => {
         <div className="flex-1 flex flex-col border-r border-[#E8DED5] bg-[#FAF7F3] min-w-0 overflow-hidden">
           
           {/* Main Top Mode Switcher Bar */}
-          <header className="p-3 border-b border-[#E8DED5] bg-white flex justify-between items-center flex-wrap gap-3 shadow-sm z-20 shrink-0">
-            <div className="flex bg-gray-100 p-1 rounded-xl">
+          <header className="p-3 border-b border-[#E8DED5] bg-white flex justify-between items-center flex-wrap gap-3 shadow-sm z-20 shrink-0">            <div className="flex bg-gray-100 p-1 rounded-xl">
               <button 
-                className={`px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-2 ${posMainTab === 'MENU' ? 'bg-[#543310] text-white shadow' : 'text-gray-600 hover:text-gray-800'}`}
-                onClick={() => setPosMainTab('MENU')}
+                className="px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-2 bg-[#543310] text-white shadow"
               >
                 <span>🍔</span>
                 <span>Thực đơn gọi món</span>
               </button>
-              {orderType === 'DINE_IN' && (
-                <button 
-                  className={`px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-2 ${posMainTab === 'TABLES' ? 'bg-[#D67D3E] text-white shadow' : 'text-gray-600 hover:text-gray-800'}`}
-                  onClick={() => setPosMainTab('TABLES')}
-                >
-                  <span>📍</span>
-                  <span>Sơ đồ chọn bàn</span>
-                  {selectedTable && (
-                    <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold ml-1">
-                      {selectedTable.name}
-                    </span>
-                  )}
-                </button>
-              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -610,7 +679,6 @@ const POS: React.FC = () => {
                   className={`px-3.5 py-1.5 rounded-lg font-bold text-xs transition ${orderType === 'TAKEAWAY' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
                   onClick={() => {
                     setOrderType('TAKEAWAY');
-                    setPosMainTab('MENU');
                   }}
                 >
                   🥡 Mang đi
@@ -627,11 +695,20 @@ const POS: React.FC = () => {
                 <span>Đơn Online/Mang đi</span>
                 <span className="bg-[#D67D3E] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">{activeTakeawayOrders.length}</span>
               </button>
+
+              <button 
+                onClick={() => {
+                  navigate('/floor-map');
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold border transition shadow-sm text-xs ${pendingReservationCount > 0 ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 animate-pulse' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}
+              >
+                <span>Bàn chờ cọc</span>
+                <span className={`${pendingReservationCount > 0 ? 'bg-red-600' : 'bg-gray-400'} text-white text-[10px] px-2 py-0.5 rounded-full font-bold`}>{pendingReservationCount}</span>
+              </button>
             </div>
           </header>
 
           {/* VIEW MODE 1: 🍔 GỌI MÓN (MENU) */}
-          {posMainTab === 'MENU' && (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {/* Filter Sub-header */}
               <div className="p-3 border-b border-[#E8DED5] bg-white flex flex-col gap-2 shrink-0 shadow-sm">
@@ -645,7 +722,7 @@ const POS: React.FC = () => {
                   />
                   {orderType === 'DINE_IN' && (
                     <button 
-                      onClick={() => setPosMainTab('TABLES')}
+                      onClick={() => navigate('/floor-map')}
                       className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 ${selectedTable ? 'bg-amber-50 text-[#543310] border-amber-300' : 'bg-red-50 text-red-600 border-red-200 animate-pulse'}`}
                     >
                       <span>📍</span>
@@ -715,78 +792,19 @@ const POS: React.FC = () => {
                 )}
               </div>
             </div>
-          )}
-
-          {/* VIEW MODE 2: 📍 SƠ ĐỒ BÀN (TABLE MAP) */}
-          {posMainTab === 'TABLES' && (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-4 space-y-3">
-              <div className="flex justify-between items-center flex-wrap gap-3 bg-white p-3 rounded-2xl border border-[#E8DED5] shadow-sm shrink-0">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">📍</span>
-                  <div>
-                    <h3 className="font-bold text-[#543310] text-base">Sơ đồ chọn bàn</h3>
-                    <p className="text-xs text-gray-500">Nhấp chọn bàn trên sơ đồ để tạo đơn tại bàn</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <select 
-                    className="border border-[#E8DED5] rounded-xl px-4 py-2 text-sm font-bold text-[#543310] focus:outline-none focus:ring-2 focus:ring-[#D67D3E] bg-gray-50"
-                    value={selectedFloor}
-                    onChange={(e) => setSelectedFloor(e.target.value)}
-                  >
-                    {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
-
-                  <div className={`px-4 py-2 rounded-xl text-xs font-bold ${selectedTable ? 'bg-amber-100 text-[#543310] border border-amber-300' : 'bg-gray-100 text-gray-500'}`}>
-                    {selectedTable ? `Đã chọn: Bàn ${selectedTable.name}` : 'Chưa chọn bàn'}
-                  </div>
-
-                  {selectedTable && (
-                    <button 
-                      onClick={() => setPosMainTab('MENU')}
-                      className="bg-[#237A57] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition shadow-sm"
-                    >
-                      Bắt đầu chọn món ➔
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex-1 w-full rounded-2xl overflow-hidden border border-[#E8DED5] shadow-inner relative bg-white">
-                <FloorMapCanvas 
-                  tables={tables}
-                  editable={false}
-                  selectedTableId={selectedTable?.id}
-                  onTableClick={(table) => {
-                    const baseShape = (table.shape || '').split(':')[0].toLowerCase();
-                    const isDecor = table.capacity === 0 || ['door', 'stairs', 'plant', 'window', 'balcony', 'wc', 'counter', 'aquarium'].includes(baseShape);
-                    if (isDecor) return;
-                    setSelectedTable(table);
-                    // Automatically switch to MENU tab once table is selected for smooth workflow
-                    setPosMainTab('MENU');
-                  }}
-                  onTableSelect={(table) => {
-                    const baseShape = (table.shape || '').split(':')[0].toLowerCase();
-                    const isDecor = table.capacity === 0 || ['door', 'stairs', 'plant', 'window', 'balcony', 'wc', 'counter', 'aquarium'].includes(baseShape);
-                    if (isDecor) return;
-                    setSelectedTable(table);
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-        </div>
+          </div>
 
       {/* Column 3: Cart (Right) */}
-      <div className="w-[280px] lg:w-[340px] flex flex-col bg-white shrink-0">
-        <header className="p-4 bg-[#543310] text-white flex justify-between items-center shadow-md z-10">
+      <div className="w-[280px] lg:w-[340px] flex flex-col bg-white shrink-0 overflow-hidden">
+        <header className="p-4 bg-[#543310] text-white flex justify-between items-center shadow-md z-10 shrink-0">
           <h2 className="text-lg font-bold">Giỏ hàng</h2>
           {orderType === 'DINE_IN' ? (
-            <span className="bg-white text-[#543310] px-3 py-1 rounded text-sm font-bold">
+            <button 
+              onClick={() => navigate('/floor-map')}
+              className="bg-white text-[#543310] px-3 py-1 rounded text-sm font-bold hover:bg-gray-100 transition cursor-pointer"
+            >
               {selectedTable ? `Bàn: ${selectedTable.name}` : 'Chưa chọn bàn'}
-            </span>
+            </button>
           ) : (
             <span className="bg-[#D67D3E] text-white px-3 py-1 rounded text-sm font-bold">Mang đi</span>
           )}
@@ -859,13 +877,41 @@ const POS: React.FC = () => {
                 <span>{existingOrderTotal.toLocaleString('vi-VN')}đ</span>
               </div>
               {activeTableOrder.order_items && activeTableOrder.order_items.length > 0 && (
-                <div className="mt-1 text-gray-500 max-h-20 overflow-y-auto">
-                  {activeTableOrder.order_items.map((it: any, i: number) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{it.quantity}x {it.product_name}</span>
-                      <span>{(it.quantity * it.unit_price).toLocaleString('vi-VN')}đ</span>
-                    </div>
-                  ))}
+                <div className="mt-1 text-gray-500 max-h-32 overflow-y-auto">
+                  {activeTableOrder.order_items.map((it: any, i: number) => {
+                    const kStatus = it.kitchen_status || 'QUEUED';
+                    const statusColor = kStatus === 'QUEUED' ? 'text-orange-500' : kStatus === 'PREPARING' ? 'text-blue-500' : kStatus === 'READY' ? 'text-green-600' : 'text-gray-500';
+                    const statusLabel = kStatus === 'QUEUED' ? 'Chờ chế biến' : kStatus === 'PREPARING' ? 'Đang làm' : kStatus === 'READY' ? 'Sẵn sàng' : 'Đã giao';
+                    
+                    return (
+                      <div key={i} className="flex flex-col mb-2 border-b border-amber-100 pb-2">
+                        <div className="flex justify-between items-center mb-0.5">
+                          <span className="font-semibold text-gray-800">{it.quantity}x {it.product_name}</span>
+                          <span className="text-[#D67D3E] font-bold">{(it.quantity * it.unit_price).toLocaleString('vi-VN')}đ</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border border-current ${statusColor}`}>
+                            {statusLabel}
+                          </span>
+                          {kStatus === 'READY' && (
+                            <button 
+                              onClick={async () => {
+                                try {
+                                  await apiClient.patch(`/orders/${activeTableOrder.id}/items/${it.id}/kitchen-status`, { kitchen_status: 'SERVED' });
+                                  setActiveTableOrder((prev: any) => ({ ...prev, order_items: prev.order_items.map((x: any) => x.id === it.id ? { ...x, kitchen_status: 'SERVED' } : x) }));
+                                } catch (e) {
+                                  showAlert('Không thể đánh dấu', 'error');
+                                }
+                              }}
+                              className="text-[10px] font-bold bg-[#237A57] text-white px-2 py-1 rounded hover:bg-green-700 transition"
+                            >
+                              Giao món ✓
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -889,13 +935,15 @@ const POS: React.FC = () => {
           </div>
           
           <div className="flex gap-2 mt-2">
-            <button 
-              onClick={sendToKitchen}
-              disabled={(!activeOrderId && cart.length === 0) || isSubmitting || (orderType === 'DINE_IN' && !selectedTable)}
-              className="flex-1 bg-white border-2 border-[#543310] text-[#543310] py-3 rounded-xl font-bold text-sm hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
-            >
-              {isSubmitting ? 'Đang gửi...' : 'Lưu Đơn & Gửi Bếp'}
-            </button>
+            {orderType === 'DINE_IN' && (
+              <button 
+                onClick={sendToKitchen}
+                disabled={(!activeOrderId && cart.length === 0) || isSubmitting || (orderType === 'DINE_IN' && !selectedTable)}
+                className="flex-1 bg-white border-2 border-[#543310] text-[#543310] py-3 rounded-xl font-bold text-sm hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+              >
+                {isSubmitting ? 'Đang gửi...' : 'Lưu Đơn & Gửi Bếp'}
+              </button>
+            )}
             <button 
               onClick={checkoutAndPay}
               disabled={(cart.length === 0 && !activeOrderId) || isSubmitting}
@@ -957,14 +1005,46 @@ const POS: React.FC = () => {
                         {orderItems.length === 0 ? (
                           <p className="text-xs text-gray-400 italic">Không có chi tiết món</p>
                         ) : (
-                          orderItems.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center text-xs font-medium text-gray-800">
-                              <span>{item.quantity}x {item.product_name || item.name || 'Món ăn'}</span>
-                              <span className="text-gray-500 font-mono">
-                                {(Number(item.unit_price || item.price || 0) * Number(item.quantity || 1)).toLocaleString('vi-VN')}đ
-                              </span>
-                            </div>
-                          ))
+                          orderItems.map((item: any, idx: number) => {
+                            const kStatus = item.kitchen_status || 'QUEUED';
+                            const statusColor = kStatus === 'QUEUED' ? 'text-orange-500' : kStatus === 'PREPARING' ? 'text-blue-500' : kStatus === 'READY' ? 'text-green-600' : 'text-gray-500';
+                            const statusLabel = kStatus === 'QUEUED' ? 'Chờ chế biến' : kStatus === 'PREPARING' ? 'Đang làm' : kStatus === 'READY' ? 'Sẵn sàng' : 'Đã giao';
+                            
+                            return (
+                              <div key={idx} className="flex flex-col border-b border-gray-100 pb-2 mb-2">
+                                <div className="flex justify-between items-center text-xs font-medium text-gray-800 mb-0.5">
+                                  <span>{item.quantity}x {item.product_name || item.name || 'Món ăn'}</span>
+                                  <span className="text-[#D67D3E] font-mono font-bold">
+                                    {(Number(item.unit_price || item.price || 0) * Number(item.quantity || 1)).toLocaleString('vi-VN')}đ
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border border-current ${statusColor}`}>
+                                    {statusLabel}
+                                  </span>
+                                  {kStatus === 'READY' && (
+                                    <button 
+                                      onClick={async () => {
+                                        try {
+                                          await apiClient.patch(`/orders/${order.id}/items/${item.id}/kitchen-status`, { kitchen_status: 'SERVED' });
+                                          setActiveTakeawayOrders((prev: any[]) => prev.map((o: any) => {
+                                            if (o.id !== order.id) return o;
+                                            const newIt = (o.order_items || o.items).map((x: any) => x.id === item.id ? { ...x, kitchen_status: 'SERVED' } : x);
+                                            return { ...o, order_items: newIt, items: newIt };
+                                          }));
+                                        } catch (e) {
+                                          showAlert('Không thể đánh dấu', 'error');
+                                        }
+                                      }}
+                                      className="text-[10px] font-bold bg-[#237A57] text-white px-2 py-1 rounded hover:bg-green-700 transition"
+                                    >
+                                      Giao món ✓
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
 
@@ -1073,8 +1153,8 @@ const POS: React.FC = () => {
       {paymentModalOpen && paymentModalData && (
 
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#FED8B1]">
-            <div className="p-4 border-b bg-[#543310] text-white flex justify-between items-center">
+          <div className="bg-white max-w-md w-full max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#FED8B1]">
+            <div className="p-4 border-b bg-[#543310] text-white flex justify-between items-center shrink-0">
               <div>
                 <h2 className="font-bold text-lg text-[#FED8B1]">Thanh toán Đơn hàng #{paymentModalData.orderCode}</h2>
                 <p className="text-xs text-amber-200/80">Quét mã Vietcombank hoặc chọn phương thức thanh toán</p>
@@ -1087,7 +1167,7 @@ const POS: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto bg-[#FAF7F3]">
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-[#FAF7F3]">
               {paymentModalData.isPaid ? (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center space-y-3">
                   <div className="w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto text-xl font-bold">✓</div>
@@ -1159,7 +1239,7 @@ const POS: React.FC = () => {
               )}
             </div>
 
-            <div className="p-4 border-t bg-gray-50 flex flex-col gap-2">
+            <div className="p-4 border-t bg-gray-50 flex flex-col gap-2 shrink-0">
               {paymentModalData.isPaid ? (
                 <button 
                   onClick={() => setPaymentModalOpen(false)}
@@ -1198,10 +1278,19 @@ const POS: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* TOAST Notification Container */}
+      {toastConfig && toastConfig.isVisible && (
+        <div className="fixed top-20 right-8 z-[150] shadow-2xl border-l-4 border-[#D67D3E] bg-white text-[#543310] px-6 py-4 rounded-xl flex items-center gap-3 w-80">
+          <div className="text-2xl animate-pulse">🛎️</div>
+          <div className="flex-1 font-bold text-sm leading-snug">{toastConfig.text}</div>
+          <button onClick={() => setToastConfig(null)} className="text-gray-400 hover:text-gray-600">×</button>
+        </div>
+      )}
     </div>
   </div>
 );
 };
 
 
-export default POS;
+export default POS;

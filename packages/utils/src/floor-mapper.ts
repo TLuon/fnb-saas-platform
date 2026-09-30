@@ -22,6 +22,10 @@ export function mapApiTableToCanvas(t: any) {
     rotation: rotation,
     capacity: t.capacity ?? 4,
     reservation_time: t.reservation_time,
+    reservation_code: t.reservation_code,
+    customer_name: t.customer_name,
+    customer_phone: t.customer_phone,
+    deposit_amount: t.deposit_amount,
     current_order_id: t.current_order_id
   };
 }
