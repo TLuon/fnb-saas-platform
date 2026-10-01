@@ -243,6 +243,23 @@ export default function CheckoutPage() {
           </div>
         )}
 
+        {/* Thanh toán Tiền mặt (Cash) */}
+        {paymentMethod === 'CASH' && paymentStatus !== 'SUCCESS' && (
+          <div className="bg-white p-6 rounded-2xl border border-[#FED8B1] shadow-sm max-w-md mx-auto text-center space-y-4">
+            <h3 className="font-bold text-[#543310] text-lg">Thanh toán tại quầy</h3>
+            <div className="bg-[#FAF7F3] p-4 rounded-xl border border-[#E8DED5] flex justify-center">
+              <span className="text-4xl">🧾</span>
+            </div>
+            <p className="text-sm text-[#6B625B]">
+              Vui lòng mang mã đơn hàng <strong className="text-[#D67D3E]">{orderCode}</strong> đến quầy thu ngân để thanh toán bằng tiền mặt.
+            </p>
+            <div className="pt-2 border-t border-[#FED8B1] flex justify-between items-center font-bold">
+              <span className="text-[#543310]">Tổng thanh toán:</span>
+              <span className="text-[#D67D3E] text-lg">{formatPrice(payableAmount)}</span>
+            </div>
+          </div>
+        )}
+
         {paymentStatus === 'FAIL' && (
           <RetryPaymentButton onRetry={handlePayment} isLoading={isProcessing} />
         )}
@@ -253,7 +270,7 @@ export default function CheckoutPage() {
             disabled={isProcessing}
             className="w-full py-4 bg-[#543310] text-white font-bold rounded-xl hover:bg-[#D67D3E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-8 text-lg shadow-md"
           >
-            {isProcessing ? 'Đang gửi thông tin...' : `Tôi đã chuyển khoản (${formatPrice(payableAmount)})`}
+            {isProcessing ? 'Đang gửi thông tin...' : paymentMethod === 'VIETQR' ? `Tôi đã chuyển khoản (${formatPrice(payableAmount)})` : paymentMethod === 'CASH' ? `Xác nhận thanh toán tại quầy (${formatPrice(payableAmount)})` : 'Xác nhận thanh toán'}
           </button>
         )}
 
@@ -265,7 +282,10 @@ export default function CheckoutPage() {
             <div>
               <h3 className="font-bold text-xl text-[#543310]">Đã gửi thông tin thanh toán!</h3>
               <p className="text-sm text-gray-600 mt-2 max-w-md mx-auto leading-relaxed">
-                Nhà hàng đã nhận được yêu cầu của bạn. Nhân viên quầy thu ngân sẽ đối soát giao dịch chuyển khoản (Nội dung: <strong className="text-[#D67D3E] font-mono">{transferMemo}</strong>) và chuyển đơn xuống Bếp chế biến.
+                {paymentMethod === 'CASH' 
+                  ? <span>Nhà hàng đã nhận được yêu cầu của bạn. Vui lòng thanh toán bằng tiền mặt tại quầy thu ngân. Món của bạn sẽ được chuẩn bị ngay sau khi thanh toán hoàn tất.</span>
+                  : <span>Nhà hàng đã nhận được yêu cầu của bạn. Nhân viên quầy thu ngân sẽ đối soát giao dịch chuyển khoản (Nội dung: <strong className="text-[#D67D3E] font-mono">{transferMemo}</strong>) và chuyển đơn xuống Bếp chế biến.</span>
+                }
               </p>
             </div>
             <button

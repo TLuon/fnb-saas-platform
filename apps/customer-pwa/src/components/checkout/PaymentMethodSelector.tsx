@@ -1,7 +1,7 @@
 import React from 'react';
-import { QrCode, Wallet, Coffee } from 'lucide-react';
+import { QrCode, Wallet, Coffee, Banknote } from 'lucide-react';
 
-export type PaymentMethod = 'VIETQR' | 'WALLET' | 'COFFEE_PASS';
+export type PaymentMethod = 'VIETQR' | 'WALLET' | 'COFFEE_PASS' | 'CASH';
 
 interface PaymentMethodSelectorProps {
   method: PaymentMethod;
@@ -12,7 +12,8 @@ export function PaymentMethodSelector({ method, onChange }: PaymentMethodSelecto
   const methods = [
     { id: 'VIETQR', label: 'Chuyển khoản (VietQR)', icon: <QrCode size={20} /> },
     { id: 'WALLET', label: 'Ví FNB', icon: <Wallet size={20} /> },
-    { id: 'COFFEE_PASS', label: 'Gói Coffee Pass', icon: <Coffee size={20} /> }
+    { id: 'COFFEE_PASS', label: 'Gói Coffee Pass', icon: <Coffee size={20} /> },
+    { id: 'CASH', label: 'Tiền mặt (Tại quầy)', icon: <Banknote size={20} /> }
   ];
 
   return (

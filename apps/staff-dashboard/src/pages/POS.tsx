@@ -566,23 +566,23 @@ const POS: React.FC = () => {
     return () => clearInterval(interval);
   }, [branchId]);
 
-  const handleVerifyAndSubmitKitchen = async (orderId: string, orderCode: string) => {
+  const handleVerifyAndSubmitKitchen = async (orderId: string, orderCode: string, paymentMethod: 'VIETQR' | 'CASH' = 'VIETQR') => {
     try {
       setIsSubmitting(true);
       // 1. Chuyển bếp trước -> order.status đổi thành IN_PROGRESS và bắn event kds_new_ticket xuống Bếp
       await apiClient.post(`/orders/${orderId}/submit-kitchen`);
 
-      // 2. Cập nhật thông tin thanh toán VIETQR và giữ status IN_PROGRESS
+      // 2. Cập nhật thông tin thanh toán và giữ status IN_PROGRESS
       try {
         await apiClient.post(`/orders/${orderId}/pay`, { 
-          payment_method: 'VIETQR',
+          payment_method: paymentMethod,
           status: 'IN_PROGRESS'
         });
       } catch (payErr) {
         console.warn('Cập nhật thanh toán trước đó:', payErr);
       }
       
-      showAlert(`Đã xác nhận thanh toán & chuyển đơn #${orderCode} xuống Bếp!`, 'success', 'Duyệt Đơn Thành Công');
+      showAlert(`Đã xác nhận thanh toán (${paymentMethod}) & chuyển đơn #${orderCode} xuống Bếp!`, 'success', 'Duyệt Đơn Thành Công');
       fetchTakeawayOrders();
     } catch (err: any) {
       showAlert(err.response?.data?.message || err.message || 'Lỗi khi duyệt đơn hàng', 'error', 'Lỗi Duyệt Đơn');
@@ -1056,20 +1056,27 @@ const POS: React.FC = () => {
                         </div>
 
                         {isPendingVerification ? (
-                          <div className="flex gap-2 mt-1">
+                          <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleVerifyAndSubmitKitchen(order.id, orderCode, 'VIETQR')}
+                                className="flex-1 bg-[#237A57] text-white px-2 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 transition text-center"
+                              >
+                                Nhận CK (VietQR) & Gửi Bếp
+                              </button>
+                              <button
+                                onClick={() => handleVerifyAndSubmitKitchen(order.id, orderCode, 'CASH')}
+                                className="flex-1 bg-[#D67D3E] text-white px-2 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-orange-700 transition text-center"
+                              >
+                                Nhận Tiền Mặt & Gửi Bếp
+                              </button>
+                            </div>
                             <button
                               onClick={() => handleCancelTakeawayOrder(order.id, orderCode)}
-                              className="px-3 py-2 border border-red-300 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition"
+                              className="w-full px-3 py-2 border border-red-300 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition"
                               title="Hủy đơn không hợp lệ"
                             >
                               Hủy đơn
-                            </button>
-                            <button
-                              onClick={() => handleVerifyAndSubmitKitchen(order.id, orderCode)}
-                              className="flex-1 bg-[#237A57] text-white px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 transition flex items-center justify-center gap-1"
-                            >
-                              <span>✓</span>
-                              <span>Xác nhận đã nhận tiền & Gửi Bếp</span>
                             </button>
                           </div>
                         ) : (
