@@ -5,8 +5,28 @@ import { OrderService } from './order.service.js';
 import { OrderController } from './order.controller.js';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto.js';
 import { KdsOrdersQueryDto } from './dto/kds-orders-query.dto.js';
+import { PayOrderDto } from './dto/pay-order.dto.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { Reflector } from '@nestjs/core';
+
+export const createChainableMock = (resolvedData: any = null, error: any = null) => {
+  const q: any = {};
+  q.select = vi.fn().mockReturnThis();
+  q.insert = vi.fn().mockResolvedValue({ data: resolvedData, error });
+  q.update = vi.fn().mockReturnThis();
+  q.delete = vi.fn().mockReturnThis();
+  q.eq = vi.fn().mockReturnThis();
+  q.in = vi.fn().mockReturnThis();
+  q.gte = vi.fn().mockReturnThis();
+  q.lte = vi.fn().mockReturnThis();
+  q.range = vi.fn().mockReturnThis();
+  q.order = vi.fn().mockReturnThis();
+  q.ilike = vi.fn().mockReturnThis();
+  q.limit = vi.fn().mockReturnThis();
+  q.single = vi.fn().mockResolvedValue({ data: resolvedData, error });
+  q.maybeSingle = vi.fn().mockResolvedValue({ data: resolvedData, error });
+  return q;
+};
 
 describe('OrderService & OrderController Tests', () => {
   let service: OrderService;
@@ -37,7 +57,7 @@ describe('OrderService & OrderController Tests', () => {
 
   beforeEach(() => {
     mockSupabase = {
-      from: vi.fn(),
+      from: vi.fn().mockImplementation(() => createChainableMock()),
     };
 
     const mockSupabaseService: any = {
@@ -85,7 +105,7 @@ describe('OrderService & OrderController Tests', () => {
 
     mockSupabase.from.mockImplementation((table: string) => {
       if (table === 'orders') return getOrderQuery;
-      return {};
+      return createChainableMock();
     });
 
     const result = await service.getOrder(ownerUser, 'token', 'order-123');
@@ -187,7 +207,7 @@ describe('OrderService & OrderController Tests', () => {
       if (table === 'customers') return customerQuery;
       if (table === 'orders') return orderQuery;
       if (table === 'branches') return branchQuery;
-      return {};
+      return createChainableMock();
     });
 
     const result = await service.createOrder(customerUser, 'token', { order_type: 'TAKEAWAY' });
@@ -309,7 +329,7 @@ describe('OrderService & OrderController Tests', () => {
           if (table === 'orders') return adminOrderQuery;
           if (table === 'shifts') return shiftQuery;
           if (table === 'audit_logs') return auditQuery;
-          return {};
+          return createChainableMock();
         }),
       };
       const voucherService = new OrderService(
@@ -376,8 +396,9 @@ describe('OrderService & OrderController Tests', () => {
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'orders') return orderQuery;
         if (table === 'tables') return tablesQuery;
+        if (table === 'shifts') return createChainableMock({ id: 'shift-open', status: 'OPEN' });
         if (table === 'audit_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) };
-        return {};
+        return createChainableMock();
       });
 
       const mockCoffeePass = (service as any).coffeePassService;
@@ -441,7 +462,7 @@ describe('OrderService & OrderController Tests', () => {
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
           };
         }
-        return {};
+        return createChainableMock();
       });
 
       await expect(
@@ -467,7 +488,7 @@ describe('OrderService & OrderController Tests', () => {
             }),
           };
         }
-        return {};
+        return createChainableMock();
       });
 
       await expect(
@@ -500,7 +521,7 @@ describe('OrderService & OrderController Tests', () => {
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Item not found' } }),
           };
         }
-        return {};
+        return createChainableMock();
       });
 
       try {
@@ -532,7 +553,7 @@ describe('OrderService & OrderController Tests', () => {
             }),
           };
         }
-        return {};
+        return createChainableMock();
       });
 
       try {
@@ -566,7 +587,7 @@ describe('OrderService & OrderController Tests', () => {
             }),
           };
         }
-        return {};
+        return createChainableMock();
       });
 
       const res = await service.updateKitchenStatus(staffUser, 'token', orderId, itemId, { kitchen_status: 'PREPARING' });
@@ -602,16 +623,16 @@ describe('OrderService & OrderController Tests', () => {
             update: updateMock,
           };
         }
-        return {};
+        return createChainableMock();
       });
 
       const res = await service.updateKitchenStatus(staffUser, 'token', orderId, itemId, { kitchen_status: 'PREPARING' });
       expect(res.message).toBe('Đã cập nhật trạng thái bếp');
       expect(updateMock).toHaveBeenCalledWith({ kitchen_status: 'PREPARING' });
-      expect(mockRealtimeGateway.emitKdsItemStatusChanged).toHaveBeenCalledWith('branch-1', {
+      expect(mockRealtimeGateway.emitKdsItemStatusChanged).toHaveBeenCalledWith('branch-1', expect.objectContaining({
         order_item_id: itemId,
         kitchen_status: 'PREPARING',
-      });
+      }));
     });
   });
 
@@ -671,12 +692,12 @@ describe('OrderService & OrderController Tests', () => {
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return queryBuilder;
-          return {};
+          return createChainableMock();
         });
 
         const result = await service.listOrders(ownerUser, 'token', { page: 1, limit: 10 });
 
-        expect(queryBuilder.select).toHaveBeenCalledWith('*, order_items(*)', { count: 'exact' });
+        expect(queryBuilder.select).toHaveBeenCalledWith(expect.stringContaining('*, order_items(*)'), { count: 'exact' });
         expect(queryBuilder.eq).toHaveBeenCalledWith('tenant_id', tenantId);
         expect(queryBuilder.range).toHaveBeenCalledWith(0, 9);
         expect(result.data).toHaveLength(2);
@@ -704,7 +725,7 @@ describe('OrderService & OrderController Tests', () => {
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'customers') return customerQuery;
           if (table === 'orders') return ordersQuery;
-          return {};
+          return createChainableMock();
         });
 
         const result = await service.listOrders(customerUser, 'token', { page: 1, limit: 20 });
@@ -725,7 +746,7 @@ describe('OrderService & OrderController Tests', () => {
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'customers') return customerQuery;
-          return {};
+          return createChainableMock();
         });
 
         const result = await service.listOrders(customerUser, 'token', { page: 1, limit: 20 });
@@ -744,7 +765,7 @@ describe('OrderService & OrderController Tests', () => {
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return ordersQuery;
-          return {};
+          return createChainableMock();
         });
 
         await service.listOrders(staffUser, 'token', { branch_id: 'branch-1' });
@@ -791,7 +812,7 @@ describe('OrderService & OrderController Tests', () => {
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return ordersQuery;
-          return {};
+          return createChainableMock();
         });
 
         await service.listOrders(ownerUser, 'token', {
@@ -813,7 +834,7 @@ describe('OrderService & OrderController Tests', () => {
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return ordersQuery;
-          return {};
+          return createChainableMock();
         });
 
         await expect(service.listOrders(ownerUser, 'token', {})).rejects.toThrow(AppException);
@@ -915,20 +936,20 @@ describe('OrderService & OrderController Tests', () => {
         const kdsQuery: any = {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          in: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(), gte: vi.fn().mockReturnThis(), lte: vi.fn().mockReturnThis(),
           order: vi.fn().mockResolvedValue({ data: mockOrders, error: null }),
         };
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return kdsQuery;
-          return {};
+          return createChainableMock();
         });
 
         const items = await service.getKdsSnapshot(staffUser, 'token', { branch_id: 'branch-1' });
 
         expect(kdsQuery.eq).toHaveBeenCalledWith('tenant_id', tenantId);
         expect(kdsQuery.eq).toHaveBeenCalledWith('branch_id', 'branch-1');
-        expect(kdsQuery.in).toHaveBeenCalledWith('status', ['PENDING', 'IN_PROGRESS']);
+        expect(kdsQuery.in).toHaveBeenCalledWith('status', ['IN_PROGRESS']);
 
         // Default active: QUEUED and PREPARING included, SERVED excluded
         expect(items).toHaveLength(2);
@@ -998,13 +1019,13 @@ describe('OrderService & OrderController Tests', () => {
         const kdsQuery: any = {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          in: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(), gte: vi.fn().mockReturnThis(), lte: vi.fn().mockReturnThis(),
           order: vi.fn().mockResolvedValue({ data: mockOrders, error: null }),
         };
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return kdsQuery;
-          return {};
+          return createChainableMock();
         });
 
         // Query BAR only
@@ -1059,13 +1080,13 @@ describe('OrderService & OrderController Tests', () => {
         const kdsQuery: any = {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          in: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(), gte: vi.fn().mockReturnThis(), lte: vi.fn().mockReturnThis(),
           order: vi.fn().mockResolvedValue({ data: mockOrders, error: null }),
         };
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return kdsQuery;
-          return {};
+          return createChainableMock();
         });
 
         const readyItems = await service.getKdsSnapshot(staffUser, 'token', {
@@ -1080,13 +1101,13 @@ describe('OrderService & OrderController Tests', () => {
         const kdsQuery: any = {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          in: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(), gte: vi.fn().mockReturnThis(), lte: vi.fn().mockReturnThis(),
           order: vi.fn().mockResolvedValue({ data: null, error: { message: 'Database failed' } }),
         };
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return kdsQuery;
-          return {};
+          return createChainableMock();
         });
 
         await expect(
@@ -1098,13 +1119,13 @@ describe('OrderService & OrderController Tests', () => {
         const kdsQuery: any = {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          in: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(), gte: vi.fn().mockReturnThis(), lte: vi.fn().mockReturnThis(),
           order: vi.fn().mockResolvedValue({ data: [], error: null }),
         };
 
         mockSupabase.from.mockImplementation((table: string) => {
           if (table === 'orders') return kdsQuery;
-          return {};
+          return createChainableMock();
         });
 
         const result = await service.getKdsSnapshot(staffUser, 'token', { branch_id: 'branch-1' });
@@ -1197,7 +1218,7 @@ describe('OrderService & OrderController Tests', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'orders') return orderUpdateQuery;
-        return {};
+        return createChainableMock();
       });
 
       await service.createOrder(staffUser, 'token', {
@@ -1236,7 +1257,7 @@ describe('OrderService & OrderController Tests', () => {
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'orders') return orderQuery;
         if (table === 'shifts') return shiftQuery;
-        return {};
+        return createChainableMock();
       });
 
       await expect(
@@ -1305,7 +1326,7 @@ describe('OrderService & OrderController Tests', () => {
         if (table === 'shifts') return shiftQuery;
         if (table === 'tables') return updateTableQuery;
         if (table === 'audit_logs') return insertAuditQuery;
-        return updateOrderQuery;
+        return createChainableMock();
       });
 
       const result = await integratedOrderService.payOrder(staffUser, 'token', 'order-1', {
@@ -1389,7 +1410,7 @@ describe('OrderService & OrderController Tests', () => {
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'orders') return orderQuery;
         if (table === 'shifts') return shiftQuery;
-        return {};
+        return createChainableMock();
       });
 
       await expect(

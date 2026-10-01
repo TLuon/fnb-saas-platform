@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { apiClient } from '@fnb/utils';
 import Inventory from './Inventory';
 import { useInventoryStore } from '../store/inventoryStore';
+import { ModalProvider } from '../components/ModalProvider';
 
 describe('Inventory create form', () => {
   beforeEach(() => {
@@ -41,7 +42,7 @@ describe('Inventory create form', () => {
       cost_per_unit: 3,
     } as any);
 
-    render(<Inventory />);
+    render(<ModalProvider><Inventory /></ModalProvider>);
 
     await user.click(await screen.findByRole('button', { name: /\+ Thêm mới/i }));
     await user.type(screen.getByLabelText(/Tên nguyên vật liệu/i), 'Codex UI Ingredient');
@@ -70,7 +71,7 @@ describe('Inventory create form', () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue([] as any);
     const postSpy = vi.spyOn(apiClient, 'post');
 
-    render(<Inventory />);
+    render(<ModalProvider><Inventory /></ModalProvider>);
 
     await user.click(await screen.findByRole('button', { name: /\+ Thêm mới/i }));
     await user.clear(screen.getByLabelText(/Tên nguyên vật liệu/i));

@@ -75,7 +75,7 @@ export class OrderService {
     const orderType = dto.order_type ?? 'DINE_IN';
     const tableId = orderType === 'DINE_IN' ? (dto.table_id || null) : null;
 
-    let branchId = user.branch_id || dto.branch_id || null;
+    let branchId = dto.branch_id || user.branch_id || null;
     if (!branchId) {
       if (tableId) {
         const { data: tableData } = await supabaseAdmin
@@ -373,8 +373,8 @@ export class OrderService {
       throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
     }
 
-    if (order.status === 'CANCELLED') {
-      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã bị hủy');
+    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã hoàn tất hoặc đã bị hủy');
     }
 
     // 2. Fetch existing order item to check existence & valid transition
@@ -525,6 +525,7 @@ export class OrderService {
 
     // 1B. Shift Guard: Kiểm tra chi nhánh phải có ca mở để thanh toán
     const branchId = order.branch_id || user.branch_id;
+    let activeShiftId: string | null = null;
     if (branchId) {
       const supabaseAdmin = this.supabaseService.admin();
       const shiftQuery = supabaseAdmin.from('shifts');
@@ -542,8 +543,10 @@ export class OrderService {
             'Không thể thanh toán đơn hàng khi chưa mở ca làm việc',
           );
         }
+        activeShiftId = activeShift.id;
 
         if (!order.shift_id && activeShift.id) {
+          order.shift_id = activeShift.id;
           const updateQuery = supabaseAdmin.from('orders');
           if (typeof updateQuery?.update === 'function') {
             await updateQuery
@@ -552,6 +555,11 @@ export class OrderService {
           }
         }
       }
+    } else if (dto.payment_method === 'CASH') {
+      throw new AppException(
+        'ERR_9001_VALIDATION_FAILED',
+        'Không thể thanh toán đơn hàng khi chưa mở ca làm việc',
+      );
     }
 
     if (dto.payment_method === 'WALLET') {
@@ -606,13 +614,21 @@ export class OrderService {
       await this.coffeePassService.redeemForOrder(user, accessToken, dto.coffee_pass_subscription_id, dto.totp_code, orderId);
     }
 
-    const targetStatus = dto.status || (order.status === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED');
+    const targetStatus = dto.payment_method === 'CASH'
+      ? 'COMPLETED'
+      : (dto.status || (order.status === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED'));
+
+    const updatePayload: Record<string, any> = {
+      status: targetStatus,
+      payment_method: dto.payment_method
+    };
+    if (activeShiftId && !order.shift_id) {
+      updatePayload.shift_id = activeShiftId;
+    }
+
     const { error: updateError } = await supabase
       .from('orders')
-      .update({
-        status: targetStatus,
-        payment_method: dto.payment_method
-      })
+      .update(updatePayload)
       .eq('id', orderId);
 
     if (updateError) {
@@ -620,31 +636,42 @@ export class OrderService {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi cập nhật order thành COMPLETED');
     }
 
-    // Free table or keep occupied
-    if (order.table_id) {
-      if (order.order_type === 'DINE_IN') {
-        await supabase
-          .from('tables')
-          .update({
-            status: 'OCCUPIED',
-            current_order_id: null
-          })
-          .eq('id', order.table_id);
-        this.realtimeGateway?.emitTableStatusChanged?.(order.table_id, 'OCCUPIED');
-      } else {
-        await supabase
-          .from('tables')
-          .update({
-            status: 'AVAILABLE',
-            current_order_id: null
-          })
-          .eq('id', order.table_id);
-        this.realtimeGateway?.emitTableStatusChanged?.(order.table_id, 'AVAILABLE');
+    // Free table on COMPLETED order
+    if (order.table_id && targetStatus === 'COMPLETED') {
+      await supabase
+        .from('tables')
+        .update({
+          status: 'AVAILABLE',
+          current_order_id: null
+        })
+        .eq('id', order.table_id);
+      this.realtimeGateway?.emitTableStatusChanged?.(order.table_id, 'AVAILABLE');
+    }
+
+    // Persist payment transaction for CASH or completed orders
+    const supabaseAdmin = this.supabaseService.admin();
+    if (dto.payment_method === 'CASH' || targetStatus === 'COMPLETED') {
+      const { data: existingTx } = await supabaseAdmin
+        .from('payment_transactions')
+        .select('id')
+        .eq('tenant_id', user.tenant_id)
+        .eq('order_id', orderId)
+        .eq('status', 'COMPLETED')
+        .maybeSingle();
+
+      if (!existingTx) {
+        await supabaseAdmin.from('payment_transactions').insert({
+          tenant_id: user.tenant_id,
+          order_id: orderId,
+          amount: Number(order.final_amount ?? order.subtotal ?? 0),
+          raw_transfer_content: dto.payment_method,
+          status: 'COMPLETED',
+          matched_customer_id: (order as any).customer_id || null,
+        });
       }
     }
 
     // Audit Log
-    const supabaseAdmin = this.supabaseService.admin();
     await supabaseAdmin.from('audit_logs').insert({
       tenant_id:    user.tenant_id,
       actor_user_id: user.sub,
@@ -654,8 +681,8 @@ export class OrderService {
       metadata:     { payment_method: dto.payment_method }
     });
 
-    // Trigger inventory deduction nếu có InventoryService
-    if (this.inventoryService) {
+    // Trigger inventory deduction nếu có InventoryService và đơn đã hoàn tất
+    if (this.inventoryService && targetStatus === 'COMPLETED') {
       try {
         await this.inventoryService.consumeForCompletedOrder(accessToken, user, orderId);
       } catch {
@@ -850,7 +877,7 @@ export class OrderService {
 
     const activeStatuses = query.status
       ? [query.status]
-      : ['QUEUED', 'PREPARING', 'READY', 'SERVED'];
+      : ['QUEUED', 'PREPARING', 'READY'];
 
     const kdsItems: Array<{
       order_id: string;

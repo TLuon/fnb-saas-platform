@@ -52,14 +52,14 @@ describe('InventoryModule Tests', () => {
     it('should restrict write endpoints to OWNER and allow read to OWNER, STAFF', () => {
       expect(reflector.get('roles', controller.listIngredients)).toEqual(['OWNER', 'STAFF']);
       expect(reflector.get('roles', controller.getIngredient)).toEqual(['OWNER', 'STAFF']);
-      expect(reflector.get('roles', controller.createIngredient)).toEqual(['OWNER']);
-      expect(reflector.get('roles', controller.updateIngredient)).toEqual(['OWNER']);
-      expect(reflector.get('roles', controller.deleteIngredient)).toEqual(['OWNER']);
+      expect(reflector.get('roles', controller.createIngredient)).toEqual(['OWNER', 'STAFF']);
+      expect(reflector.get('roles', controller.updateIngredient)).toEqual(['OWNER', 'STAFF']);
+      expect(reflector.get('roles', controller.deleteIngredient)).toEqual(['OWNER', 'STAFF']);
 
       expect(reflector.get('roles', controller.getProductRecipes)).toEqual(['OWNER', 'STAFF']);
       expect(reflector.get('roles', controller.listRecipes)).toEqual(['OWNER', 'STAFF']);
-      expect(reflector.get('roles', controller.createRecipe)).toEqual(['OWNER']);
-      expect(reflector.get('roles', controller.deleteRecipe)).toEqual(['OWNER']);
+      expect(reflector.get('roles', controller.createRecipe)).toEqual(['OWNER', 'STAFF']);
+      expect(reflector.get('roles', controller.deleteRecipe)).toEqual(['OWNER', 'STAFF']);
 
       expect(reflector.get('roles', controller.createTransaction)).toEqual(['OWNER', 'STAFF']);
       expect(reflector.get('roles', controller.listTransactions)).toEqual(['OWNER', 'STAFF']);

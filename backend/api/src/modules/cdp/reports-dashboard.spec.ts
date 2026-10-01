@@ -20,9 +20,19 @@ describe('CdpService - Reports Dashboard & Branch Filtering', () => {
     email: 'owner@fnb.com',
   };
 
+  const defaultFallback = () => ({
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
+    lte: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    then: (resolve: any) => resolve({ data: [], error: null }),
+  });
+
   beforeEach(() => {
     mockSupabaseUser = {
-      from: vi.fn(),
+      from: vi.fn().mockImplementation(() => defaultFallback()),
     };
 
     const mockSupabaseService: any = {
@@ -41,7 +51,7 @@ describe('CdpService - Reports Dashboard & Branch Filtering', () => {
           maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
         };
       }
-      return {};
+      return defaultFallback();
     });
 
     await expect(
@@ -131,7 +141,7 @@ describe('CdpService - Reports Dashboard & Branch Filtering', () => {
           }),
         };
       }
-      return {};
+      return defaultFallback();
     });
 
     const result = await service.getDashboard('mock-token', ownerUser, branchQ1, 'today');
@@ -209,7 +219,7 @@ describe('CdpService - Reports Dashboard & Branch Filtering', () => {
           in: vi.fn().mockResolvedValue({ data: [], error: null }),
         };
       }
-      return {};
+      return defaultFallback();
     });
 
     const result = await service.getDashboard('mock-token', ownerUser, undefined, 'today');
@@ -253,7 +263,7 @@ describe('CdpService - Reports Dashboard & Branch Filtering', () => {
       if (table === 'order_items') {
         return { select: vi.fn().mockReturnThis(), in: vi.fn().mockResolvedValue({ data: [], error: null }) };
       }
-      return {};
+      return defaultFallback();
     });
 
     const result = await service.getDashboard('mock-token', ownerUser, undefined, 'today');
@@ -290,7 +300,7 @@ describe('CdpService - Reports Dashboard & Branch Filtering', () => {
           eq: vi.fn().mockResolvedValue({ data: [], error: null }),
         };
       }
-      return {};
+      return defaultFallback();
     });
 
     const result = await service.getDashboard('mock-token', ownerUser, branchQ3, 'today');

@@ -268,6 +268,7 @@ describe('Reservation Check-In, Staff Retrieval & Cancellation Consistency Tests
                   reservation_time: '2026-09-25T14:00:00Z',
                   reservation_code: 'RES_T2',
                   deposit_amount: 50000,
+                  status: 'PAID',
                 },
               ],
               error: null,

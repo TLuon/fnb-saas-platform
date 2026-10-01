@@ -75,12 +75,12 @@ const POS: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingMenu, setIsLoadingMenu] = useState(true);
-  
+
   const [cart, setCart] = useState<CartItem[]>(() => {
     const saved = localStorage.getItem('pos_cart');
     return saved ? JSON.parse(saved) : [];
   });
-  
+
   useEffect(() => {
     localStorage.setItem('pos_cart', JSON.stringify(cart));
   }, [cart]);
@@ -98,7 +98,7 @@ const POS: React.FC = () => {
   const [selectedFloor, setSelectedFloor] = useState<string>('');
   const [, setTables] = useState<FloorTableCanvas[]>([]);
   const [selectedTable, setSelectedTable] = useState<FloorTableCanvas | null>(null);
-  
+
   const [branchName, setBranchName] = useState('');
 
   // Takeaway Orders Drawer
@@ -107,6 +107,8 @@ const POS: React.FC = () => {
 
   // Payment Modal States
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentMethodChoice, setPaymentMethodChoice] = useState<'VIETQR' | 'CASH'>('VIETQR');
+  const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
   const [paymentModalData, setPaymentModalData] = useState<{
     orderId: string;
     orderCode: string;
@@ -145,7 +147,7 @@ const POS: React.FC = () => {
     const token = authStore.getState().accessToken || localStorage.getItem('access_token') || localStorage.getItem('jwt');
     const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
     const socketUrl = import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl);
-    
+
     const client = new RealtimeClient({
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
       supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
@@ -171,7 +173,7 @@ const POS: React.FC = () => {
 
       setActiveTableOrder((prev: any) => {
         if (!prev) return prev;
-        const newItems = prev.order_items?.map((it: any) => 
+        const newItems = prev.order_items?.map((it: any) =>
           (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
             ? { ...it, kitchen_status: data.kitchen_status }
             : it
@@ -180,7 +182,7 @@ const POS: React.FC = () => {
       });
 
       setActiveTakeawayOrders((prev: any[]) => prev.map((order: any) => {
-        const newItems = (order.order_items || order.items || []).map((it: any) => 
+        const newItems = (order.order_items || order.items || []).map((it: any) =>
           (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
             ? { ...it, kitchen_status: data.kitchen_status }
             : it
@@ -241,7 +243,7 @@ const POS: React.FC = () => {
     apiClient.get(`/floors/${selectedFloor}/tables`).then((res: any) => {
       const mappedTables: FloorTableCanvas[] = (res.data?.data || res.data || res || []).map(mapApiTableToCanvas);
       setTables(mappedTables);
-      
+
       // Auto-select table if passed via URL
       if (initialTableId && !hasAutoSelectedTable) {
         const targetTable = mappedTables.find((t: any) => t.id === initialTableId);
@@ -275,7 +277,7 @@ const POS: React.FC = () => {
       setActiveOrderId(null);
       setActiveTableOrder(null);
     }
-    
+
     // Fetch reservation if table is reserved
     if (selectedTable && (selectedTable.status === 'RESERVED' || selectedTable.status === 'PENDING_LOCK')) {
       apiClient.get(`/reservations?table_id=${selectedTable.id}&limit=5`)
@@ -293,7 +295,7 @@ const POS: React.FC = () => {
     }
   }, [selectedTable]);
 
-  const filteredProducts = products.filter(p => 
+  const filteredProducts = products.filter(p =>
     (activeCategory ? p.category_id === activeCategory : true) &&
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -324,17 +326,17 @@ const POS: React.FC = () => {
   const confirmAddToCart = () => {
     if (!selectedProductForModifier) return;
     setCart(prev => {
-      const existing = prev.find(item => 
-        item.product.id === selectedProductForModifier.id && 
-        item.note === itemNote && 
+      const existing = prev.find(item =>
+        item.product.id === selectedProductForModifier.id &&
+        item.note === itemNote &&
         JSON.stringify(item.modifiers) === JSON.stringify(selectedModifiers)
       );
       if (existing) {
         return prev.map(item => item.id === existing.id ? { ...item, quantity: item.quantity + 1 } : item);
       }
-      return [...prev, { 
-        id: `cart_${Date.now()}_${Math.random()}`, 
-        product: selectedProductForModifier, 
+      return [...prev, {
+        id: `cart_${Date.now()}_${Math.random()}`,
+        product: selectedProductForModifier,
         quantity: 1,
         note: itemNote,
         modifiers: selectedModifiers
@@ -417,7 +419,7 @@ const POS: React.FC = () => {
       const ord = res.data?.data?.order || res.data?.order || res.data || res;
       const isPaid = ord.status === 'COMPLETED';
       const orderCode = ord.order_code || ord.order_number || ord.code || (orderId ? 'ORD-' + orderId.slice(0, 6).toUpperCase() : '');
-      
+
       const items = ord.order_items || ord.items || [];
       let calculatedItemsTotal = 0;
       if (Array.isArray(items) && items.length > 0) {
@@ -433,6 +435,8 @@ const POS: React.FC = () => {
         amount,
         isPaid,
       });
+      setPaymentMethodChoice('VIETQR');
+      setCashReceivedInput('');
       setPaymentModalOpen(true);
     } catch (err: any) {
       showAlert(err.response?.data?.message || err.message || 'Không thể lấy thông tin đơn hàng', 'error', 'Lỗi Thanh Toán');
@@ -511,19 +515,21 @@ const POS: React.FC = () => {
         payment_method: method,
       });
 
-      showAlert('Đã thanh toán thành công!', 'success', 'Thanh Toán Hoàn Tất');
+      showAlert(
+        method === 'CASH' ? 'Đã thanh toán tiền mặt thành công!' : 'Đã xác nhận thanh toán Chuyển khoản (VietQR)!',
+        'success',
+        'Thanh Toán Hoàn Tất'
+      );
       setPaymentModalOpen(false);
+      setActiveOrderId(null);
+      setCart([]);
 
       if (orderType === 'TAKEAWAY') {
         fetchTakeawayOrders();
       } else {
         fetchTables();
-        if (paymentModalData.orderId) {
-          const updatedOrdRes: any = await apiClient.get(`/orders/${paymentModalData.orderId}`).catch(() => null);
-          if (updatedOrdRes) {
-            setActiveTableOrder(updatedOrdRes.data?.data?.order || updatedOrdRes.data?.order || updatedOrdRes.data);
-          }
-        }
+        setSelectedTable(null);
+        setActiveTableOrder(null);
       }
     } catch (err: any) {
       showAlert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi thanh toán', 'error', 'Lỗi Thanh Toán');
@@ -574,14 +580,14 @@ const POS: React.FC = () => {
 
       // 2. Cập nhật thông tin thanh toán và giữ status IN_PROGRESS
       try {
-        await apiClient.post(`/orders/${orderId}/pay`, { 
+        await apiClient.post(`/orders/${orderId}/pay`, {
           payment_method: paymentMethod,
           status: 'IN_PROGRESS'
         });
       } catch (payErr) {
         console.warn('Cập nhật thanh toán trước đó:', payErr);
       }
-      
+
       showAlert(`Đã xác nhận thanh toán (${paymentMethod}) & chuyển đơn #${orderCode} xuống Bếp!`, 'success', 'Duyệt Đơn Thành Công');
       fetchTakeawayOrders();
     } catch (err: any) {
@@ -594,7 +600,7 @@ const POS: React.FC = () => {
   const completeTakeawayDelivery = async (orderId: string, orderCode: string) => {
     try {
       setIsSubmitting(true);
-      await apiClient.post(`/orders/${orderId}/pay`, { 
+      await apiClient.post(`/orders/${orderId}/pay`, {
         payment_method: 'VIETQR',
         status: 'COMPLETED'
       });
@@ -633,7 +639,7 @@ const POS: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-[#FAF7F3] overflow-hidden rounded-xl border border-gray-200">
-      
+
       {/* POS Header */}
       <header className="bg-[#543310] text-white p-3 flex justify-between items-center shadow-md z-10 shrink-0">
         <div className="flex items-center gap-4">
@@ -654,10 +660,10 @@ const POS: React.FC = () => {
       <div className="flex flex-1 overflow-hidden relative">
         {/* Main Area: Dedicated View Modes (MENU vs TABLES) */}
         <div className="flex-1 flex flex-col border-r border-[#E8DED5] bg-[#FAF7F3] min-w-0 overflow-hidden">
-          
+
           {/* Main Top Mode Switcher Bar */}
           <header className="p-3 border-b border-[#E8DED5] bg-white flex justify-between items-center flex-wrap gap-3 shadow-sm z-20 shrink-0">            <div className="flex bg-gray-100 p-1 rounded-xl">
-              <button 
+              <button
                 className="px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-2 bg-[#543310] text-white shadow"
               >
                 <span>🍔</span>
@@ -667,7 +673,7 @@ const POS: React.FC = () => {
 
             <div className="flex items-center gap-3">
               <div className="flex bg-gray-100 p-1 rounded-xl">
-                <button 
+                <button
                   className={`px-3.5 py-1.5 rounded-lg font-bold text-xs transition ${orderType === 'DINE_IN' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
                   onClick={() => {
                     setOrderType('DINE_IN');
@@ -675,7 +681,7 @@ const POS: React.FC = () => {
                 >
                   🍽️ Tại bàn
                 </button>
-                <button 
+                <button
                   className={`px-3.5 py-1.5 rounded-lg font-bold text-xs transition ${orderType === 'TAKEAWAY' ? 'bg-white shadow text-[#543310]' : 'text-gray-500 hover:text-gray-700'}`}
                   onClick={() => {
                     setOrderType('TAKEAWAY');
@@ -685,7 +691,7 @@ const POS: React.FC = () => {
                 </button>
               </div>
 
-              <button 
+              <button
                 onClick={() => {
                   fetchTakeawayOrders();
                   setIsTakeawayDrawerOpen(true);
@@ -696,7 +702,7 @@ const POS: React.FC = () => {
                 <span className="bg-[#D67D3E] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">{activeTakeawayOrders.length}</span>
               </button>
 
-              <button 
+              <button
                 onClick={() => {
                   navigate('/floor-map');
                 }}
@@ -713,15 +719,15 @@ const POS: React.FC = () => {
               {/* Filter Sub-header */}
               <div className="p-3 border-b border-[#E8DED5] bg-white flex flex-col gap-2 shrink-0 shadow-sm">
                 <div className="flex gap-3 items-center">
-                  <input 
-                    type="text" 
-                    placeholder="🔍 Tìm món ăn theo tên..." 
+                  <input
+                    type="text"
+                    placeholder="🔍 Tìm món ăn theo tên..."
                     className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-[#D67D3E] focus:outline-none bg-gray-50 font-medium"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                   {orderType === 'DINE_IN' && (
-                    <button 
+                    <button
                       onClick={() => navigate('/floor-map')}
                       className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 ${selectedTable ? 'bg-amber-50 text-[#543310] border-amber-300' : 'bg-red-50 text-red-600 border-red-200 animate-pulse'}`}
                     >
@@ -736,14 +742,14 @@ const POS: React.FC = () => {
 
                 {/* Categories Pill Bar */}
                 <div className="flex overflow-x-auto gap-2 hide-scrollbar pb-0.5">
-                  <button 
+                  <button
                     className={`whitespace-nowrap px-3.5 py-1 rounded-full font-bold text-xs transition ${activeCategory === '' ? 'bg-[#543310] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     onClick={() => setActiveCategory('')}
                   >
                     Tất cả ({products.length})
                   </button>
                   {categories.map(c => (
-                    <button 
+                    <button
                       key={c.id}
                       className={`whitespace-nowrap px-3.5 py-1 rounded-full font-bold text-xs transition ${activeCategory === c.id ? 'bg-[#D67D3E] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                       onClick={() => setActiveCategory(c.id)}
@@ -765,8 +771,8 @@ const POS: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
                     {filteredProducts.map(p => (
-                      <div 
-                        key={p.id} 
+                      <div
+                        key={p.id}
                         onClick={() => handleProductClick(p)}
                         className={`relative border border-[#E8DED5] rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition cursor-pointer flex flex-col group ${!p.is_active ? 'opacity-50' : 'hover:border-[#D67D3E]'}`}
                       >
@@ -799,7 +805,7 @@ const POS: React.FC = () => {
         <header className="p-4 bg-[#543310] text-white flex justify-between items-center shadow-md z-10 shrink-0">
           <h2 className="text-lg font-bold">Giỏ hàng</h2>
           {orderType === 'DINE_IN' ? (
-            <button 
+            <button
               onClick={() => navigate('/floor-map')}
               className="bg-white text-[#543310] px-3 py-1 rounded text-sm font-bold hover:bg-gray-100 transition cursor-pointer"
             >
@@ -882,7 +888,7 @@ const POS: React.FC = () => {
                     const kStatus = it.kitchen_status || 'QUEUED';
                     const statusColor = kStatus === 'QUEUED' ? 'text-orange-500' : kStatus === 'PREPARING' ? 'text-blue-500' : kStatus === 'READY' ? 'text-green-600' : 'text-gray-500';
                     const statusLabel = kStatus === 'QUEUED' ? 'Chờ chế biến' : kStatus === 'PREPARING' ? 'Đang làm' : kStatus === 'READY' ? 'Sẵn sàng' : 'Đã giao';
-                    
+
                     return (
                       <div key={i} className="flex flex-col mb-2 border-b border-amber-100 pb-2">
                         <div className="flex justify-between items-center mb-0.5">
@@ -894,7 +900,7 @@ const POS: React.FC = () => {
                             {statusLabel}
                           </span>
                           {kStatus === 'READY' && (
-                            <button 
+                            <button
                               onClick={async () => {
                                 try {
                                   await apiClient.patch(`/orders/${activeTableOrder.id}/items/${it.id}/kitchen-status`, { kitchen_status: 'SERVED' });
@@ -933,10 +939,10 @@ const POS: React.FC = () => {
             </div>
             <span className="font-black text-[#D67D3E] text-lg lg:text-xl text-right shrink-0">{totalAmountToPay.toLocaleString('vi-VN')}đ</span>
           </div>
-          
+
           <div className="flex gap-2 mt-2">
             {orderType === 'DINE_IN' && (
-              <button 
+              <button
                 onClick={sendToKitchen}
                 disabled={(!activeOrderId && cart.length === 0) || isSubmitting || (orderType === 'DINE_IN' && !selectedTable)}
                 className="flex-1 bg-white border-2 border-[#543310] text-[#543310] py-3 rounded-xl font-bold text-sm hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
@@ -944,7 +950,7 @@ const POS: React.FC = () => {
                 {isSubmitting ? 'Đang gửi...' : 'Lưu Đơn & Gửi Bếp'}
               </button>
             )}
-            <button 
+            <button
               onClick={checkoutAndPay}
               disabled={(cart.length === 0 && !activeOrderId) || isSubmitting}
               className="flex-1 bg-[#237A57] text-white py-3 rounded-xl font-bold text-sm shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
@@ -992,8 +998,8 @@ const POS: React.FC = () => {
                           </div>
                         </div>
                         <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                          isPendingVerification 
-                            ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                          isPendingVerification
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
                             : 'bg-blue-100 text-blue-800 border border-blue-300'
                         }`}>
                           {isPendingVerification ? 'CHỜ DUYỆT TIỀN' : 'ĐÃ DUYỆT & ĐANG BÁO BẾP'}
@@ -1009,7 +1015,7 @@ const POS: React.FC = () => {
                             const kStatus = item.kitchen_status || 'QUEUED';
                             const statusColor = kStatus === 'QUEUED' ? 'text-orange-500' : kStatus === 'PREPARING' ? 'text-blue-500' : kStatus === 'READY' ? 'text-green-600' : 'text-gray-500';
                             const statusLabel = kStatus === 'QUEUED' ? 'Chờ chế biến' : kStatus === 'PREPARING' ? 'Đang làm' : kStatus === 'READY' ? 'Sẵn sàng' : 'Đã giao';
-                            
+
                             return (
                               <div key={idx} className="flex flex-col border-b border-gray-100 pb-2 mb-2">
                                 <div className="flex justify-between items-center text-xs font-medium text-gray-800 mb-0.5">
@@ -1023,7 +1029,7 @@ const POS: React.FC = () => {
                                     {statusLabel}
                                   </span>
                                   {kStatus === 'READY' && (
-                                    <button 
+                                    <button
                                       onClick={async () => {
                                         try {
                                           await apiClient.patch(`/orders/${order.id}/items/${item.id}/kitchen-status`, { kitchen_status: 'SERVED' });
@@ -1080,7 +1086,7 @@ const POS: React.FC = () => {
                             </button>
                           </div>
                         ) : (
-                          <button 
+                          <button
                             onClick={() => completeTakeawayDelivery(order.id, orderCode)}
                             className="w-full py-2.5 bg-[#237A57] text-white rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 transition flex items-center justify-center gap-1.5 mt-1"
                           >
@@ -1106,14 +1112,14 @@ const POS: React.FC = () => {
               <h2 className="font-bold text-[#543310] text-lg">{selectedProductForModifier.name}</h2>
               <button onClick={() => setModifierModalOpen(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
-            
+
             <div className="p-4 space-y-6 flex-1 overflow-y-auto">
               {/* Giả lập list size */}
               <div>
                 <h3 className="font-bold text-sm text-gray-700 mb-2">Chọn Size</h3>
                 <div className="flex gap-2">
                   {['Size M', 'Size L (+10.000đ)'].map(s => (
-                    <button 
+                    <button
                       key={s}
                       onClick={() => setSelectedModifiers(prev => ({...prev, size: s}))}
                       className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition ${selectedModifiers.size === s ? 'border-[#D67D3E] bg-orange-50 text-[#D67D3E]' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
@@ -1128,24 +1134,24 @@ const POS: React.FC = () => {
 
               <div>
                 <h3 className="font-bold text-sm text-gray-700 mb-2">Ghi chú cho Bếp</h3>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={itemNote}
                   onChange={(e) => setItemNote(e.target.value)}
-                  placeholder="VD: Không hành, ít cay..." 
+                  placeholder="VD: Không hành, ít cay..."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#D67D3E] focus:ring-1 focus:ring-[#D67D3E]"
                 />
               </div>
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex gap-2">
-              <button 
+              <button
                 onClick={() => setModifierModalOpen(false)}
                 className="flex-1 bg-white border border-gray-200 py-2 rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition"
               >
                 Hủy
               </button>
-              <button 
+              <button
                 onClick={confirmAddToCart}
                 className="flex-1 bg-[#D67D3E] text-white py-2 rounded-lg font-bold hover:bg-orange-700 transition shadow-sm"
               >
@@ -1158,16 +1164,15 @@ const POS: React.FC = () => {
 
       {/* POS VietQR Payment Modal */}
       {paymentModalOpen && paymentModalData && (
-
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-white max-w-md w-full max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#FED8B1]">
             <div className="p-4 border-b bg-[#543310] text-white flex justify-between items-center shrink-0">
               <div>
                 <h2 className="font-bold text-lg text-[#FED8B1]">Thanh toán Đơn hàng #{paymentModalData.orderCode}</h2>
-                <p className="text-xs text-amber-200/80">Quét mã Vietcombank hoặc chọn phương thức thanh toán</p>
+                <p className="text-xs text-amber-200/80">Chọn hình thức Chuyển khoản QR hoặc Tiền mặt</p>
               </div>
-              <button 
-                onClick={() => setPaymentModalOpen(false)} 
+              <button
+                onClick={() => setPaymentModalOpen(false)}
                 className="text-white/70 hover:text-white text-2xl font-bold leading-none"
               >
                 &times;
@@ -1183,72 +1188,165 @@ const POS: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  {/* QR Image Box */}
-                  <div className="bg-white p-4 rounded-xl border border-[#E8DED5] flex flex-col items-center shadow-sm">
-                    <img 
-                      src={generateVietQRUrl(paymentModalData.amount, `DH ${paymentModalData.orderCode}`)} 
-                      alt="Vietcombank VietQR Code" 
-                      className="w-[220px] h-[220px] object-contain rounded-lg"
-                    />
-                    <span className="text-[11px] text-gray-500 mt-2 font-mono">Tự động nhúng số tiền & nội dung</span>
+                  {/* Payment Method Selector: 1. QR, 2. CASH */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-[#EFE8DF] rounded-xl border border-[#DECDBE]">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethodChoice('VIETQR')}
+                      className={`py-2.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                        paymentMethodChoice === 'VIETQR'
+                          ? 'bg-[#543310] text-white shadow'
+                          : 'text-[#543310] hover:bg-[#E2D6C6]'
+                      }`}
+                    >
+                      <span className="text-base">📱</span>
+                      <span>Chuyển khoản (QR)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethodChoice('CASH')}
+                      className={`py-2.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                        paymentMethodChoice === 'CASH'
+                          ? 'bg-[#237A57] text-white shadow'
+                          : 'text-[#237A57] hover:bg-[#E2D6C6]'
+                      }`}
+                    >
+                      <span className="text-base">💵</span>
+                      <span>Tiền mặt (CASH)</span>
+                    </button>
                   </div>
 
-                  {/* Account Info Box */}
-                  <div className="bg-white border border-[#FED8B1] rounded-xl p-4 space-y-2.5 text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Ngân hàng:</span>
-                      <span className="font-semibold text-[#543310]">{VIETCOMBANK_CONFIG.bankName}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Số tài khoản:</span>
-                      <div className="flex items-center gap-1.5 font-bold text-[#543310] font-mono">
-                        <span>{VIETCOMBANK_CONFIG.accountNo}</span>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(VIETCOMBANK_CONFIG.accountNo);
-                            setCopiedField('acc');
-                            setTimeout(() => setCopiedField(null), 2000);
-                          }}
-                          className="text-gray-400 hover:text-[#D67D3E] text-xs underline"
-                        >
-                          {copiedField === 'acc' ? '✓ Đã chép' : 'Copy'}
-                        </button>
+                  {paymentMethodChoice === 'VIETQR' ? (
+                    <>
+                      {/* QR Image Box */}
+                      <div className="bg-white p-4 rounded-xl border border-[#E8DED5] flex flex-col items-center shadow-sm">
+                        <img
+                          src={generateVietQRUrl(paymentModalData.amount, `DH ${paymentModalData.orderCode}`)}
+                          alt="Vietcombank VietQR Code"
+                          className="w-[220px] h-[220px] object-contain rounded-lg"
+                        />
+                        <span className="text-[11px] text-gray-500 mt-2 font-mono">Tự động nhúng số tiền & nội dung</span>
                       </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Chủ tài khoản:</span>
-                      <span className="font-bold text-[#543310]">{VIETCOMBANK_CONFIG.accountName}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Nội dung CK:</span>
-                      <div className="flex items-center gap-1.5 font-bold text-[#D67D3E] font-mono">
-                        <span>DH {paymentModalData.orderCode}</span>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(`DH ${paymentModalData.orderCode}`);
-                            setCopiedField('memo');
-                            setTimeout(() => setCopiedField(null), 2000);
-                          }}
-                          className="text-gray-400 hover:text-[#D67D3E] text-xs underline"
-                        >
-                          {copiedField === 'memo' ? '✓ Đã chép' : 'Copy'}
-                        </button>
+
+                      {/* Account Info Box */}
+                      <div className="bg-white border border-[#FED8B1] rounded-xl p-4 space-y-2.5 text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500">Ngân hàng:</span>
+                          <span className="font-semibold text-[#543310]">{VIETCOMBANK_CONFIG.bankName}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500">Số tài khoản:</span>
+                          <div className="flex items-center gap-1.5 font-bold text-[#543310] font-mono">
+                            <span>{VIETCOMBANK_CONFIG.accountNo}</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(VIETCOMBANK_CONFIG.accountNo);
+                                setCopiedField('acc');
+                                setTimeout(() => setCopiedField(null), 2000);
+                              }}
+                              className="text-gray-400 hover:text-[#D67D3E] text-xs underline"
+                            >
+                              {copiedField === 'acc' ? '✓ Đã chép' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500">Chủ tài khoản:</span>
+                          <span className="font-bold text-[#543310]">{VIETCOMBANK_CONFIG.accountName}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500">Nội dung CK:</span>
+                          <div className="flex items-center gap-1.5 font-bold text-[#D67D3E] font-mono">
+                            <span>DH {paymentModalData.orderCode}</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(`DH ${paymentModalData.orderCode}`);
+                                setCopiedField('memo');
+                                setTimeout(() => setCopiedField(null), 2000);
+                              }}
+                              className="text-gray-400 hover:text-[#D67D3E] text-xs underline"
+                            >
+                              {copiedField === 'memo' ? '✓ Đã chép' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t border-[#FED8B1] flex justify-between items-center font-bold">
+                          <span className="text-[#543310]">Tổng thanh toán:</span>
+                          <span className="text-[#D67D3E] text-lg">
+                            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(paymentModalData.amount)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="pt-2 border-t border-[#FED8B1] flex justify-between items-center font-bold">
-                      <span className="text-[#543310]">Tổng thanh toán:</span>
-                      <span className="text-[#D67D3E] text-lg">
-                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(paymentModalData.amount)}
-                      </span>
-                    </div>
-                  </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* CASH Payment View - NO QR Code */}
+                      <div className="bg-white border-2 border-[#237A57]/30 rounded-xl p-5 space-y-4 shadow-sm">
+                        <div className="text-center pb-3 border-b border-gray-100">
+                          <span className="text-xs uppercase tracking-wider text-gray-500 font-semibold">Số tiền cần thu</span>
+                          <div className="text-2xl font-black text-[#237A57] mt-1">
+                            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(paymentModalData.amount)}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                            Tiền khách đưa (tùy chọn tính tiền thừa):
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Nhập số tiền..."
+                            value={cashReceivedInput}
+                            onChange={(e) => setCashReceivedInput(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#237A57]/30"
+                          />
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => setCashReceivedInput(String(paymentModalData.amount))}
+                              className="px-2.5 py-1 text-xs font-semibold bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition"
+                            >
+                              Đủ tiền
+                            </button>
+                            {[50000, 100000, 200000, 500000].map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => setCashReceivedInput(String(preset))}
+                                className="px-2.5 py-1 text-xs font-semibold bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition"
+                              >
+                                {(preset / 1000).toLocaleString('vi-VN')}k
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {Number(cashReceivedInput) > 0 && (
+                          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 font-medium">Tiền thối lại:</span>
+                              <span className={`font-bold text-base ${Number(cashReceivedInput) >= paymentModalData.amount ? 'text-emerald-700' : 'text-red-600'}`}>
+                                {Number(cashReceivedInput) >= paymentModalData.amount
+                                  ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(cashReceivedInput) - paymentModalData.amount)
+                                  : 'Chưa đủ tiền'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-800">
+                          ℹ️ Xác nhận thanh toán tiền mặt sẽ trực tiếp hoàn tất đơn hàng và ghi nhận vào ca làm việc hiện tại.
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex flex-col gap-2 shrink-0">
               {paymentModalData.isPaid ? (
-                <button 
+                <button
                   onClick={() => setPaymentModalOpen(false)}
                   className="w-full bg-[#543310] text-white py-2.5 rounded-xl font-bold hover:bg-[#D67D3E] transition"
                 >
@@ -1256,29 +1354,30 @@ const POS: React.FC = () => {
                 </button>
               ) : (
                 <>
-                  <button 
-                    onClick={() => handleConfirmPosPayment('VIETQR')}
-                    disabled={isSubmitting}
-                    className="w-full bg-[#543310] text-white py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition disabled:opacity-50 shadow-md text-sm"
-                  >
-                    {isSubmitting ? 'Đang ghi nhận...' : '✓ Xác nhận đã nhận Chuyển Khoản (VietQR)'}
-                  </button>
-                  <div className="flex gap-2">
-                    <button 
+                  {paymentMethodChoice === 'VIETQR' ? (
+                    <button
+                      onClick={() => handleConfirmPosPayment('VIETQR')}
+                      disabled={isSubmitting}
+                      className="w-full bg-[#543310] text-white py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition disabled:opacity-50 shadow-md text-sm"
+                    >
+                      {isSubmitting ? 'Đang ghi nhận...' : '✓ Xác nhận đã nhận Chuyển Khoản (VietQR)'}
+                    </button>
+                  ) : (
+                    <button
                       onClick={() => handleConfirmPosPayment('CASH')}
                       disabled={isSubmitting}
-                      className="flex-1 bg-[#237A57] text-white py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition disabled:opacity-50 text-sm"
+                      className="w-full bg-[#237A57] text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition disabled:opacity-50 shadow-md text-sm"
                     >
-                      Thanh toán Tiền mặt (Cash)
+                      {isSubmitting ? 'Đang ghi nhận...' : '💵 Xác nhận thu tiền mặt & Hoàn tất'}
                     </button>
-                    <button 
-                      onClick={() => setPaymentModalOpen(false)}
-                      disabled={isSubmitting}
-                      className="px-4 bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-100 transition text-sm"
-                    >
-                      Đóng
-                    </button>
-                  </div>
+                  )}
+                  <button
+                    onClick={() => setPaymentModalOpen(false)}
+                    disabled={isSubmitting}
+                    className="w-full bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-100 transition text-sm"
+                  >
+                    Đóng
+                  </button>
                 </>
               )}
             </div>

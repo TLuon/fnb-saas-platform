@@ -1,35 +1,36 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useStaffStore } from './staffStore';
-import { authStore } from '@fnb/utils';
+import { apiClient } from '@fnb/utils';
 
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+vi.mock('@fnb/utils', () => ({
+  apiClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+  authStore: {
+    setState: vi.fn(),
+    getState: vi.fn(() => ({ accessToken: 'mock-token' })),
+  },
+}));
 
 describe('useStaffStore', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useStaffStore.setState({ staff: [] });
-    authStore.setState({ accessToken: 'mock-token' });
-    mockFetch.mockReset();
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve([])
-    });
   });
 
   it('fetches staff list from API', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve([
-        { id: '1', name: 'Nguyen Van A', role: 'STAFF', active: true }
-      ])
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: [
+        { id: '1', full_name: 'Nguyen Van A', role: 'STAFF', is_active: true }
+      ]
     });
 
     await useStaffStore.getState().fetchStaff();
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/staff'),
-      expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer mock-token' }) })
-    );
+    expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining('/staff'));
 
     const store = useStaffStore.getState();
     expect(store.staff).toHaveLength(1);
@@ -41,13 +42,14 @@ describe('useStaffStore', () => {
       staff: [{ id: '1', name: 'Nguyen Van A', role: 'STAFF', active: true }]
     });
 
+    vi.mocked(apiClient.patch).mockResolvedValueOnce({});
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: [{ id: '1', full_name: 'Nguyen Van A', role: 'STAFF', is_active: false }]
+    });
+
     await useStaffStore.getState().toggleStaff('1');
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/staff/1/deactivate'),
-      expect.objectContaining({ method: 'PATCH' })
-    );
-
+    expect(apiClient.patch).toHaveBeenCalledWith('/staff/1/deactivate');
     expect(useStaffStore.getState().staff[0].active).toBe(false);
   });
 });

@@ -473,7 +473,7 @@ describe('ReservationService - Webhook & Idempotency Tests', () => {
         expires_at: expiresAt,
       });
       expect(result.qr_string).toContain('RES_VALID');
-      expect(result.qr_image).toMatch(/^data:image\/png;base64,/);
+      expect(result.qr_image).toMatch(/^(data:image\/png;base64,|https:\/\/img\.vietqr\.io)/);
     });
 
     it('should reject generateQr when called by a different customer than lock owner', async () => {

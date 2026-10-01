@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Receipt, 
   Search, 
-  Filter, 
-  Calendar, 
   RefreshCw, 
   Printer, 
   ChevronRight, 
@@ -15,8 +13,7 @@ import {
   XCircle, 
   DollarSign, 
   FileText,
-  AlertCircle,
-  Copy
+  AlertCircle
 } from 'lucide-react';
 import { apiClient, authStore } from '@fnb/utils';
 import { useStore } from 'zustand';

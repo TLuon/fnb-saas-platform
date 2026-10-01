@@ -10,7 +10,7 @@ describe('FloorService - updateTableStatus', () => {
     client = {
       from: vi.fn(),
     };
-    service = new FloorService({ forUser: () => client } as any);
+    service = new FloorService({ forUser: () => client, admin: () => client } as any);
   });
 
   it('allows transition from OCCUPIED to AVAILABLE and clears current_order_id', async () => {
