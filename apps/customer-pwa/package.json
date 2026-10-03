@@ -17,7 +17,9 @@
     "gsap": "^3.15.0",
     "@gsap/react": "^2.1.2",
     "@fnb/utils": "^1.0.0",
-    "lucide-react": "^1.47.0"
+    "@fnb/ui-shared": "^1.0.0",
+    "lucide-react": "^1.47.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
