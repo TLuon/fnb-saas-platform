@@ -11,9 +11,11 @@ interface Floor {
 }
 
 import { useModal } from '../components/ModalProvider';
+import { StaffPhoneBookingModal } from '../components/StaffPhoneBookingModal';
 
 const LiveFloorMap: React.FC = () => {
   const { showAlert } = useModal();
+  const [showStaffBookingModal, setShowStaffBookingModal] = useState(false);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [selectedFloor, setSelectedFloor] = useState<string>('');
   const [tables, setTables] = useState<FloorTableCanvas[]>([]);
@@ -25,44 +27,89 @@ const LiveFloorMap: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [activeReservation, setActiveReservation] = useState<any>(null);
-  const [debugLog, setDebugLog] = useState<string>('');
+
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelingTarget, setCancelingTarget] = useState<{ resCode: string; tableId: string } | null>(null);
+
+  const handleOpenCancelModalForTable = async (table: FloorTableCanvas) => {
+    let resCode = activeReservation?.reservation_code || table.reservation_code;
+    if (!resCode) {
+      try {
+        const res: any = await apiClient.get(`/reservations?table_id=${table.id}&limit=5`);
+        const reservations = Array.isArray(res) ? res : (res.data?.data || res.data || res || []);
+        const activeRes = reservations.find((r: any) => r.status === 'PAID' || r.status === 'PENDING');
+        if (activeRes?.reservation_code) {
+          resCode = activeRes.reservation_code;
+          setActiveReservation(activeRes);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    setCancelingTarget({ resCode: resCode || `TABLE_${table.id}`, tableId: table.id });
+    setCancelReason('Khách gọi xin hủy đặt bàn');
+    setShowCancelModal(true);
+  };
+
+  const handleExecuteCancel = async () => {
+    if (!cancelingTarget) return;
+    const { resCode, tableId } = cancelingTarget;
+    try {
+      if (resCode && !resCode.startsWith('TABLE_')) {
+        await apiClient.delete(`/reservations/${encodeURIComponent(resCode)}`, {
+          data: { reason: cancelReason },
+          params: { reason: cancelReason },
+        });
+      } else {
+        await apiClient.patch(`/floors/tables/${tableId}/status`, { status: 'AVAILABLE' });
+      }
+      setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'AVAILABLE' as any, reservation_code: undefined } : t));
+      if (selectedTable?.id === tableId) {
+        setSelectedTable(prev => prev ? { ...prev, status: 'AVAILABLE' as any, reservation_code: undefined } : null);
+      }
+      setActiveReservation(null);
+      setShowCancelModal(false);
+      showAlert('Đã hủy đặt bàn cọc thành công! Khách hàng sẽ nhận được thông báo.', 'success', 'Hủy Đặt Bàn');
+    } catch (e: any) {
+      console.error(e);
+      showAlert(e.response?.data?.message || 'Không thể hủy đặt bàn lúc này', 'error', 'Lỗi Hủy Bàn');
+    }
+  };
 
   const branchId = useStore(authStore, (state) => state.branchId);
   const accessToken = useStore(authStore, (state) => state.accessToken);
   const selectedFloorRef = React.useRef(selectedFloor);
-  
+
   useEffect(() => {
     selectedFloorRef.current = selectedFloor;
   }, [selectedFloor]);
 
   useEffect(() => {
-    if (selectedTable && selectedTable.current_order_id) {
-       apiClient.get(`/orders/${selectedTable.current_order_id}`)
-         .then((res: any) => setActiveOrder(res?.order || res.data?.data?.order || res.data?.order || res.data || res))
-         .catch(() => setActiveOrder(null));
-       setActiveReservation(null);
-    } else if (selectedTable && (selectedTable.status === 'RESERVED' || selectedTable.status === 'PENDING_LOCK')) {
-       setActiveOrder(null);
-       apiClient.get(`/reservations?table_id=${selectedTable.id}&limit=5`)
-         .then((res: any) => {
-           // Because apiClient intercepts the response, res is directly the array.
-           const reservations = Array.isArray(res) ? res : (res.data?.data || res.data || res || []);
-           const activeRes = reservations.find((r: any) => r.status === 'PAID' || r.status === 'PENDING');
-           if (!activeRes) {
-             setDebugLog(`Table ${selectedTable.id} -> Found ${reservations.length} res. Data: ${JSON.stringify(reservations).slice(0, 100)}`);
-           } else {
-             setDebugLog('');
-           }
-           setActiveReservation(activeRes || null);
-         })
-         .catch((err) => {
-           setDebugLog('Error: ' + (err.response?.data?.message || err.message));
-           setActiveReservation(null);
-         });
-    } else {
-       setActiveOrder(null);
-       setActiveReservation(null);
+    if (!selectedTable) {
+      setActiveOrder(null);
+      setActiveReservation(null);
+      return;
     }
+
+    if (selectedTable.current_order_id) {
+      apiClient.get(`/orders/${selectedTable.current_order_id}`)
+        .then((res: any) => setActiveOrder(res?.order || res.data?.data?.order || res.data?.order || res.data || res))
+        .catch(() => setActiveOrder(null));
+    } else {
+      setActiveOrder(null);
+    }
+
+    apiClient.get(`/reservations?table_id=${selectedTable.id}&limit=5`)
+      .then((res: any) => {
+        const reservations = Array.isArray(res) ? res : (res.data?.data || res.data || res || []);
+        const activeRes = reservations.find((r: any) => ['PAID', 'PENDING', 'PENDING_LOCK', 'CONFIRMED', 'RESERVED'].includes(r.status)) || reservations[0];
+        setActiveReservation(activeRes || null);
+      })
+      .catch(() => {
+        setActiveReservation(null);
+      });
   }, [selectedTable]);
 
   const fetchTables = useCallback((floorId: string) => {
@@ -99,34 +146,46 @@ const LiveFloorMap: React.FC = () => {
 
   useEffect(() => {
     if (!selectedFloor || !branchId || !accessToken) return;
-    
+
     // Initial fetch
     fetchTables(selectedFloor);
 
     // Realtime setup
     const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-    const client = new RealtimeClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
-      supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-      socketUrl: import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl),
-      token: accessToken,
-    });
+    let client: RealtimeClient;
 
-    client.socket.on('connect', () => {
-      setIsConnected(true);
-      fetchTables(selectedFloorRef.current);
-    });
-    
-    client.socket.on('disconnect', () => setIsConnected(false));
-    
-    client.socket.on('table_status_changed', (data: any) => {
-      const currentFloor = selectedFloorRef.current;
-      if (data.floor_id === currentFloor || !data.floor_id) {
-        fetchTables(currentFloor);
+    const initSocket = async () => {
+      client = new RealtimeClient({
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        socketUrl: import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl),
+        token: accessToken,
+      });
+
+      await client.connect();
+
+      client.socket.on('connect', () => {
+        setIsConnected(true);
+        fetchTables(selectedFloorRef.current);
+      });
+
+      client.socket.on('disconnect', () => setIsConnected(false));
+
+      client.socket.on('table_status_changed', (data: any) => {
+        const currentFloor = selectedFloorRef.current;
+        if (data.floor_id === currentFloor || !data.floor_id) {
+          fetchTables(currentFloor);
+        }
+      });
+
+      if (client.socket.connected) {
+        setIsConnected(true);
+        fetchTables(selectedFloorRef.current);
       }
-    });
+    };
 
-    client.connect();
+    initSocket();
+
 
     const snapshotInterval = window.setInterval(
       () => fetchTables(selectedFloorRef.current),
@@ -135,7 +194,7 @@ const LiveFloorMap: React.FC = () => {
 
     return () => {
       window.clearInterval(snapshotInterval);
-      client.disconnect();
+      if (client) client.disconnect();
     };
   }, [accessToken, branchId, fetchTables, selectedFloor]);
 
@@ -156,7 +215,7 @@ const LiveFloorMap: React.FC = () => {
       <header className="bg-white border-b border-[#E8DED5] p-4 flex justify-between items-center shadow-sm z-10 shrink-0">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-[#543310]">Live Floor Map</h1>
-          <select 
+          <select
             className="border border-[#E8DED5] text-[#543310] rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#D67D3E]"
             value={selectedFloor}
             onChange={(e) => setSelectedFloor(e.target.value)}
@@ -164,6 +223,13 @@ const LiveFloorMap: React.FC = () => {
           >
             {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
+          <button
+            onClick={() => setShowStaffBookingModal(true)}
+            className="bg-[#543310] hover:bg-[#D67D3E] text-white px-3.5 py-2 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+          >
+            <span>📞</span>
+            <span>Đặt Bàn Qua Điện Thoại</span>
+          </button>
         </div>
         <div className="flex items-center gap-4 text-sm font-medium">
           <span className="text-gray-500">Cập nhật lúc: {lastUpdated.toLocaleTimeString()}</span>
@@ -198,8 +264,8 @@ const LiveFloorMap: React.FC = () => {
               <p className="text-sm mt-2">Vui lòng dùng công cụ Floor Editor để thiết kế sơ đồ.</p>
             </div>
           ) : (
-            <FloorMapCanvas 
-              tables={tables} 
+            <FloorMapCanvas
+              tables={tables}
               editable={false}
               selectedTableId={selectedTable?.id}
               onTableClick={setSelectedTable}
@@ -215,7 +281,7 @@ const LiveFloorMap: React.FC = () => {
               <h2 className="text-xl font-bold text-[#543310]">{selectedTable.name}</h2>
               <button onClick={() => setSelectedTable(null)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
-            
+
             <div className="mb-6">
               <p className="text-sm text-gray-500 mb-1">Trạng thái hiện tại</p>
               <div className="inline-block px-3 py-1 rounded font-bold text-sm bg-gray-100 border text-[#543310]">
@@ -241,47 +307,85 @@ const LiveFloorMap: React.FC = () => {
             )}
 
             {activeReservation && !activeOrder && (
-              <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-                <div className="font-bold text-[#1E3A8A] border-b border-blue-200 pb-2 mb-2">
-                  Thông tin Đặt bàn (#{activeReservation.reservation_code})
+              <div className="mb-6 bg-[#FAF7F3] border border-[#E8DED5] rounded-2xl p-4 text-sm shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-[#E8DED5] pb-2 text-[#543310] font-bold">
+                  <span className="flex items-center gap-1.5 text-base">
+                    👤 Thông Tin Khách Đặt Bàn
+                  </span>
+                  <span className="text-xs font-mono bg-white px-2 py-0.5 rounded border border-[#E8DED5] text-[#543310]">
+                    #{activeReservation.reservation_code || 'N/A'}
+                  </span>
                 </div>
-                <div className="space-y-2 text-gray-700">
-                  <div className="flex justify-between">
-                    <span>Khách hàng:</span>
-                    <span className="font-medium">{activeReservation.customer_name}</span>
+
+                <div className="space-y-2 text-[#222222]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-[#6B625B]">Tên khách hàng:</span>
+                    <span className="font-bold text-[#543310] text-sm">
+                      {activeReservation.customer_name || 'Khách đặt qua web/phone'}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Số điện thoại:</span>
-                    <span className="font-medium">{activeReservation.customer_phone || 'N/A'}</span>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-[#6B625B]">Số điện thoại:</span>
+                    <span className="font-bold text-[#543310]">
+                      {activeReservation.customer_phone || 'Chưa cung cấp'}
+                    </span>
                   </div>
-                  <div className="flex justify-between text-[#B42318] font-bold">
-                    <span>Tiền cọc:</span>
-                    <span>{Number(activeReservation.deposit_amount || 0).toLocaleString('vi-VN')}đ</span>
+
+                  {(activeReservation.booking_date || activeReservation.booking_time) && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#6B625B]">Khung giờ đặt:</span>
+                      <span className="font-bold text-[#543310]">
+                        {activeReservation.booking_time || '18:00'} ({activeReservation.booking_date || 'Hôm nay'})
+                      </span>
+                    </div>
+                  )}
+
+                  {activeReservation.guest_count > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#6B625B]">Số lượng khách:</span>
+                      <span className="font-bold text-[#543310]">
+                        {activeReservation.guest_count} người
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center border-t border-[#E8DED5] pt-2">
+                    <span className="text-xs text-[#6B625B]">Tiền cọc quy định:</span>
+                    <span className="font-extrabold text-base text-[#D67D3E]">
+                      {Number(activeReservation.deposit_amount || 50000).toLocaleString('vi-VN')}đ
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-[#6B625B]">Trạng thái cọc:</span>
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold shadow-sm ${activeReservation.status === 'PAID' ? 'bg-green-100 text-green-800 border border-green-300' :
+                        activeReservation.status === 'PENDING' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                          'bg-blue-100 text-blue-800 border border-blue-300'
+                      }`}>
+                      {activeReservation.status === 'PAID' ? '✓ Đã nhận tiền cọc' : activeReservation.status === 'PENDING' ? '⏳ Chờ xác nhận cọc' : activeReservation.status}
+                    </span>
                   </div>
                 </div>
               </div>
             )}
 
-            {debugLog && (
-              <div className="text-red-500 text-xs mb-4 p-2 bg-red-50 border border-red-200 rounded">
-                Debug: {debugLog}
-              </div>
-            )}
+
 
             <div className="space-y-3 flex-1">
               <h3 className="text-sm font-bold text-[#543310] uppercase tracking-wider mb-2">Hành động nhanh</h3>
-              
+
               {selectedTable.status === 'AVAILABLE' && (
-                <button 
+                <button
                   onClick={() => handleStatusChange('OCCUPIED')}
                   className="w-full bg-[#D67D3E] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-orange-700 transition"
                 >
                   Mở bàn (Check-in)
                 </button>
               )}
-              
+
               {selectedTable.status === 'OCCUPIED' && (
-                <button 
+                <button
                   onClick={() => handleStatusChange('CLEANING')}
                   className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-300 transition"
                 >
@@ -290,7 +394,7 @@ const LiveFloorMap: React.FC = () => {
               )}
 
               {selectedTable.status === 'CLEANING' && (
-                <button 
+                <button
                   onClick={() => handleStatusChange('AVAILABLE')}
                   className="w-full bg-[#237A57] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-green-700 transition"
                 >
@@ -300,65 +404,69 @@ const LiveFloorMap: React.FC = () => {
 
               {selectedTable.status === 'PENDING_LOCK' && (
                 <>
-                  <button 
-                    onClick={async () => {
-                      if (selectedTable.reservation_code) {
-                        try {
-                          await apiClient.delete(`/reservations/${selectedTable.reservation_code}`);
-                          setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'AVAILABLE' } : t));
-                          setSelectedTable({ ...selectedTable, status: 'AVAILABLE' as any });
-                        } catch(e) { console.error(e) }
-                      } else {
-                        handleStatusChange('AVAILABLE');
-                      }
-                    }}
-                    className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-300 transition mb-2"
+                  <button
+                    onClick={() => handleOpenCancelModalForTable(selectedTable)}
+                    className="w-full bg-red-100 text-red-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-red-200 transition mb-2 border border-red-200"
                   >
-                    Hủy cọc / Khách báo ảo
+                    Hủy bàn cọc / Báo ảo
                   </button>
-                  <button 
+                  <button
                     onClick={async () => {
-                      if (selectedTable.reservation_code) {
+                      const resCode = activeReservation?.reservation_code || selectedTable.reservation_code;
+                      if (resCode) {
                         try {
-                          await apiClient.post(`/reservations/${selectedTable.reservation_code}/confirm-deposit`);
+                          await apiClient.post(`/reservations/${resCode}/confirm-deposit`);
                           setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'RESERVED' } : t));
                           setSelectedTable({ ...selectedTable, status: 'RESERVED' as any });
-                        } catch(e) { console.error(e) }
+                          setActiveReservation(null);
+                          showAlert('Đã xác nhận cọc thành công! Khách hàng sẽ nhận được thông báo.', 'success', 'Xác Nhận Cọc');
+                        } catch (e: any) {
+                          console.error(e);
+                          showAlert(e.response?.data?.message || 'Không thể xác nhận cọc lúc này', 'error', 'Lỗi Xác Nhận');
+                        }
                       }
                     }}
                     className="w-full bg-[#115E59] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-green-700 transition"
                   >
-                    Xác nhận đã nhận cọc
+                    Xác nhận đã nhận tiền cọc
                   </button>
                 </>
               )}
 
               {selectedTable.status === 'RESERVED' && (
                 <>
-                  <button 
+                  <button
                     onClick={async () => {
-                      if (selectedTable.reservation_code) {
+                      const resCode = activeReservation?.reservation_code || selectedTable.reservation_code;
+                      if (resCode) {
                         try {
-                          await apiClient.delete(`/reservations/${selectedTable.reservation_code}`);
-                          setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'AVAILABLE' } : t));
-                          setSelectedTable({ ...selectedTable, status: 'AVAILABLE' as any });
-                        } catch(e) { console.error(e) }
-                      } else {
-                        handleStatusChange('AVAILABLE');
+                          await apiClient.post(`/reservations/${resCode}/confirm-deposit`);
+                          showAlert('Đã xác nhận tiền cọc cho khách hàng!', 'success', 'Xác Nhận Cọc');
+                        } catch (e: any) {
+                          console.error(e);
+                          showAlert(e.response?.data?.message || 'Không thể xác nhận cọc', 'error', 'Thông báo');
+                        }
                       }
                     }}
-                    className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-300 transition mb-2"
+                    className="w-full bg-[#115E59] text-white py-2.5 rounded-lg font-bold shadow-sm hover:bg-green-800 transition mb-2"
                   >
-                    Hủy đặt bàn
+                    Xác nhận đã nhận tiền cọc
                   </button>
-                  <button 
+                  <button
+                    onClick={() => handleOpenCancelModalForTable(selectedTable)}
+                    className="w-full bg-red-100 text-red-800 py-2.5 rounded-lg font-bold shadow-sm hover:bg-red-200 transition mb-2 border border-red-200"
+                  >
+                    Hủy bàn cọc
+                  </button>
+                  <button
                     onClick={async () => {
-                      if (selectedTable.reservation_code) {
+                      const resCode = activeReservation?.reservation_code || selectedTable.reservation_code;
+                      if (resCode) {
                         try {
-                          await apiClient.post(`/reservations/${selectedTable.reservation_code}/check-in`);
+                          await apiClient.post(`/reservations/${resCode}/check-in`);
                           setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, status: 'OCCUPIED' } : t));
                           setSelectedTable({ ...selectedTable, status: 'OCCUPIED' as any });
-                        } catch(e: any) {
+                        } catch (e: any) {
                           console.error(e);
                           showAlert(e.response?.data?.message || 'Không thể nhận bàn lúc này', 'error', 'Lỗi Cập Nhật');
                         }
@@ -372,16 +480,16 @@ const LiveFloorMap: React.FC = () => {
                   </button>
                 </>
               )}
-              
+
               <div className="flex gap-2 mt-4">
-                <button 
+                <button
                   onClick={() => navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}`)}
                   className="flex-1 border-2 border-[#543310] text-[#543310] py-2.5 rounded-lg font-bold hover:bg-orange-50 transition text-sm"
                 >
                   {activeOrder ? 'Order Thêm (POS)' : 'Tạo Đơn (POS)'}
                 </button>
                 {activeOrder && selectedTable.status === 'OCCUPIED' && (
-                  <button 
+                  <button
                     onClick={() => navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}&action=pay`)}
                     className="flex-1 bg-[#237A57] text-white py-2.5 rounded-lg font-bold hover:bg-green-700 transition shadow-sm text-sm"
                   >
@@ -393,6 +501,100 @@ const LiveFloorMap: React.FC = () => {
           </div>
         )}
       </div>
+
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-100">
+            <div className="flex justify-between items-center mb-4 border-b pb-3">
+              <h3 className="text-lg font-bold text-[#543310]">Hủy Giữ Bàn / Bàn Cọc</h3>
+              <button onClick={() => setShowCancelModal(false)} className="text-gray-400 hover:text-gray-600 font-bold text-lg">✕</button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Nhập lý do hủy cho mã đặt bàn <strong className="text-[#543310] font-mono">{cancelingTarget?.resCode}</strong>. Lý do này sẽ được thông báo trực tiếp tới phía khách hàng.
+            </p>
+
+            <div className="space-y-2 mb-4">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Lý do chọn nhanh:</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  'Khách gọi xin hủy bàn',
+                  'Quá hạn chưa nhận chuyển khoản cọc',
+                  'Khách báo thông tin ảo',
+                  'Nhà hàng đã hết bàn phục vụ',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setCancelReason(preset)}
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium border transition ${cancelReason === preset ? 'bg-[#543310] text-white border-[#543310]' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-1">Nội dung lý do hủy:</label>
+              <textarea
+                rows={3}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Nhập lý do hủy gửi khách..."
+                className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#D67D3E] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-100 transition"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={handleExecuteCancel}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition shadow-md"
+              >
+                Xác nhận Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <StaffPhoneBookingModal
+        isOpen={showStaffBookingModal}
+        onClose={() => setShowStaffBookingModal(false)}
+        tables={tables}
+        selectedTableId={selectedTable?.id}
+        onSuccess={(res) => {
+          showAlert(`Đã tạo giữ bàn cọc cho ${res.customer_name || 'khách hàng'} thành công! Mã: ${res.reservation_code || res.code}`, 'success', 'Đặt Bàn');
+          const targetStatus = (res.table_status || (res.status === 'PAID' ? 'RESERVED' : 'PENDING_LOCK')) as any;
+          const targetTableId = res.table_id;
+          setTables(prev => prev.map(t => t.id === targetTableId ? { ...t, status: targetStatus, reservation_code: res.reservation_code } : t));
+
+          if (selectedTable && selectedTable.id === targetTableId) {
+            setSelectedTable(prev => prev ? { ...prev, status: targetStatus, reservation_code: res.reservation_code } : null);
+          }
+
+          setActiveReservation({
+            reservation_code: res.reservation_code,
+            customer_name: res.customer_name,
+            customer_phone: res.customer_phone,
+            deposit_amount: res.deposit_amount,
+            status: res.status,
+            guest_count: res.guest_count,
+            booking_date: res.booking_date,
+            booking_time: res.booking_time
+          });
+
+          if (selectedFloor) {
+            fetchTables(selectedFloor);
+          }
+        }}
+      />
     </div>
   );
 };

@@ -68,7 +68,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     try {
       const token = this.extractToken(client);
       if (!token) {
-        client.disconnect();
+        // Allow guest connection, they can only join specific public rooms like order tracking
+        this.logger.log(`Guest client connected: ${client.id}`);
         return;
       }
 
@@ -101,6 +102,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         const supportRoom = `support:${payload.tenant_id}`;
         client.join(supportRoom);
         this.logger.log(`Client ${client.id} joined ${supportRoom}`);
+      }
+
+      // Room: customer:{user_id}
+      if (payload.role_app === 'CUSTOMER' && payload.sub) {
+        const customerRoom = `customer:${payload.sub}`;
+        client.join(customerRoom);
+        this.logger.log(`Client ${client.id} joined ${customerRoom}`);
       }
     } catch (err: any) {
       this.logger.error(`WebSocket Connection error: ${err.message}`);
@@ -202,6 +210,32 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.logger.log(`Client ${client.id} left group order room ${room}`);
   }
 
+  @SubscribeMessage('join_order_tracking')
+  handleJoinOrderTracking(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { order_id: string }
+  ) {
+    const orderId = data?.order_id;
+    if (!orderId || typeof orderId !== 'string') return;
+
+    const room = `order:${orderId}`;
+    client.join(room);
+    this.logger.log(`Client ${client.id} joined order tracking room ${room}`);
+  }
+
+  @SubscribeMessage('leave_order_tracking')
+  handleLeaveOrderTracking(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { order_id: string }
+  ) {
+    const orderId = data?.order_id;
+    if (!orderId || typeof orderId !== 'string') return;
+
+    const room = `order:${orderId}`;
+    client.leave(room);
+    this.logger.log(`Client ${client.id} left order tracking room ${room}`);
+  }
+
   private extractToken(client: Socket): string | null {
     const auth = client.handshake.auth?.token || client.handshake.headers?.authorization;
     if (!auth) return null;
@@ -270,6 +304,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   emitTableStatusChanged(tableId: string, status: string) {
     if (this.server) {
       this.server.emit('table_status_changed', { table_id: tableId, status });
+    }
+  }
+
+  emitOrderStatusChanged(orderId: string, customerId: string | null, payload: any) {
+    if (this.server) {
+      this.server.emit('order_status_changed', { ...payload, order_id: orderId });
+      this.server.to(`order:${orderId}`).emit('order_status_changed', payload);
+      if (customerId) {
+        this.server.to(`customer:${customerId}`).emit('order_status_changed', payload);
+      }
     }
   }
 }

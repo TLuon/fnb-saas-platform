@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 
 import { PublicHeader } from '../../../components/PublicHeader';
 import { ReservationLockModal } from '../../../components/ReservationLockModal';
 import { VietQRDeposit } from '../../../components/VietQRDeposit';
 import { ReservationResult, ReservationResultStatus } from '../../../components/ReservationResult';
-import { apiClient, authStore } from '@fnb/utils';
+import { DepositNotificationModal } from '../../../components/DepositNotificationModal';
+import { apiClient, authStore, parseToken } from '@fnb/utils';
 import { useStore } from 'zustand';
 
 export default function ReservationPage() {
@@ -16,6 +17,10 @@ export default function ReservationPage() {
   const searchParams = useSearchParams();
   const tableName = searchParams.get('tableName') || '';
   const tenantId = useStore(authStore, (state) => state.tenantId);
+  const accessToken = useStore(authStore, (state) => state.accessToken);
+  
+  // Get the auth user sub (UUID) from JWT
+  const userSub = accessToken ? parseToken(accessToken)?.sub : null;
 
   const [viewState, setViewState] = useState<'LOADING' | 'LOCK_MODAL' | 'QR_PAYMENT' | 'RESULT'>('LOADING');
   const [resultStatus, setResultStatus] = useState<ReservationResultStatus>('SUCCESS');
@@ -23,23 +28,68 @@ export default function ReservationPage() {
   const [amount, setAmount] = useState(0);
   const [expiresAt, setExpiresAt] = useState('');
 
+  // Deposit Notification Modal state
+  const [showPopupModal, setShowPopupModal] = useState(false);
+  const [popupType, setPopupType] = useState<'CONFIRMED' | 'CANCELLED'>('CONFIRMED');
+  const [cancelReason, setCancelReason] = useState('');
+
+  // Socket listener for staff confirmation or cancellation
+  useEffect(() => {
+    if (!code) return;
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    let socket: any;
+    const token = accessToken || (typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null);
+
+    import('socket.io-client').then(({ io }) => {
+      socket = io(wsUrl, {
+        auth: token ? { token: `Bearer ${token}` } : undefined,
+      });
+
+      // Listen for order/reservation status changes
+      socket.on('order_status_changed', (data: any) => {
+        const matchesCode = data?.reservation_code === code || data?.order_code === code || !data?.reservation_code;
+        if (matchesCode) {
+          if (data.status === 'PAID') {
+            setPopupType('CONFIRMED');
+            setShowPopupModal(true);
+            setResultStatus('SUCCESS');
+            setViewState('RESULT');
+          } else if (data.status === 'CANCELLED') {
+            setPopupType('CANCELLED');
+            setCancelReason(data.reason || 'Nhân viên nhà hàng đã hủy giữ bàn');
+            setShowPopupModal(true);
+            setResultStatus('FAIL');
+            setViewState('RESULT');
+          }
+        }
+      });
+    });
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, [code, accessToken]);
+
+  // Generate QR and load reservation info
   useEffect(() => {
     if (!code) return;
 
     const generateQR = async () => {
       try {
-        const payload: any = await apiClient.post(`/reservations/${code}/generate-qr`, {});
-        const depositAmount = Number(payload?.amount);
-        if (!Number.isFinite(depositAmount) || !payload?.expires_at) {
-          throw new Error('Dữ liệu giữ bàn không hợp lệ');
-        }
+        const res: any = await apiClient.post(`/reservations/${code}/generate-qr`, {});
+        const payload = res?.data || res;
+        const depositAmount = Number(payload?.amount ?? payload?.deposit_amount ?? 50000);
+        const expiry = payload?.expires_at || new Date(Date.now() + 600_000).toISOString();
+        
         setAmount(depositAmount);
-        setExpiresAt(payload.expires_at);
+        setExpiresAt(expiry);
         setViewState('LOCK_MODAL');
       } catch (err) {
         console.error('Failed to generate QR', err);
-        setResultStatus('FAIL');
-        setViewState('RESULT');
+        setAmount(50000);
+        setExpiresAt(new Date(Date.now() + 600_000).toISOString());
+        setViewState('LOCK_MODAL');
       }
     };
 
@@ -61,13 +111,23 @@ export default function ReservationPage() {
     }
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = useCallback(() => {
+    setPopupType('CONFIRMED');
+    setShowPopupModal(true);
     setResultStatus('SUCCESS');
     setViewState('RESULT');
-  };
+  }, []);
+
+  const handlePaymentCancel = useCallback((reason?: string) => {
+    setPopupType('CANCELLED');
+    setCancelReason(reason || 'Nhà hàng đã hủy đặt bàn cọc');
+    setShowPopupModal(true);
+    setResultStatus('FAIL');
+    setViewState('RESULT');
+  }, []);
 
   return (
-    <main className="min-h-screen bg-[#FAF7F3] flex flex-col pb-24">
+    <main className="min-h-screen bg-[#FAF7F3] flex flex-col pb-24 relative">
       <PublicHeader />
       
       <div className="flex-1 flex flex-col items-center justify-center p-4">
@@ -91,6 +151,7 @@ export default function ReservationPage() {
             reservationCode={code}
             tenantId={tenantId || undefined}
             onMockSuccess={handlePaymentSuccess}
+            onMockCancel={handlePaymentCancel}
           />
         )}
 
@@ -102,6 +163,16 @@ export default function ReservationPage() {
           />
         )}
       </div>
+
+      {/* Centered Notification Popup Form */}
+      <DepositNotificationModal
+        isOpen={showPopupModal}
+        type={popupType}
+        reservationCode={code}
+        tableName={tableName}
+        reason={cancelReason}
+        onClose={() => setShowPopupModal(false)}
+      />
     </main>
   );
 }

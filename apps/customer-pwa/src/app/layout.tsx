@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "../components/ToastProvider";
 import { AuthProvider } from "../components/AuthProvider";
+import dynamic from 'next/dynamic';
+
+const OrderStatusModal = dynamic(
+  () => import('../components/OrderStatusModal'),
+  { ssr: false }
+);
 
 export const metadata: Metadata = {
   title: "F&B SaaS - Đặt Món & Đặt Bàn",
@@ -29,6 +35,7 @@ export default function RootLayout({
       >
         <ToastProvider>
           <AuthProvider>
+            <OrderStatusModal />
             {children}
           </AuthProvider>
         </ToastProvider>

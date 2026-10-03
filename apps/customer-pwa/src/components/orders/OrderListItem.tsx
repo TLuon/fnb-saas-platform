@@ -26,8 +26,14 @@ export function OrderListItem({ order }: OrderListItemProps) {
 
     switch (status) {
       case 'PENDING':
+      case 'IN_PROGRESS':
       case 'PREPARING':
+      case 'PROCESSING':
         return <span className="px-2 py-1 bg-[#FED8B1] text-[#D67D3E] text-xs font-bold rounded-full">Đang xử lý</span>;
+      case 'READY':
+        return <span className="px-2 py-1 bg-[#E0F2FE] text-[#0369A1] text-xs font-bold rounded-full">Sẵn sàng</span>;
+      case 'SERVED':
+        return <span className="px-2 py-1 bg-[#E2F3E5] text-[#237A57] text-xs font-bold rounded-full">Đã phục vụ</span>;
       case 'COMPLETED':
         return <span className="px-2 py-1 bg-[#E2F3E5] text-[#237A57] text-xs font-bold rounded-full">Hoàn thành</span>;
       case 'CANCELLED':

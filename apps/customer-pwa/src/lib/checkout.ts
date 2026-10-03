@@ -18,11 +18,17 @@ export function buildOrderItemPayload(item: CheckoutCartItem, orderNote?: string
   };
 }
 
-export function getSafeReturnUrl(search: string, fallback = '/menu') {
+export function getSafeReturnUrl(search: string, fallback = '/floors') {
   const requestedUrl = new URLSearchParams(search).get('returnUrl');
-  return requestedUrl?.startsWith('/') && !requestedUrl.startsWith('//')
-    ? requestedUrl
-    : fallback;
+  if (
+    requestedUrl && 
+    requestedUrl.startsWith('/') && 
+    !requestedUrl.startsWith('//') && 
+    !requestedUrl.startsWith('/login')
+  ) {
+    return requestedUrl;
+  }
+  return fallback;
 }
 
 export function unwrapOrderDetails(payload: any) {

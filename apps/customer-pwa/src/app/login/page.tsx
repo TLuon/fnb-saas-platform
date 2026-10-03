@@ -13,6 +13,8 @@ export default function LoginPage() {
   const router = useRouter();
   const { showError, showInfo } = useToast();
 
+
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier || !password) {
@@ -22,31 +24,42 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      // Backend MVP uses email
-      const payload: any = await apiClient.post('/auth/login', { email: identifier, password });
+      const isEmail = identifier.includes('@');
+      const payload: any = await apiClient.post(
+        '/auth/login', 
+        isEmail ? { email: identifier, password } : { phone: identifier, password }
+      );
 
-      if (!payload?.access_token) {
+      const tokenData = payload?.data || payload;
+      const accessToken = tokenData?.access_token || payload?.access_token;
+
+      if (!accessToken) {
         throw new Error('Đăng nhập thất bại: Không nhận được token.');
       }
 
       // Store valid JWT token using Zustand
-      authStore.getState().setTokens(payload.access_token, payload.refresh_token);
+      authStore.getState().setTokens(accessToken, tokenData?.refresh_token || payload?.refresh_token);
 
-      const me: any = await apiClient.get('/auth/me');
-      if (me?.role_app !== 'CUSTOMER') {
-        throw new Error('Tài khoản này không thuộc cổng khách hàng.');
+      try {
+        const me: any = await apiClient.get('/auth/me');
+        if (me && me.role_app && me.role_app !== 'CUSTOMER') {
+          throw new Error('Tài khoản này thuộc nhân viên/quản trị viên, vui lòng đăng nhập ở cổng Staff Dashboard.');
+        }
+        authStore.getState().setProfile({
+          id: me?.profile?.id || me?.sub,
+          auth_user_id: me?.sub,
+          role_app: me?.role_app || 'CUSTOMER',
+          email: me?.profile?.email || me?.email,
+          phone: me?.profile?.phone,
+          full_name: me?.profile?.full_name || 'Khách hàng',
+          tenant_id: me?.tenant_id,
+          membership_tier: me?.profile?.membership_tier,
+          loyalty_points: Number(me?.profile?.loyalty_points || 0),
+        });
+      } catch (meError: any) {
+        if (meError?.message?.includes('Staff Dashboard')) throw meError;
+        console.warn('Could not fetch full profile, proceeding with base auth:', meError);
       }
-      authStore.getState().setProfile({
-        id: me.profile?.id || me.sub,
-        auth_user_id: me.sub,
-        role_app: me.role_app,
-        email: me.profile?.email || me.email,
-        phone: me.profile?.phone,
-        full_name: me.profile?.full_name || 'Khách hàng',
-        tenant_id: me.tenant_id,
-        membership_tier: me.profile?.membership_tier,
-        loyalty_points: Number(me.profile?.loyalty_points || 0),
-      });
 
       showInfo('Đăng nhập thành công');
       const returnUrl = typeof window !== 'undefined'
@@ -56,7 +69,7 @@ export default function LoginPage() {
     } catch (err: any) {
       console.error('Login error:', err);
       authStore.getState().clearAuth();
-      showError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
+      showError(err?.response?.data?.message || err?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
     } finally {
       setLoading(false);
     }

@@ -18,7 +18,7 @@ export class ReservationService implements OnModuleInit {
     private readonly supabaseService: SupabaseService,
     private readonly redisService: RedisService,
     private readonly realtimeGateway: RealtimeGateway,
-  ) {}
+  ) { }
 
   onModuleInit() {
     // Chạy ngầm định kỳ 5 phút để hủy các bàn giữ quá 1 tiếng
@@ -88,12 +88,33 @@ export class ReservationService implements OnModuleInit {
     }
   }
 
+  /**
+   * Helper: safely execute Redis command with fallback
+   */
+  private async redisSafe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      if (this.redisService.getClient().status !== 'ready') {
+        return fallback;
+      }
+      return await fn();
+    } catch (err) {
+      this.logger.warn(`Redis unavailable, using fallback: ${(err as Error).message}`);
+      return fallback;
+    }
+  }
+
+  private calculateDepositAmount(guestCount?: number): number {
+    const count = Number(guestCount) || 2;
+    if (count >= 8) return 200000;
+    if (count > 4) return 100000;
+    return 50000;
+  }
+
   async lockTable(user: AuthenticatedUser, accessToken: string, dto: LockTableDto) {
-    const supabase = this.supabaseService.forUser(accessToken);
     const supabaseAdmin = this.supabaseService.admin();
 
-    // 1. Check table status
-    const { data: table, error } = await supabase
+    // 1. Check table status using supabaseAdmin (bypass RLS restriction on customer table updates)
+    const { data: table, error } = await supabaseAdmin
       .from('tables')
       .select('id, status')
       .eq('id', dto.table_id)
@@ -107,29 +128,36 @@ export class ReservationService implements OnModuleInit {
       throw new AppException('ERR_2002_TABLE_LOCKED', 'Bàn không ở trạng thái AVAILABLE');
     }
 
-    // 2. Redis SET NX EX
     const redisClient = this.redisService.getClient();
     const lockKey = `lock:${user.tenant_id}:${dto.table_id}`;
     const reservationCode = 'RES_' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    const depositAmount = 50000;
+    const guestCount = dto.guest_count || 2;
+    const depositAmount = this.calculateDepositAmount(guestCount);
     const expiresAt = new Date(Date.now() + 600_000).toISOString();
 
-    // Store user ID in lock to verify ownership later
-    const locked = await redisClient.set(lockKey, user.sub, 'EX', 600, 'NX');
+    let resTime = new Date().toISOString();
+    if (dto.booking_date && dto.booking_time) {
+      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00`).toISOString();
+    }
+
+    // 2. Try Redis lock first, fallback to DB-only if Redis is down
+    const locked = await this.redisSafe(
+      () => redisClient.set(lockKey, user.sub, 'EX', 600, 'NX'),
+      'OK' as string | null, // fallback: assume lock acquired
+    );
 
     if (!locked) {
       throw new AppException('ERR_2002_TABLE_LOCKED', 'Bàn đang bị khóa bởi khách khác');
     }
 
-    // 3. Update table status
-    const { error: updateError } = await supabase
+    // 3. Update table status using supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from('tables')
-      .update({ status: 'PENDING_LOCK' })
+      .update({ status: 'PENDING_LOCK', updated_at: new Date().toISOString() })
       .eq('id', dto.table_id);
 
     if (updateError) {
-      // rollback lock
-      await redisClient.del(lockKey, `reservation:${reservationCode}`);
+      await this.redisSafe(() => redisClient.del(lockKey), 0);
       throw new AppException('ERR_2003_INVALID_TABLE_STATUS_TRANSITION', 'Không thể cập nhật trạng thái bàn');
     }
 
@@ -155,56 +183,63 @@ export class ReservationService implements OnModuleInit {
       // safe fallback
     }
 
-    // Store reservation context mapping in Redis
-    const resKey = `reservation:${reservationCode}`;
-    await redisClient.set(
-      resKey,
-      JSON.stringify({
-        tenant_id: user.tenant_id,
-        table_id: dto.table_id,
-        user_id: user.sub,
-        customer_id: customerId,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        amount: depositAmount,
-        expires_at: expiresAt,
-      }),
-      'EX',
-      600,
+    // Store reservation context in Redis (best-effort)
+    await this.redisSafe(
+      () => redisClient.set(
+        `reservation:${reservationCode}`,
+        JSON.stringify({
+          tenant_id: user.tenant_id,
+          table_id: dto.table_id,
+          user_id: user.sub,
+          customer_id: customerId,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          amount: depositAmount,
+          expires_at: expiresAt,
+        }),
+        'EX',
+        600,
+      ),
+      null,
     );
 
-    // Insert into reservations table as PENDING so staff can see it
-    try {
-      await supabaseAdmin.from('reservations')?.insert?.({
-        tenant_id: user.tenant_id,
-        table_id: dto.table_id,
-        customer_id: customerId,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        reservation_code: reservationCode,
-        reservation_time: new Date().toISOString(),
-        deposit_amount: depositAmount,
-        status: 'PENDING',
-      });
-    } catch {
-      // safe fallback
-    }
+    // Insert into reservations table with fallback
+    const resPayloadFull: any = {
+      tenant_id: user.tenant_id,
+      table_id: dto.table_id,
+      customer_id: customerId,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      reservation_code: reservationCode,
+      reservation_time: resTime,
+      deposit_amount: depositAmount,
+      status: 'PENDING',
+      booking_date: dto.booking_date || null,
+      booking_time: dto.booking_time || null,
+      duration_hours: dto.duration_hours || 2,
+      guest_count: guestCount,
+      created_by_role: 'CUSTOMER',
+      payment_method_deposit: 'VIETQR',
+    };
 
-    // Insert into reservations table
-    try {
-      await supabaseAdmin.from('reservations')?.insert?.({
+    const { error: lockInsertErr } = await supabaseAdmin.from('reservations').insert(resPayloadFull);
+    if (lockInsertErr) {
+      this.logger.warn(`Full insert lockTable failed (${lockInsertErr.message}), falling back to core columns`);
+      const resPayloadCore: any = {
         tenant_id: user.tenant_id,
         table_id: dto.table_id,
         customer_id: customerId,
         customer_name: customerName,
         customer_phone: customerPhone,
         reservation_code: reservationCode,
-        reservation_time: new Date().toISOString(),
+        reservation_time: resTime,
         deposit_amount: depositAmount,
         status: 'PENDING',
-      });
-    } catch {
-      // safe fallback
+      };
+      const { error: coreLockErr } = await supabaseAdmin.from('reservations').insert(resPayloadCore);
+      if (coreLockErr) {
+        this.logger.error('Failed to insert lockTable reservation:', coreLockErr);
+      }
     }
 
     this.realtimeGateway?.emitTableStatusChanged?.(dto.table_id, 'PENDING_LOCK');
@@ -216,28 +251,124 @@ export class ReservationService implements OnModuleInit {
     };
   }
 
-  async generateQr(user: AuthenticatedUser, code: string) {
-    const redisClient = this.redisService.getClient();
-    const resDataStr = await redisClient.get(`reservation:${code}`);
+  async staffCreateReservation(user: AuthenticatedUser, accessToken: string, dto: LockTableDto) {
+    const supabaseAdmin = this.supabaseService.admin();
+    const reservationCode = 'RES_' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const guestCount = dto.guest_count || 2;
+    const depositAmount = this.calculateDepositAmount(guestCount);
 
-    if (!resDataStr) {
-      throw new AppException('ERR_3001_RESERVATION_EXPIRED', 'Reservation code không hợp lệ hoặc đã hết hạn');
+    let resTime = new Date().toISOString();
+    if (dto.booking_date && dto.booking_time) {
+      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00`).toISOString();
     }
 
-    const resData = JSON.parse(resDataStr);
+    const customerName = dto.customer_name || 'Khách qua điện thoại';
+    const customerPhone = dto.customer_phone || '';
+    const paymentMethod = dto.payment_method_deposit || 'CASH';
 
-    if (resData.user_id !== user.sub) {
-      throw new AppException('ERR_1001_UNAUTHORIZED', 'Không có quyền truy cập reservation code này');
+    const initialStatus = (paymentMethod === 'CASH' || paymentMethod === 'WAIVED') ? 'PAID' : 'PENDING';
+
+    const staffPayloadFull: any = {
+      tenant_id: user.tenant_id,
+      table_id: dto.table_id,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      reservation_code: reservationCode,
+      reservation_time: resTime,
+      deposit_amount: depositAmount,
+      status: initialStatus,
+      booking_date: dto.booking_date || null,
+      booking_time: dto.booking_time || null,
+      duration_hours: dto.duration_hours || 2,
+      guest_count: guestCount,
+      created_by_role: 'STAFF',
+      payment_method_deposit: paymentMethod,
+    };
+
+    const { error: staffInsertErr } = await supabaseAdmin.from('reservations').insert(staffPayloadFull);
+    if (staffInsertErr) {
+      this.logger.warn(`Full insert staffCreateReservation failed (${staffInsertErr.message}), trying core fields`);
+      const staffPayloadCore: any = {
+        tenant_id: user.tenant_id,
+        table_id: dto.table_id,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        reservation_code: reservationCode,
+        reservation_time: resTime,
+        deposit_amount: depositAmount,
+        status: initialStatus,
+      };
+      const { error: coreStaffErr } = await supabaseAdmin.from('reservations').insert(staffPayloadCore);
+      if (coreStaffErr) {
+        this.logger.error('Failed to insert staff reservation into DB:', coreStaffErr);
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi lưu đơn đặt bàn: ${coreStaffErr.message}`);
+      }
+    }
+
+    const tableStatus = initialStatus === 'PAID' ? 'RESERVED' : 'PENDING_LOCK';
+
+    const { error: updateTableErr } = await supabaseAdmin
+      .from('tables')
+      .update({ status: tableStatus, updated_at: new Date().toISOString() })
+      .eq('id', dto.table_id);
+
+    if (updateTableErr) {
+      this.logger.error('Failed to update table status:', updateTableErr);
+      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi cập nhật trạng thái bàn: ${updateTableErr.message}`);
+    }
+
+    this.realtimeGateway?.emitTableStatusChanged?.(dto.table_id, tableStatus);
+
+    return {
+      reservation_code: reservationCode,
+      table_id: dto.table_id,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      deposit_amount: depositAmount,
+      status: initialStatus,
+      table_status: tableStatus,
+      message: 'Đã tạo giữ bàn thành công cho khách',
+    };
+  }
+
+  async generateQr(user: AuthenticatedUser, code: string) {
+    const redisClient = this.redisService.getClient();
+    const resDataStr = await this.redisSafe(() => redisClient.get(`reservation:${code}`), null as string | null);
+
+    let amount = 50000;
+    let expiresAt = new Date(Date.now() + 600_000).toISOString();
+
+    if (resDataStr) {
+      const resData = JSON.parse(resDataStr);
+      if (resData.user_id && resData.user_id !== user.sub) {
+        throw new AppException('ERR_1001_UNAUTHORIZED', 'Không có quyền truy cập reservation code này');
+      }
+      amount = Number(resData.amount || 50000);
+      expiresAt = resData.expires_at || expiresAt;
+    } else {
+      // Fallback: check in DB table reservations
+      const supabaseAdmin = this.supabaseService.admin();
+      const { data: resDb } = await supabaseAdmin
+        .from('reservations')
+        .select('*')
+        .eq('tenant_id', user.tenant_id)
+        .eq('reservation_code', code)
+        .maybeSingle();
+
+      if (resDb) {
+        amount = Number(resDb.deposit_amount || 50000);
+        expiresAt = resDb.reservation_time ? new Date(new Date(resDb.reservation_time).getTime() + 600_000).toISOString() : expiresAt;
+      }
     }
 
     const memo = `DATBAN ${code}`;
-    const qrString = `VIETQR|${code}|${resData.amount}`;
-    const realQrImageUrl = `https://img.vietqr.io/image/vietcombank-9344566957-compact2.png?amount=${Math.round(resData.amount)}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent('TRAN THANH LUON')}`;
+    const qrString = `VIETQR|${code}|${amount}`;
+    const realQrImageUrl = `https://img.vietqr.io/image/vietcombank-9344566957-compact2.png?amount=${Math.round(amount)}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent('TRAN THANH LUON')}`;
 
     return {
       code,
-      amount: Number(resData.amount),
-      expires_at: resData.expires_at,
+      amount,
+      expires_at: expiresAt,
       qr_string: qrString,
       qr_image: realQrImageUrl,
     };
@@ -297,10 +428,36 @@ export class ReservationService implements OnModuleInit {
     const code = match ? match[0] : null;
 
     if (code) {
-      const resDataStr = await redisClient.get(`reservation:${code}`);
+      let resData: any = null;
+      const resDataStr = await this.redisSafe(() => redisClient.get(`reservation:${code}`), null as string | null);
       if (resDataStr) {
-        const resData = JSON.parse(resDataStr);
+        try {
+          resData = JSON.parse(resDataStr);
+        } catch {
+          resData = null;
+        }
+      }
 
+      if (!resData) {
+        const { data: resDb } = await supabaseAdmin
+          .from('reservations')
+          .select('*')
+          .eq('reservation_code', code)
+          .maybeSingle();
+
+        if (resDb) {
+          resData = {
+            tenant_id: resDb.tenant_id,
+            table_id: resDb.table_id,
+            customer_id: resDb.customer_id,
+            customer_name: resDb.customer_name,
+            customer_phone: resDb.customer_phone,
+            amount: resDb.deposit_amount,
+          };
+        }
+      }
+
+      if (resData) {
         // Đảm bảo reservation thuộc đúng tenant được gửi trong route param
         if (resData.tenant_id !== tenantId) {
           throw new AppException('ERR_1003_TENANT_MISMATCH', 'tenantId không khớp với reservation');
@@ -375,8 +532,11 @@ export class ReservationService implements OnModuleInit {
 
         this.realtimeGateway?.emitTableStatusChanged?.(resData.table_id, 'RESERVED');
 
-        // Free Redis locks
-        await redisClient.del(`lock:${resData.tenant_id}:${resData.table_id}`, `reservation:${code}`);
+        // Free Redis locks (safe)
+        await this.redisSafe(
+          () => redisClient.del(`lock:${resData.tenant_id}:${resData.table_id}`, `reservation:${code}`),
+          0,
+        );
 
         return { message: 'Thanh toán thành công, bàn đã được giữ', payment_transaction_id: paymentTx.id };
       }
@@ -463,7 +623,7 @@ export class ReservationService implements OnModuleInit {
       .maybeSingle();
 
     if (!res) throw new AppException('ERR_404', 'Không tìm thấy đặt bàn');
-    if (res.status !== 'PENDING') throw new AppException('ERR_400', 'Đặt bàn không ở trạng thái chờ cọc');
+    if (res.status !== 'PENDING' && res.status !== 'PAID') throw new AppException('ERR_400', 'Đặt bàn không ở trạng thái chờ cọc');
 
     // 2. Update reservation to PAID
     await supabaseAdmin
@@ -477,11 +637,41 @@ export class ReservationService implements OnModuleInit {
       .update({ status: 'RESERVED' })
       .eq('id', res.table_id);
 
-    // 4. Free Redis locks
-    await redisClient.del(`lock:${res.tenant_id}:${res.table_id}`, `reservation:${code}`);
+    // 4. Free Redis locks (best-effort)
+    await this.redisSafe(
+      () => redisClient.del(`lock:${res.tenant_id}:${res.table_id}`, `reservation:${code}`),
+      0,
+    );
 
-    // 5. Notify clients
+    // 5. Notify clients — table status + customer notification
     this.realtimeGateway?.emitTableStatusChanged?.(res.table_id, 'RESERVED');
+
+    const confirmPayload = {
+      status: 'PAID',
+      type: 'DEPOSIT_CONFIRMED',
+      reservation_code: code,
+      message: 'Cửa hàng đã xác nhận cọc! Đặt bàn của bạn đã thành công.',
+    };
+
+    // Broadcast to global server as well as target customer
+    this.realtimeGateway?.server?.emit?.('order_status_changed', confirmPayload);
+
+    if (res.customer_id) {
+      let authUserId: string | null = null;
+      try {
+        const { data: custRecord } = await supabaseAdmin
+          .from('customers')
+          .select('auth_user_id')
+          .eq('id', res.customer_id)
+          .maybeSingle();
+        authUserId = custRecord?.auth_user_id || null;
+      } catch {
+        // safe fallback
+      }
+
+      const notifyTarget = authUserId || res.customer_id;
+      this.realtimeGateway?.emitOrderStatusChanged(code, notifyTarget, confirmPayload);
+    }
 
     return { message: 'Đã xác nhận cọc, giữ bàn thành công' };
   }
@@ -681,17 +871,17 @@ export class ReservationService implements OnModuleInit {
    */
   async getMyReservations(user: AuthenticatedUser) {
     const supabaseAdmin = this.supabaseService.admin();
-    
+
     const { data: customers, error: custErr } = await supabaseAdmin
       .from('customers')
       .select('id')
       .eq('auth_user_id', user.sub);
-      
+
     if (custErr) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', custErr.message);
     if (!customers || customers.length === 0) return [];
-    
+
     const customerIds = customers.map(c => c.id);
-    
+
     const { data, error } = await supabaseAdmin
       .from('reservations')
       .select(`
@@ -743,7 +933,7 @@ export class ReservationService implements OnModuleInit {
     return reservation;
   }
 
-  async cancelReservation(user: AuthenticatedUser, accessToken: string, code: string) {
+  async cancelReservation(user: AuthenticatedUser, accessToken: string, code: string, reason?: string) {
     const redisClient = this.redisService.getClient();
     const supabaseAdmin = this.supabaseService.admin();
 
@@ -752,16 +942,15 @@ export class ReservationService implements OnModuleInit {
     try {
       const resQuery = await supabaseAdmin
         .from('reservations')
-        ?.select?.('*')
-        ?.eq?.('tenant_id', user.tenant_id)
-        ?.eq?.('reservation_code', code)
-        ?.maybeSingle?.();
+        .select('*')
+        .eq('reservation_code', code)
+        .maybeSingle();
       reservation = resQuery?.data || null;
     } catch {
       // safe fallback
     }
 
-    const resDataStr = await redisClient.get(`reservation:${code}`);
+    const resDataStr = await this.redisSafe(() => redisClient.get(`reservation:${code}`), null);
     const redisResData = resDataStr ? JSON.parse(resDataStr) : null;
 
     if (!reservation && !redisResData) {
@@ -793,26 +982,29 @@ export class ReservationService implements OnModuleInit {
 
     const tableId = reservation?.table_id || redisResData?.table_id;
 
-    // Free Redis locks
+    // Free Redis locks (best-effort)
     if (tableId) {
-      await redisClient.del(`lock:${user.tenant_id}:${tableId}`, `reservation:${code}`);
+      await this.redisSafe(() => redisClient.del(`lock:${user.tenant_id}:${tableId}`, `reservation:${code}`), 0);
     } else {
-      await redisClient.del(`reservation:${code}`);
+      await this.redisSafe(() => redisClient.del(`reservation:${code}`), 0);
     }
 
     // Update reservation status in DB
-    if (reservation) {
-      try {
-        await supabaseAdmin
-          .from('reservations')
-          ?.update?.({
-            status: 'CANCELLED',
-            updated_at: new Date().toISOString(),
-          })
-          ?.eq?.('id', reservation.id);
-      } catch {
-        // safe fallback
+    try {
+      const updatePayload: any = {
+        status: 'CANCELLED',
+        updated_at: new Date().toISOString(),
+      };
+      const { error: updateErr } = await supabaseAdmin
+        .from('reservations')
+        .update(updatePayload)
+        .eq('reservation_code', code);
+
+      if (updateErr) {
+        this.logger.error('Error updating reservation cancellation in DB:', updateErr);
       }
+    } catch (err) {
+      this.logger.error('Failed to update reservation status to CANCELLED:', err);
     }
 
     // Revert table status to AVAILABLE
@@ -829,6 +1021,33 @@ export class ReservationService implements OnModuleInit {
       }
     }
 
-    return { message: 'Đã hủy giữ bàn thành công' };
+    // Emit order_status_changed event to customer & broadcast
+    const cancelPayload = {
+      status: 'CANCELLED',
+      reservation_code: code,
+      reason: reason || 'Nhân viên đã hủy giữ bàn',
+      message: `Đặt bàn ${code} đã bị hủy. Lý do: ${reason || 'Nhân viên hủy'}`,
+    };
+
+    this.realtimeGateway?.server?.emit?.('order_status_changed', cancelPayload);
+
+    if (reservation?.customer_id) {
+      let authUserId: string | null = null;
+      try {
+        const { data: custRecord } = await supabaseAdmin
+          .from('customers')
+          .select('auth_user_id')
+          .eq('id', reservation.customer_id)
+          .maybeSingle();
+        authUserId = custRecord?.auth_user_id || null;
+      } catch {
+        // safe fallback
+      }
+
+      const notifyTarget = authUserId || reservation.customer_id;
+      this.realtimeGateway?.emitOrderStatusChanged(code, notifyTarget, cancelPayload);
+    }
+
+    return { message: 'Đã hủy giữ bàn thành công', reason };
   }
 }

@@ -1,51 +1,39 @@
 'use client';
+
 import React, { useEffect, useState } from 'react';
-import { generateVietQRUrl, VIETCOMBANK_CONFIG } from '@fnb/utils';
-import { Copy, Check } from 'lucide-react';
+import { generateVietQRUrl, VIETCOMBANK_CONFIG, apiClient } from '@fnb/utils';
+import { Copy, Check, Clock, CheckCircle2 } from 'lucide-react';
 
 interface Props {
   amount: number;
   reservationCode: string;
   onMockSuccess: () => void;
+  onMockCancel?: (reason?: string) => void;
   tenantId?: string;
 }
 
-export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId = '11111111-1111-1111-1111-111111111111' }: Props) {
+export function VietQRDeposit({
+  amount,
+  reservationCode,
+  onMockSuccess,
+  onMockCancel,
+  tenantId = '11111111-1111-1111-1111-111111111111',
+}: Props) {
   const memo = `DATBAN ${reservationCode}`;
   const defaultQrUrl = generateVietQRUrl(amount, memo);
   const [qrImage, setQrImage] = useState<string>(defaultQrUrl);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [paymentError, setPaymentError] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isWaiting, setIsWaiting] = useState<boolean>(false);
 
   useEffect(() => {
     async function loadRealQr() {
       if (!reservationCode) return;
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
-        let token = '';
-        if (typeof document !== 'undefined') {
-          const match = document.cookie.match(/(?:^|;\s*)jwt=([^;]*)/);
-          token = match ? decodeURIComponent(match[1]) : (localStorage.getItem('access_token') || '');
-        }
-
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const res = await fetch(`${baseUrl}/reservations/${encodeURIComponent(reservationCode)}/generate-qr`, {
-          method: 'POST',
-          headers,
-        });
-
-        if (res.ok) {
-          const resJson = await res.json();
-          const payload = resJson?.data ?? resJson;
-          if (payload.qr_image) setQrImage(payload.qr_image);
-        }
+        const res: any = await apiClient.post(`/reservations/${encodeURIComponent(reservationCode)}/generate-qr`, {});
+        const payload = res?.data ?? res;
+        if (payload?.qr_image) setQrImage(payload.qr_image);
       } catch (err) {
-        // Fallback already set to defaultQrUrl
+        // Fallback set
       }
     }
 
@@ -58,30 +46,20 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const [isWaiting, setIsWaiting] = useState<boolean>(false);
-
+  // Poll reservation status until staff confirms or cancels
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isWaiting) {
+    if (reservationCode) {
       interval = setInterval(async () => {
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
-          let token = '';
-          if (typeof document !== 'undefined') {
-            const match = document.cookie.match(/(?:^|;\s*)jwt=([^;]*)/);
-            token = match ? decodeURIComponent(match[1]) : (localStorage.getItem('access_token') || '');
-          }
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-
-          const res = await fetch(`${baseUrl}/reservations/${encodeURIComponent(reservationCode)}`, { headers });
-          if (res.ok) {
-            const data = await res.json();
-            const payload = data?.data ?? data;
-            if (payload?.status === 'PAID') {
-              onMockSuccess();
-            } else if (payload?.status === 'CANCELLED') {
-              window.location.reload(); // Simple reload will show expired state
+          const res: any = await apiClient.get(`/reservations/${encodeURIComponent(reservationCode)}`);
+          const payload = res?.data ?? res;
+          if (payload?.status === 'PAID') {
+            onMockSuccess();
+          } else if (payload?.status === 'CANCELLED') {
+            const cleanReason = payload?.notes?.replace(/^Lý do hủy:\s*/, '') || 'Nhà hàng đã hủy đặt bàn cọc';
+            if (onMockCancel) {
+              onMockCancel(cleanReason);
             }
           }
         } catch (e) {
@@ -90,29 +68,44 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
       }, 3000);
     }
     return () => clearInterval(interval);
-  }, [isWaiting, reservationCode, onMockSuccess]);
+  }, [reservationCode, onMockSuccess, onMockCancel]);
 
-  const handleConfirmPayment = async () => {
-    setIsProcessing(true);
-    setPaymentError('');
-    // Instead of auto-confirming via webhook, we just show a waiting state
-    // The staff will confirm it manually on their dashboard.
-    setTimeout(() => {
-      setIsWaiting(true);
-      setIsProcessing(false);
-    }, 1000);
+  const handleCustomerConfirmedTransfer = () => {
+    setIsWaiting(true);
   };
 
   if (isWaiting) {
     return (
-      <div className="flex flex-col items-center bg-white p-6 rounded-2xl shadow-lg border border-[#FED8B1] max-w-md w-full mx-auto text-center">
-        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+      <div className="flex flex-col items-center bg-white p-8 rounded-3xl shadow-xl border border-[#FED8B1] max-w-md w-full mx-auto text-center space-y-4 animate-fade-in">
+        <div className="w-16 h-16 bg-[#FEF0C7] rounded-full flex items-center justify-center relative">
+          <Clock className="w-9 h-9 text-[#D67D3E] animate-pulse" />
         </div>
-        <h3 className="text-[#543310] font-bold text-xl mb-2">Đang xử lý thanh toán</h3>
-        <p className="text-sm text-[#6B625B] mb-6">
-          Hệ thống đã nhận được yêu cầu. Nhân viên đang kiểm tra và xác nhận tiền cọc của bạn. Vui lòng không đóng trang này...
+        
+        <h3 className="text-[#543310] font-bold text-xl">Đã ghi nhận thanh toán!</h3>
+        
+        <p className="text-sm text-[#6B625B] leading-relaxed">
+          Quán đã nhận được thông báo chuyển khoản của bạn. Nhân viên thu ngân đang đối soát và sẽ xác nhận giữ bàn ngay trong ít phút.
         </p>
+
+        <div className="w-full bg-[#FAF7F3] border border-[#E8DED5] rounded-2xl p-4 text-xs text-[#543310] space-y-2 text-left">
+          <div className="flex justify-between">
+            <span className="text-[#6B625B]">Mã đặt bàn:</span>
+            <span className="font-mono font-bold text-[#D67D3E]">{reservationCode}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#6B625B]">Số tiền cọc:</span>
+            <span className="font-bold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#6B625B]">Trạng thái:</span>
+            <span className="font-bold text-[#D67D3E] flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#D67D3E] animate-ping inline-block"></span>
+              Đang chờ nhân viên xác nhận...
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-400 italic">Vui lòng không đóng trang này trong khi chờ quán xác nhận.</p>
       </div>
     );
   }
@@ -176,20 +169,13 @@ export function VietQRDeposit({ amount, reservationCode, onMockSuccess, tenantId
         </div>
       </div>
 
-      {paymentError && (
-        <p className="mb-4 w-full border border-[#FDA29B] bg-[#FEE4E2] p-3 text-sm text-[#B42318] rounded-lg">
-          {paymentError}
-        </p>
-      )}
-
       <button 
-        onClick={handleConfirmPayment}
-        disabled={isProcessing}
-        className="w-full bg-[#543310] text-white py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition disabled:opacity-50 text-base shadow-md"
+        onClick={handleCustomerConfirmedTransfer}
+        className="w-full bg-[#543310] text-white py-3.5 rounded-xl font-bold hover:bg-[#D67D3E] transition text-base shadow-md flex items-center justify-center gap-2"
       >
-        {isProcessing ? 'Đang ghi nhận...' : 'Tôi đã chuyển khoản thành công'}
+        <CheckCircle2 size={18} />
+        <span>Tôi đã chuyển khoản thành công</span>
       </button>
     </div>
   );
 }
-

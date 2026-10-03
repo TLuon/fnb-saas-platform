@@ -15,13 +15,23 @@ export class ReservationController {
   constructor(private readonly reservationService: ReservationService) {}
 
   @Post('lock')
-  @Roles('CUSTOMER')
+  @Roles('CUSTOMER', 'STAFF', 'OWNER')
   async lockTable(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
     @Body() dto: LockTableDto,
   ) {
     return this.reservationService.lockTable(user, accessToken, dto);
+  }
+
+  @Post('staff-create')
+  @Roles('STAFF', 'OWNER')
+  async staffCreateReservation(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentAccessToken() accessToken: string,
+    @Body() dto: LockTableDto,
+  ) {
+    return this.reservationService.staffCreateReservation(user, accessToken, dto);
   }
 
   @Post(':code/generate-qr')
@@ -134,7 +144,10 @@ export class ReservationController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
     @Param('code') code: string,
+    @Body() body?: { reason?: string },
+    @Query('reason') queryReason?: string,
   ) {
-    return this.reservationService.cancelReservation(user, accessToken, code);
+    const reason = body?.reason || queryReason || '';
+    return this.reservationService.cancelReservation(user, accessToken, code, reason);
   }
 }

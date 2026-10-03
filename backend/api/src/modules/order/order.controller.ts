@@ -87,8 +87,9 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentAccessToken() accessToken: string,
     @Param('id') orderId: string,
+    @Body('reason') reason?: string,
   ) {
-    return this.orderService.cancelOrder(user, accessToken, orderId);
+    return this.orderService.cancelOrder(user, accessToken, orderId, reason);
   }
 
   @Get('kds')

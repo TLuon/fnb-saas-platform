@@ -366,10 +366,13 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
             ctx.fillStyle = '#B42318';
             ctx.fillText('Hết hạn', 0, ry + h + 16);
           }
-        } else if ((table.status === 'OCCUPIED' || table.status === 'CLEANING') && table.current_order_id) {
+        } else if (table.status === 'OCCUPIED' || table.status === 'CLEANING') {
+          const orderCode = typeof table.current_order_id === 'string' && table.current_order_id 
+            ? `#${table.current_order_id.slice(0, 6).toUpperCase()}` 
+            : 'Đang dùng';
           ctx.font = 'bold 12px sans-serif';
           ctx.fillStyle = '#D67D3E';
-          ctx.fillText(`#${table.current_order_id.slice(0, 6).toUpperCase()}`, 0, ry + h + 16);
+          ctx.fillText(orderCode, 0, ry + h + 16);
         }
       }
 

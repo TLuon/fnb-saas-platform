@@ -20,10 +20,10 @@ export default function OrdersPage() {
           apiClient.get(`/reservations/my`).catch(() => null)
         ]);
         
-        const ordersData = (ordersRes?.data?.data || ordersRes?.data || []).map((o: any) => ({...o, itemType: 'order'}));
-        const resData = (reservationsRes?.data?.data || reservationsRes?.data || []).map((r: any) => ({...r, itemType: 'reservation'}));
+        const ordersData = (Array.isArray(ordersRes) ? ordersRes : (ordersRes?.data?.data || ordersRes?.data || [])).map((o: any) => ({...o, itemType: 'order'}));
+        const resData = (Array.isArray(reservationsRes) ? reservationsRes : (reservationsRes?.data?.data || reservationsRes?.data || [])).map((r: any) => ({...r, itemType: 'reservation'}));
         
-        const combined = [...ordersData, ...resData].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const combined = [...ordersData, ...resData].sort((a, b) => new Date(b.created_at || b.reservation_time || 0).getTime() - new Date(a.created_at || a.reservation_time || 0).getTime());
         setOrders(combined);
       } catch (err) {
         console.error('Failed to fetch history', err);
@@ -36,16 +36,17 @@ export default function OrdersPage() {
   }, []);
 
   const filteredOrders = orders.filter(o => {
+    const status = (o.status || '').toUpperCase();
     if (filter === 'ACTIVE') {
-      if (o.itemType === 'reservation') return ['PENDING', 'PAID'].includes(o.status);
-      return ['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(o.status);
+      if (o.itemType === 'reservation') return ['PENDING', 'PAID', 'PENDING_LOCK'].includes(status);
+      return ['PENDING', 'IN_PROGRESS', 'PREPARING', 'READY', 'SERVED', 'PROCESSING'].includes(status);
     }
     if (filter === 'COMPLETED') {
-      if (o.itemType === 'reservation') return o.status === 'COMPLETED' || o.status === 'CHECKED_IN';
-      return o.status === 'COMPLETED';
+      if (o.itemType === 'reservation') return status === 'COMPLETED' || status === 'CHECKED_IN';
+      return status === 'COMPLETED' || status === 'DELIVERED';
     }
     if (filter === 'CANCELLED') {
-      return o.status === 'CANCELLED';
+      return status === 'CANCELLED' || status === 'EXPIRED' || status === 'REJECTED';
     }
     return true;
   });

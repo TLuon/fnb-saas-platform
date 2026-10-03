@@ -443,7 +443,7 @@ export class OrderService {
     // 1. Check order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status, table_id, final_amount, subtotal, branch_id, shift_id, order_type')
+      .select('id, status, table_id, final_amount, subtotal, branch_id, shift_id, order_type, customers(auth_user_id)')
       .eq('id', orderId)
       .single();
 
@@ -692,15 +692,29 @@ export class OrderService {
 
     await markVoucherUsed();
 
+    if (this.realtimeGateway) {
+      const authUserId = (order.customers as any)?.auth_user_id || null;
+      let msg = 'Đơn hàng của bạn đã được cập nhật.';
+      if (targetStatus === 'IN_PROGRESS') {
+        msg = 'Nhà hàng đã xác nhận thanh toán và đang chuẩn bị món cho bạn!';
+      } else if (targetStatus === 'COMPLETED') {
+        msg = 'Đơn hàng của bạn đã hoàn tất. Chúc bạn ngon miệng!';
+      }
+      this.realtimeGateway.emitOrderStatusChanged(orderId, authUserId, {
+        status: targetStatus,
+        message: msg,
+      });
+    }
+
     return { message: 'Đã thanh toán thành công' };
   }
 
-  async cancelOrder(user: AuthenticatedUser, accessToken: string, orderId: string) {
+  async cancelOrder(user: AuthenticatedUser, accessToken: string, orderId: string, reason?: string) {
     const supabase = this.supabaseService.forUser(accessToken);
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status, table_id')
+      .select('id, status, table_id, customers(auth_user_id)')
       .eq('id', orderId)
       .single();
 
@@ -726,6 +740,14 @@ export class OrderService {
         .from('tables')
         .update({ status: 'AVAILABLE', current_order_id: null })
         .eq('id', order.table_id);
+    }
+
+    if (this.realtimeGateway) {
+      const authUserId = (order.customers as any)?.auth_user_id || null;
+      this.realtimeGateway.emitOrderStatusChanged(orderId, authUserId, {
+        status: 'CANCELLED',
+        reason: reason || 'Cửa hàng đã hủy đơn này.',
+      });
     }
 
     return { message: 'Đã hủy đơn hàng' };

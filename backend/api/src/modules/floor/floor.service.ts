@@ -38,11 +38,11 @@ export class FloorService {
 
   /** Lấy danh sách chi nhánh của tenant hiện tại */
   async listBranches(accessToken: string, tenantId: string) {
-    const client = this.supabase.forUser(accessToken);
+    const client = accessToken ? this.supabase.forUser(accessToken) : this.supabase.admin();
     const { data, error } = await client
       .from('branches')
       .select('id, tenant_id, name, address, created_at')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', tenantId || '11111111-1111-1111-1111-111111111111')
       .order('name', { ascending: true });
 
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
@@ -51,7 +51,7 @@ export class FloorService {
 
   /** API_CONTRACT.md mục 2 — GET /floors?branch_id=. RLS tự lọc theo tenant. */
   async listFloors(accessToken: string, branchId: string) {
-    const client = this.supabase.forUser(accessToken);
+    const client = accessToken ? this.supabase.forUser(accessToken) : this.supabase.admin();
     const { data, error } = await client
       .from('floors')
       .select('id, branch_id, name, floor_level, background_svg, created_at')
@@ -86,13 +86,9 @@ export class FloorService {
 
   /**
    * API_CONTRACT.md mục 2 — GET /floors/:id/tables.
-   * Không có mã lỗi riêng cho "floor not found" trong ERROR_CODES.md —
-   * floor không tồn tại (hoặc không thuộc tenant, bị RLS chặn) đơn giản
-   * trả về mảng rỗng thay vì lỗi, đúng ngữ nghĩa "tầng này không có bàn
-   * nào nhìn thấy được".
    */
   async getFloorTables(accessToken: string, floorId: string) {
-    const client = this.supabase.forUser(accessToken);
+    const client = accessToken ? this.supabase.forUser(accessToken) : this.supabase.admin();
     const { data, error } = await client
       .from('tables')
       .select('id, floor_id, table_code, capacity, pos_x, pos_y, width, height, shape, status, current_order_id')

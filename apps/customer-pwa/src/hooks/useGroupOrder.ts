@@ -57,17 +57,23 @@ export function useGroupOrder(tableId: string | null) {
       }
     );
 
-    client.connect();
-    controller.listen();
-
-    // Emit initial join on mount once socket connects
-    client.socket.emit('join_group_order', { table_id: tableId });
+    let isMounted = true;
+    const init = async () => {
+      await client.connect();
+      if (!isMounted) return;
+      controller.listen();
+      client.socket.emit('join_group_order', { table_id: tableId });
+    };
+    init();
 
     return () => {
-      client.socket.emit('leave_group_order', { table_id: tableId });
+      isMounted = false;
+      if (client.socket) {
+        client.socket.emit('leave_group_order', { table_id: tableId });
+      }
       controller.stop();
       client.disconnect();
     };
-  }, [tableId, setItems, showInfo, showError, apiClient]);
+  }, [tableId, setItems, showInfo, showError]);
 }
 

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { FloorService } from './floor.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
+import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentAccessToken, CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { CreateFloorDto } from './dto/create-floor.dto.js';
@@ -13,16 +14,16 @@ import { UpdateTableStatusDto } from './dto/update-table-status.dto.js';
 export class FloorController {
   constructor(private readonly floorService: FloorService) {}
 
-  @Roles('OWNER', 'STAFF', 'CUSTOMER')
+  @Public()
   @Get('branches')
-  listBranches(@CurrentAccessToken() token: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.floorService.listBranches(token, user.tenant_id);
+  listBranches(@CurrentAccessToken() token?: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.floorService.listBranches(token || '', user?.tenant_id || '11111111-1111-1111-1111-111111111111');
   }
 
-  @Roles('OWNER', 'STAFF', 'CUSTOMER')
+  @Public()
   @Get('floors')
-  listFloors(@Query() query: ListFloorsQueryDto, @CurrentAccessToken() token: string) {
-    return this.floorService.listFloors(token, query.branch_id);
+  listFloors(@Query() query: ListFloorsQueryDto, @CurrentAccessToken() token?: string) {
+    return this.floorService.listFloors(token || '', query.branch_id);
   }
 
   @Roles('OWNER', 'STAFF')
@@ -31,10 +32,10 @@ export class FloorController {
     return this.floorService.createFloor(token, dto);
   }
 
-  @Roles('OWNER', 'STAFF', 'CUSTOMER')
+  @Public()
   @Get('floors/:id/tables')
-  getFloorTables(@Param('id') floorId: string, @CurrentAccessToken() token: string) {
-    return this.floorService.getFloorTables(token, floorId);
+  getFloorTables(@Param('id') floorId: string, @CurrentAccessToken() token?: string) {
+    return this.floorService.getFloorTables(token || '', floorId);
   }
 
   @Roles('OWNER', 'STAFF')

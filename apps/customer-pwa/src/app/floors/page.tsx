@@ -13,7 +13,7 @@ import { LoadingSkeleton, EmptyState } from '@fnb/ui-shared';
 import { useRouter } from 'next/navigation';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { LoginRequiredModal } from '../../components/LoginRequiredModal';
-import { io } from 'socket.io-client';
+import { DepositNotificationModal } from '../../components/DepositNotificationModal';
 
 export default function FloorsPage() {
   const router = useRouter();
@@ -35,12 +35,17 @@ export default function FloorsPage() {
   
   const [selectedTable, setSelectedTable] = useState<any | null>(null);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setLoadingFloors(false);
-      return;
-    }
+  const [bookingDate, setBookingDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [bookingTime, setBookingTime] = useState('18:00');
+  const [durationHours, setDurationHours] = useState(2);
+  const [guestCount, setGuestCount] = useState(2);
 
+  const [showPopupModal, setShowPopupModal] = useState(false);
+  const [popupType, setPopupType] = useState<'CONFIRMED' | 'CANCELLED'>('CONFIRMED');
+  const [popupCode, setPopupCode] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+
+  useEffect(() => {
     const fetchBranches = async () => {
       try {
         setLoadingFloors(true);
@@ -60,7 +65,7 @@ export default function FloorsPage() {
     };
 
     void fetchBranches();
-  }, [isAuthenticated]);
+  }, []);
 
   useEffect(() => {
     if (!activeBranchId) {
@@ -111,44 +116,73 @@ export default function FloorsPage() {
 
   // Realtime updates for tables
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
-    const socket = io(wsUrl);
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    let socket: any;
 
-    socket.on('connect', () => {
-      // Reconnect logic: fetch snapshot again to avoid missed events
-      if (activeFloorId) {
-        fetchTables(activeFloorId);
-      }
-    });
+    import('socket.io-client').then(({ io }) => {
+      socket = io(wsUrl);
 
-    socket.on('table_status_changed', (data: { table_id: string, status: string }) => {
-      setTables(prev => prev.map(t => 
-        t.id === data.table_id ? { ...t, status: data.status } : t
-      ));
+      socket.on('connect', () => {
+        // Reconnect logic: fetch snapshot again to avoid missed events
+        if (activeFloorId) {
+          fetchTables(activeFloorId);
+        }
+      });
+
+      socket.on('table_status_changed', (data: { table_id: string, status: string }) => {
+        setTables(prev => prev.map(t => 
+          t.id === data.table_id ? { ...t, status: data.status } : t
+        ));
+      });
+
+      socket.on('order_status_changed', (data: any) => {
+        if (data.status === 'PAID') {
+          setPopupType('CONFIRMED');
+          setPopupCode(data.reservation_code || '');
+          setShowPopupModal(true);
+        } else if (data.status === 'CANCELLED') {
+          setPopupType('CANCELLED');
+          setPopupCode(data.reservation_code || '');
+          setCancelReason(data.reason || 'Nhà hàng đã hủy giữ bàn cọc');
+          setShowPopupModal(true);
+        }
+      });
     });
 
     return () => {
-      socket.disconnect();
+      if (socket) socket.disconnect();
     };
   }, [activeFloorId]);
 
-  const handleSelectTable = async (table: any) => {
+  const handleSelectTable = async (table: any, details?: any) => {
     try {
       setLockingTable(true);
-      showInfo(`Đang giữ bàn ${table.code}...`);
+      const tableName = table.name || table.table_code || table.code || '';
+      showInfo(`Đang giữ bàn ${tableName}...`);
       
-      const payload: any = await apiClient.post('/reservations/lock', { table_id: table.id });
+      const payload: any = await apiClient.post('/reservations/lock', { 
+        table_id: table.id,
+        booking_date: details?.booking_date || bookingDate,
+        booking_time: details?.booking_time || bookingTime,
+        duration_hours: Number(details?.duration_hours || durationHours),
+        guest_count: Number(details?.guest_count || guestCount),
+      });
       
-      const reservationCode = payload?.reservation_code || payload?.code;
+      const resData = payload?.data || payload;
+      const reservationCode = resData?.reservation_code || resData?.code || payload?.reservation_code || payload?.code;
       if (!reservationCode) throw new Error('API không trả mã đặt bàn');
-      router.push(`/reservation/${reservationCode}?tableName=${encodeURIComponent(table.name)}`);
+      const targetUrl = `/reservation/${reservationCode}?tableName=${encodeURIComponent(tableName)}`;
+      router.push(targetUrl);
     } catch (error: any) {
+      console.error('Lock table error:', error);
       if (error?.code === 'ERR_2002_TABLE_LOCKED' || error?.response?.data?.code === 'ERR_2002_TABLE_LOCKED') {
         showError('Bàn đã bị khách khác giữ. Vui lòng chọn bàn khác.');
-        // Refresh tables to get updated state
         if (activeFloorId) fetchTables(activeFloorId);
+      } else if (error?.code === 'ERR_1001_UNAUTHORIZED' || error?.code === 'ERR_1002_FORBIDDEN_ROLE') {
+        showError('Vui lòng đăng nhập tài khoản Khách hàng để thực hiện đặt bàn.');
+        setShowLoginModal(true);
       } else {
-        showError('Không thể giữ bàn lúc này, vui lòng thử lại.');
+        showError(error?.message || 'Không thể giữ bàn lúc này, vui lòng thử lại.');
       }
     } finally {
       setLockingTable(false);
@@ -192,6 +226,76 @@ export default function FloorsPage() {
       )}
 
       <div className="p-4 max-w-screen-xl mx-auto w-full">
+        {/* Advance Reservation Slot Selector */}
+        <div className="mb-6 bg-white border border-[#E8DED5] rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between border-b border-[#E8DED5] pb-3 mb-3">
+            <h3 className="font-bold text-[#543310] flex items-center gap-2">
+              <span className="text-base">📅</span> Đặt Bàn Theo Khung Giờ & Số Khách
+            </h3>
+            <span className="text-xs font-bold text-[#D67D3E] bg-[#FAF7F3] px-2.5 py-1 rounded-full border border-[#E8DED5]">
+              {guestCount >= 8 ? '🔥 Đặt bàn khách đoàn' : '⏰ Đặt giữ chỗ trước'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label className="block text-gray-500 font-bold mb-1">NGÀY ĐẶT</label>
+              <input
+                type="date"
+                value={bookingDate}
+                onChange={(e) => setBookingDate(e.target.value)}
+                className="w-full border border-[#E8DED5] rounded-xl px-2.5 py-2 font-semibold text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-[#FAF7F3]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-gray-500 font-bold mb-1">GIỜ ĐẾN</label>
+              <input
+                type="time"
+                value={bookingTime}
+                onChange={(e) => setBookingTime(e.target.value)}
+                className="w-full border border-[#E8DED5] rounded-xl px-2.5 py-2 font-semibold text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-[#FAF7F3]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-gray-500 font-bold mb-1">THỜI LƯỢNG GIỮ BÀN</label>
+              <select
+                value={durationHours}
+                onChange={(e) => setDurationHours(Number(e.target.value))}
+                className="w-full border border-[#E8DED5] rounded-xl px-2.5 py-2 font-semibold text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-[#FAF7F3]"
+              >
+                <option value={1}>1 giờ</option>
+                <option value={1.5}>1.5 giờ</option>
+                <option value={2}>2 giờ</option>
+                <option value={3}>3 giờ</option>
+                <option value={4}>4 giờ</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-gray-500 font-bold mb-1">SỐ LƯỢNG KHÁCH</label>
+              <div className="flex items-center border border-[#E8DED5] rounded-xl overflow-hidden bg-[#FAF7F3]">
+                <button
+                  onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                  className="px-3 py-2 font-bold text-[#543310] hover:bg-[#E8DED5]"
+                >
+                  -
+                </button>
+                <span className="flex-1 text-center font-bold text-[#543310] text-sm">
+                  {guestCount} người
+                </span>
+                <button
+                  onClick={() => setGuestCount(guestCount + 1)}
+                  className="px-3 py-2 font-bold text-[#543310] hover:bg-[#E8DED5]"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <h2 className="text-2xl font-bold font-serif text-[#543310] mb-4">Sơ đồ tầng</h2>
         
         {isNoAvailableTable && (
@@ -235,6 +339,14 @@ export default function FloorsPage() {
         isOpen={showLoginModal} 
         onClose={() => setShowLoginModal(false)} 
         returnUrl="/floors" 
+      />
+
+      <DepositNotificationModal
+        isOpen={showPopupModal}
+        type={popupType}
+        reservationCode={popupCode}
+        reason={cancelReason}
+        onClose={() => setShowPopupModal(false)}
       />
     </main>
   );

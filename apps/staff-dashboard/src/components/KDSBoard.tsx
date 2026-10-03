@@ -180,62 +180,74 @@ export const KDSBoard: React.FC<KDSBoardProps> = ({ station, title, description,
 
     const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
     const socketUrl = import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl);
-    const client = new RealtimeClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
-      supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-      socketUrl,
-      token: accessToken,
-    });
+    let client: RealtimeClient;
 
-    client.socket.on('connect', () => {
-      setIsConnected(true);
-      client.socket.emit('join_branch', { branch_id: branchId });
-      fetchSnapshot();
-    });
-    
-    client.socket.on('disconnect', () => setIsConnected(false));
-
-    client.socket.on('kds_new_ticket', (ticket: any) => {
-      if (ticket.station && ticket.station !== station) return;
-      const createdAt = ticket.createdAt ? new Date(ticket.createdAt).getTime() : Date.now();
-      const newItems = (ticket.items || [])
-        .filter((i: any) => i.station === station || !i.station)
-        .map((item: any) => ({
-          id: item.order_item_id || item.id || crypto.randomUUID(),
-          orderId: ticket.order_id || ticket.orderId || '',
-          orderCode: ticket.order_code || ticket.orderCode || (ticket.order_id ? 'ORD-' + ticket.order_id.slice(0, 6).toUpperCase() : ''),
-          name: item.product_name || item.name || 'Món',
-          quantity: item.quantity,
-          kitchen_status: item.kitchen_status || 'QUEUED',
-          createdAt,
-          station,
-          orderType: ticket.type || ticket.order_type || 'DINE_IN',
-          tableName: ticket.table_name || ticket.tableName || '',
-          note: item.note,
-          modifiers: item.modifiers
-        }));
-        
-      setItems(prev => {
-        const existingIds = new Set(prev.map(i => i.id));
-        const toAdd = newItems.filter((item: any) => !existingIds.has(item.id));
-        return [...prev, ...toAdd];
+    const initSocket = async () => {
+      client = new RealtimeClient({
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        socketUrl,
+        token: accessToken,
       });
-    });
 
-    client.socket.on('kds_item_status_changed', (data: any) => {
-      const targetId = data.order_item_id || data.itemId;
-      setItems((prev) => prev.map(item => 
-        item.id === targetId ? { ...item, kitchen_status: data.kitchen_status } : item
-      ));
-    });
+      await client.connect();
 
-    client.connect();
+      client.socket.on('connect', () => {
+        setIsConnected(true);
+        client.socket.emit('join_branch', { branch_id: branchId });
+        fetchSnapshot();
+      });
+      
+      client.socket.on('disconnect', () => setIsConnected(false));
+
+      client.socket.on('kds_new_ticket', (ticket: any) => {
+        if (ticket.station && ticket.station !== station) return;
+        const createdAt = ticket.createdAt ? new Date(ticket.createdAt).getTime() : Date.now();
+        const newItems = (ticket.items || [])
+          .filter((i: any) => i.station === station || !i.station)
+          .map((item: any) => ({
+            id: item.order_item_id || item.id || crypto.randomUUID(),
+            orderId: ticket.order_id || ticket.orderId || '',
+            orderCode: ticket.order_code || ticket.orderCode || (ticket.order_id ? 'ORD-' + ticket.order_id.slice(0, 6).toUpperCase() : ''),
+            name: item.product_name || item.name || 'Món',
+            quantity: item.quantity,
+            kitchen_status: item.kitchen_status || 'QUEUED',
+            createdAt,
+            station,
+            orderType: ticket.type || ticket.order_type || 'DINE_IN',
+            tableName: ticket.table_name || ticket.tableName || '',
+            note: item.note,
+            modifiers: item.modifiers
+          }));
+          
+        setItems(prev => {
+          const existingIds = new Set(prev.map(i => i.id));
+          const toAdd = newItems.filter((item: any) => !existingIds.has(item.id));
+          return [...prev, ...toAdd];
+        });
+      });
+
+      client.socket.on('kds_item_status_changed', (data: any) => {
+        const targetId = data.order_item_id || data.itemId;
+        setItems((prev) => prev.map(item => 
+          item.id === targetId ? { ...item, kitchen_status: data.kitchen_status } : item
+        ));
+      });
+      
+      if (client.socket.connected) {
+        setIsConnected(true);
+        client.socket.emit('join_branch', { branch_id: branchId });
+        fetchSnapshot();
+      }
+    };
+
+    initSocket();
 
     const snapshotInterval = window.setInterval(fetchSnapshot, 10000);
 
     return () => {
       window.clearInterval(snapshotInterval);
-      client.disconnect();
+      if (client) client.disconnect();
     };
   }, [accessToken, branchId, fetchSnapshot, station]);
 

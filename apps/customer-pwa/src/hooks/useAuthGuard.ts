@@ -6,7 +6,7 @@ import { authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
 import { LoginRequiredModal } from '../components/LoginRequiredModal';
 
-const PROTECTED_ROUTES = ['/cart', '/checkout', '/wallet', '/orders', '/reservation', '/floors', '/profile'];
+const PROTECTED_ROUTES = ['/cart', '/checkout', '/wallet', '/orders', '/reservation', '/profile'];
 
 export function useAuthGuard() {
   const pathname = usePathname();

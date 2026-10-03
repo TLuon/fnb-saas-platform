@@ -14,7 +14,8 @@ export function OrderStatusTimeline({ currentStatus }: OrderStatusTimelineProps)
     { id: 'COMPLETED', label: 'Hoàn thành' }
   ];
 
-  const currentIndex = steps.findIndex(s => s.id === currentStatus);
+  const normalizedStatus = currentStatus === 'IN_PROGRESS' ? 'PREPARING' : currentStatus;
+  const currentIndex = steps.findIndex(s => s.id === normalizedStatus);
   const activeIndex = currentIndex >= 0 ? currentIndex : 0; // Default to PENDING if unknown
   
   if (currentStatus === 'CANCELLED') {

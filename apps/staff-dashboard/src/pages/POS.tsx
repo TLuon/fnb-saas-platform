@@ -69,7 +69,7 @@ const POS: React.FC = () => {
   }, [toastConfig]);
 
   const navigate = useNavigate();
-  const { showAlert, showConfirm } = useModal();
+  const { showAlert } = useModal();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('');
@@ -88,6 +88,7 @@ const POS: React.FC = () => {
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY'>('DINE_IN');
   // posMainTab removed
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cancelModalData, setCancelModalData] = useState<{isOpen: boolean, orderId: string, orderCode: string, reason: string} | null>(null);
   const [error, setError] = useState('');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [outOfStockIds, setOutOfStockIds] = useState<Set<string>>(new Set());
@@ -148,62 +149,73 @@ const POS: React.FC = () => {
     const apiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
     const socketUrl = import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl);
 
-    const client = new RealtimeClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
-      supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-      socketUrl,
-      token: token || undefined,
-    });
+    let client: RealtimeClient;
 
-    client.socket.on('product_out_of_stock', (data: { product_id: string }) => {
-      setOutOfStockIds(prev => new Set(prev).add(data.product_id));
-    });
-
-
-
-    client.socket.on('kds_item_status_changed', (data: any) => {
-      const orderCode = data.order_code || `ORD-${(data.order_id || '').slice(0, 6).toUpperCase()}`;
-      const productName = data.product_name || 'Một món';
-
-      if (data.kitchen_status === 'READY') {
-        setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã chuẩn bị xong, hãy bấm "Giao món" để phục vụ khách!`, blinkCount: 0, isVisible: true });
-      } else if (data.kitchen_status === 'SERVED') {
-        setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã sẵn sàng & báo POS, vui lòng mang ra cho khách!`, blinkCount: 0, isVisible: true });
-      }
-
-      setActiveTableOrder((prev: any) => {
-        if (!prev) return prev;
-        const newItems = prev.order_items?.map((it: any) =>
-          (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
-            ? { ...it, kitchen_status: data.kitchen_status }
-            : it
-        );
-        return { ...prev, order_items: newItems };
+    const initSocket = async () => {
+      client = new RealtimeClient({
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        socketUrl,
+        token: token || undefined,
       });
 
-      setActiveTakeawayOrders((prev: any[]) => prev.map((order: any) => {
-        const newItems = (order.order_items || order.items || []).map((it: any) =>
-          (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
-            ? { ...it, kitchen_status: data.kitchen_status }
-            : it
-        );
-        return { ...order, order_items: newItems, items: newItems };
-      }));
-    });
+      await client.connect();
 
-    client.socket.on('connect', () => {
-      setIsConnected(true);
-      client.socket.emit('join_branch', { branch_id: branchId });
-    });
+      client.socket.on('product_out_of_stock', (data: { product_id: string }) => {
+        setOutOfStockIds(prev => new Set(prev).add(data.product_id));
+      });
 
-    client.socket.on('disconnect', () => {
-      setIsConnected(false);
-    });
 
-    client.connect();
+
+      client.socket.on('kds_item_status_changed', (data: any) => {
+        const orderCode = data.order_code || `ORD-${(data.order_id || '').slice(0, 6).toUpperCase()}`;
+        const productName = data.product_name || 'Một món';
+
+        if (data.kitchen_status === 'READY') {
+          setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã chuẩn bị xong, hãy bấm "Giao món" để phục vụ khách!`, blinkCount: 0, isVisible: true });
+        } else if (data.kitchen_status === 'SERVED') {
+          setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã sẵn sàng & báo POS, vui lòng mang ra cho khách!`, blinkCount: 0, isVisible: true });
+        }
+
+        setActiveTableOrder((prev: any) => {
+          if (!prev) return prev;
+          const newItems = prev.order_items?.map((it: any) =>
+            (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
+              ? { ...it, kitchen_status: data.kitchen_status }
+              : it
+          );
+          return { ...prev, order_items: newItems };
+        });
+
+        setActiveTakeawayOrders((prev: any[]) => prev.map((order: any) => {
+          const newItems = (order.order_items || order.items || []).map((it: any) =>
+            (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
+              ? { ...it, kitchen_status: data.kitchen_status }
+              : it
+          );
+          return { ...order, order_items: newItems, items: newItems };
+        }));
+      });
+
+      client.socket.on('connect', () => {
+        setIsConnected(true);
+        client.socket.emit('join_branch', { branch_id: branchId });
+      });
+
+      client.socket.on('disconnect', () => {
+        setIsConnected(false);
+      });
+      
+      if (client.socket.connected) {
+        setIsConnected(true);
+        client.socket.emit('join_branch', { branch_id: branchId });
+      }
+    };
+
+    initSocket();
 
     return () => {
-      client.disconnect();
+      if (client) client.disconnect();
     };
   }, [branchId]);
 
@@ -614,24 +626,22 @@ const POS: React.FC = () => {
   };
 
   const handleCancelTakeawayOrder = (orderId: string, orderCode: string) => {
-    showConfirm({
-      title: 'Xác nhận hủy đơn hàng',
-      message: `Bạn có chắc chắn muốn hủy đơn hàng #${orderCode}? Thao tác này sẽ hủy đơn và cập nhật ngay lập tức.`,
-      confirmLabel: 'Hủy đơn hàng',
-      cancelLabel: 'Quay lại',
-      onConfirm: async () => {
-        try {
-          setIsSubmitting(true);
-          await apiClient.post(`/orders/${orderId}/cancel`);
-          showAlert(`Đã hủy đơn hàng #${orderCode} thành công!`, 'info', 'Đã Hủy Đơn');
-          fetchTakeawayOrders();
-        } catch (err: any) {
-          showAlert(err.response?.data?.message || err.message || 'Không thể hủy đơn hàng', 'error', 'Lỗi Hủy Đơn');
-        } finally {
-          setIsSubmitting(false);
-        }
-      }
-    });
+    setCancelModalData({ isOpen: true, orderId, orderCode, reason: '' });
+  };
+
+  const submitCancelOrder = async () => {
+    if (!cancelModalData) return;
+    try {
+      setIsSubmitting(true);
+      await apiClient.post(`/orders/${cancelModalData.orderId}/cancel`, { reason: cancelModalData.reason || 'Hết món hoặc không hợp lệ' });
+      showAlert(`Đã hủy đơn hàng #${cancelModalData.orderCode} thành công!`, 'info', 'Đã Hủy Đơn');
+      fetchTakeawayOrders();
+      setCancelModalData(null);
+    } catch (err: any) {
+      showAlert(err.response?.data?.message || err.message || 'Không thể hủy đơn hàng', 'error', 'Lỗi Hủy Đơn');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
 
@@ -1380,6 +1390,46 @@ const POS: React.FC = () => {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Order Modal */}
+      {cancelModalData && cancelModalData.isOpen && (
+        <div className="fixed inset-0 z-[200] bg-black/60 flex justify-center items-center backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 relative animate-in zoom-in-95">
+            <button
+              onClick={() => setCancelModalData(null)}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-full"
+            >
+              ×
+            </button>
+            <h3 className="text-xl font-bold font-serif text-[#543310] mb-2 text-center">Hủy Đơn Hàng #{cancelModalData.orderCode}</h3>
+            <p className="text-sm text-gray-500 mb-6 text-center">Nhập lý do hủy đơn, thông báo này sẽ được gửi trực tiếp đến ứng dụng của khách hàng.</p>
+            
+            <textarea
+              value={cancelModalData.reason}
+              onChange={(e) => setCancelModalData({ ...cancelModalData, reason: e.target.value })}
+              placeholder="VD: Quán vừa hết nguyên liệu món này, Mong quý khách thông cảm..."
+              className="w-full h-32 p-3 border border-[#E8DED5] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D67D3E] mb-6 resize-none"
+            />
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCancelModalData(null)}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition"
+                disabled={isSubmitting}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={submitCancelOrder}
+                className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Đang hủy...' : 'Xác nhận Hủy Đơn'}
+              </button>
             </div>
           </div>
         </div>
