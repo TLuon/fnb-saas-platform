@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fnb/utils": "^1.0.0",
+    "@fnb/ui-shared": "^1.0.0",
     "@gsap/react": "^2.1.2",
     "gsap": "^3.15.0",
     "lucide-react": "^1.37.0",
