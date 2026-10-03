@@ -215,7 +215,7 @@ describe('PHASE 4 — Verification of All Requirements & Real API Flows', () => 
 
   // FLOW 7: Reservation creation
   it('Flow 7: Reservation creation locks table, creates code, and updates table status to PENDING_LOCK', async () => {
-    mockSupabaseUser.from.mockReturnValue({
+    const tableMockChain = {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           single: vi.fn().mockResolvedValue({ data: { id: tableIdA, status: 'AVAILABLE' }, error: null }),
@@ -224,7 +224,10 @@ describe('PHASE 4 — Verification of All Requirements & Real API Flows', () => 
       update: vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({ error: null }),
       }),
-    });
+      insert: vi.fn().mockResolvedValue({ error: null }),
+    };
+    mockSupabaseUser.from.mockReturnValue(tableMockChain);
+    mockSupabaseAdmin.from.mockReturnValue(tableMockChain);
 
     mockRedisClient.set.mockResolvedValue('OK');
 

@@ -358,7 +358,7 @@ describe('ReservationService - Webhook & Idempotency Tests', () => {
         600,
         'NX'
       );
-      expect(tableQuery.update).toHaveBeenCalledWith({ status: 'PENDING_LOCK' });
+      expect(tableQuery.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'PENDING_LOCK' }));
     });
 
     it('should reject lockTable when Redis concurrent lock fails', async () => {

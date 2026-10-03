@@ -9,8 +9,9 @@ export class CreateFloorDto {
   @IsString()
   name: string;
 
+  @IsOptional()
   @IsInt()
-  floor_level: number;
+  floor_level?: number;
 
   @IsOptional()
   @IsString()

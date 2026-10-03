@@ -2,6 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { SupabaseService } from '../../config/supabase.service.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { CreateFloorDto } from './dto/create-floor.dto.js';
+import { UpdateFloorDto } from './dto/update-floor.dto.js';
 import { CreateTableDto } from './dto/create-table.dto.js';
 import { UpdateTableDto } from './dto/update-table.dto.js';
 import { TableStatus, UpdateTableStatusDto } from './dto/update-table-status.dto.js';
@@ -82,6 +83,77 @@ export class FloorService {
 
     if (error) throw new AppException('ERR_9001_VALIDATION_FAILED', error.message);
     return data;
+  }
+
+  /** Cập nhật tên/thông tin tầng (OWNER, STAFF) */
+  async updateFloor(accessToken: string, floorId: string, dto: UpdateFloorDto) {
+    const client = this.supabase.admin();
+    const updatePayload: Record<string, any> = {};
+    if (dto.name !== undefined) updatePayload.name = dto.name;
+    if (dto.floor_level !== undefined) updatePayload.floor_level = dto.floor_level;
+    if (dto.background_svg !== undefined) updatePayload.background_svg = dto.background_svg;
+
+    const { data, error } = await client
+      .from('floors')
+      .update(updatePayload)
+      .eq('id', floorId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw new AppException('ERR_9001_VALIDATION_FAILED', error.message);
+    if (!data) throw new AppException('ERR_2001_TABLE_NOT_FOUND', 'Không tìm thấy tầng');
+    return data;
+  }
+
+  /** Xóa tầng và toàn bộ bàn/vật trang trí của tầng đó */
+  async deleteFloor(accessToken: string, floorId: string) {
+    const client = this.supabase.admin();
+    // Tables cascade delete via foreign key or manual delete
+    await client.from('tables').delete().eq('floor_id', floorId);
+    const { data, error } = await client
+      .from('floors')
+      .delete()
+      .eq('id', floorId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    return data ?? { id: floorId, deleted: true };
+  }
+
+  /** Sao chép bàn ghế và địa hình trang trí từ một tầng khác */
+  async cloneFloorLayout(accessToken: string, targetFloorId: string, sourceFloorId: string) {
+    const client = this.supabase.admin();
+    const { data: sourceTables, error: fetchErr } = await client
+      .from('tables')
+      .select('*')
+      .eq('floor_id', sourceFloorId);
+
+    if (fetchErr) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', fetchErr.message);
+    if (!sourceTables || sourceTables.length === 0) {
+      return [];
+    }
+
+    const newRows = sourceTables.map((t) => ({
+      floor_id: targetFloorId,
+      table_code: t.table_code,
+      capacity: t.capacity ?? 4,
+      pos_x: t.pos_x,
+      pos_y: t.pos_y,
+      width: t.width ?? 80,
+      height: t.height ?? 80,
+      shape: t.shape || 'rectangle',
+      status: 'AVAILABLE',
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { data: inserted, error: insertErr } = await client
+      .from('tables')
+      .insert(newRows)
+      .select();
+
+    if (insertErr) throw new AppException('ERR_9001_VALIDATION_FAILED', insertErr.message);
+    return inserted ?? [];
   }
 
   /**

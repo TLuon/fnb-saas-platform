@@ -5,6 +5,7 @@ import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentAccessToken, CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/auth.types.js';
 import { CreateFloorDto } from './dto/create-floor.dto.js';
+import { UpdateFloorDto } from './dto/update-floor.dto.js';
 import { ListFloorsQueryDto } from './dto/list-floors-query.dto.js';
 import { CreateTableDto } from './dto/create-table.dto.js';
 import { UpdateTableDto } from './dto/update-table.dto.js';
@@ -30,6 +31,32 @@ export class FloorController {
   @Post('floors')
   createFloor(@Body() dto: CreateFloorDto, @CurrentAccessToken() token: string) {
     return this.floorService.createFloor(token, dto);
+  }
+
+  @Roles('OWNER', 'STAFF')
+  @Patch('floors/:id')
+  updateFloor(
+    @Param('id') floorId: string,
+    @Body() dto: UpdateFloorDto,
+    @CurrentAccessToken() token: string,
+  ) {
+    return this.floorService.updateFloor(token, floorId, dto);
+  }
+
+  @Roles('OWNER', 'STAFF')
+  @Delete('floors/:id')
+  deleteFloor(@Param('id') floorId: string, @CurrentAccessToken() token: string) {
+    return this.floorService.deleteFloor(token, floorId);
+  }
+
+  @Roles('OWNER', 'STAFF')
+  @Post('floors/:id/copy-from/:sourceFloorId')
+  copyFloorLayout(
+    @Param('id') targetFloorId: string,
+    @Param('sourceFloorId') sourceFloorId: string,
+    @CurrentAccessToken() token: string,
+  ) {
+    return this.floorService.cloneFloorLayout(token, targetFloorId, sourceFloorId);
   }
 
   @Public()

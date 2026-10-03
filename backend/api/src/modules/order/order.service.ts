@@ -173,7 +173,7 @@ export class OrderService {
   }
 
   async addOrderItem(user: AuthenticatedUser, accessToken: string, orderId: string, dto: AddOrderItemDto) {
-    const supabase = this.supabaseService.forUser(accessToken);
+    const supabase = user.role_app === 'OWNER' ? this.supabaseService.admin() : this.supabaseService.forUser(accessToken);
 
     // 1. Check order
     const { data: order, error: orderError } = await supabase
@@ -218,6 +218,7 @@ export class OrderService {
       });
 
     if (insertError) {
+      console.error('LỖI THÊM MÓN:', insertError);
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Lỗi khi thêm món');
     }
 
@@ -227,7 +228,7 @@ export class OrderService {
   }
 
   async updateOrderItem(user: AuthenticatedUser, accessToken: string, orderId: string, itemId: string, dto: UpdateOrderItemDto) {
-    const supabase = this.supabaseService.forUser(accessToken);
+    const supabase = user.role_app === 'OWNER' ? this.supabaseService.admin() : this.supabaseService.forUser(accessToken);
 
     // 1. Check order
     const { data: order, error: orderError } = await supabase
@@ -280,7 +281,7 @@ export class OrderService {
   }
 
   async submitKitchen(user: AuthenticatedUser, accessToken: string, orderId: string) {
-    const supabase = this.supabaseService.forUser(accessToken);
+    const supabase = user.role_app === 'OWNER' ? this.supabaseService.admin() : this.supabaseService.forUser(accessToken);
 
     // 1. Check order and join table
     const { data: order, error: orderError } = await supabase
@@ -700,7 +701,7 @@ export class OrderService {
       } else if (targetStatus === 'COMPLETED') {
         msg = 'Đơn hàng của bạn đã hoàn tất. Chúc bạn ngon miệng!';
       }
-      this.realtimeGateway.emitOrderStatusChanged(orderId, authUserId, {
+      this.realtimeGateway?.emitOrderStatusChanged?.(orderId, authUserId, {
         status: targetStatus,
         message: msg,
       });

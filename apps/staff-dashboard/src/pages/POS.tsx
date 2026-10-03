@@ -108,6 +108,7 @@ const POS: React.FC = () => {
 
   // Payment Modal States
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [isPaymentModalLoading, setIsPaymentModalLoading] = useState(false);
   const [paymentMethodChoice, setPaymentMethodChoice] = useState<'VIETQR' | 'CASH'>('VIETQR');
   const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
   const [paymentModalData, setPaymentModalData] = useState<{
@@ -385,6 +386,7 @@ const POS: React.FC = () => {
         const orderRes: any = await apiClient.post('/orders', {
           table_id: orderType === 'DINE_IN' ? selectedTable?.id : undefined,
           order_type: orderType,
+          branch_id: branchId,
         });
         const orderData = orderRes.data?.data || orderRes.data || orderRes;
         orderId = orderData.id || orderData.order_id;
@@ -426,19 +428,22 @@ const POS: React.FC = () => {
   };
 
   const openPaymentModalForOrder = async (orderId: string, fallbackAmount?: number) => {
+    setIsPaymentModalLoading(true);
+    setPaymentModalData(null);
+    setPaymentModalOpen(true);
     try {
       const res: any = await apiClient.get(`/orders/${orderId}`);
-      const ord = res.data?.data?.order || res.data?.order || res.data || res;
-      const isPaid = ord.status === 'COMPLETED';
-      const orderCode = ord.order_code || ord.order_number || ord.code || (orderId ? 'ORD-' + orderId.slice(0, 6).toUpperCase() : '');
+      const ord = res?.order || res?.data?.order || res?.data?.data?.order || (res?.id ? res : (res?.data || res));
+      const isPaid = ord?.status === 'COMPLETED';
+      const orderCode = ord?.order_code || ord?.order_number || ord?.code || (orderId ? 'ORD-' + orderId.slice(0, 6).toUpperCase() : '');
 
-      const items = ord.order_items || ord.items || [];
+      const items = ord?.order_items || ord?.items || [];
       let calculatedItemsTotal = 0;
       if (Array.isArray(items) && items.length > 0) {
         calculatedItemsTotal = items.reduce((sum: number, it: any) => sum + (Number(it.quantity || 1) * Number(it.unit_price || it.price || 0)), 0);
       }
 
-      const rawAmount = Number(ord.final_amount || ord.total_amount || ord.subtotal || 0);
+      const rawAmount = Number(ord?.final_amount || ord?.total_amount || ord?.subtotal || 0);
       const amount = (rawAmount > 0 ? rawAmount : (calculatedItemsTotal > 0 ? calculatedItemsTotal : (fallbackAmount || 0)));
 
       setPaymentModalData({
@@ -449,81 +454,115 @@ const POS: React.FC = () => {
       });
       setPaymentMethodChoice('VIETQR');
       setCashReceivedInput('');
-      setPaymentModalOpen(true);
     } catch (err: any) {
       showAlert(err.response?.data?.message || err.message || 'Không thể lấy thông tin đơn hàng', 'error', 'Lỗi Thanh Toán');
+      setPaymentModalOpen(false);
+    } finally {
+      setIsPaymentModalLoading(false);
     }
   };
 
   useEffect(() => {
-    if (searchParams.get('action') === 'pay' && activeOrderId && !paymentModalOpen) {
-      openPaymentModalForOrder(activeOrderId);
-      navigate(`/pos?floor_id=${selectedFloor}&table_id=${initialTableId}`, { replace: true });
+    const action = searchParams.get('action');
+    const paramOrderId = searchParams.get('order_id');
+    const paramAmount = searchParams.get('amount') ? Number(searchParams.get('amount')) : undefined;
+    const targetOrderId = paramOrderId || activeOrderId;
+
+    if (action === 'pay' && targetOrderId && !paymentModalOpen) {
+      openPaymentModalForOrder(targetOrderId, paramAmount);
+      navigate(`/pos?floor_id=${selectedFloor || initialFloorId || ''}&table_id=${initialTableId || ''}`, { replace: true });
     }
-  }, [searchParams, activeOrderId, paymentModalOpen, selectedFloor, initialTableId, navigate]);
+  }, [searchParams, activeOrderId, paymentModalOpen, selectedFloor, initialFloorId, initialTableId, navigate]);
 
 
   const checkoutAndPay = async () => {
-    setIsSubmitting(true);
-    try {
-      let orderId = activeOrderId;
-
-      if (!orderId && cart.length > 0) {
-        // Create order, add items, then pay
-        const orderRes: any = await apiClient.post('/orders', {
-          table_id: orderType === 'DINE_IN' ? selectedTable?.id : undefined,
-          order_type: orderType,
-        });
-        const orderData = orderRes.data?.data || orderRes.data || orderRes;
-        orderId = orderData.id || orderData.order_id;
-        if (orderType === 'DINE_IN') setActiveOrderId(orderId);
-
-        for (const item of cart) {
-          await apiClient.post(`/orders/${orderId}/items`, {
-            product_id: item.product.id,
-            quantity: item.quantity,
-            modifiers: item.modifiers,
-            notes: item.note,
-          });
-        }
-        if (orderType === 'TAKEAWAY') {
-          await apiClient.post(`/orders/${orderId}/submit-kitchen`);
-        }
-        setCart([]);
-      } else if (orderId && cart.length > 0) {
-        // If there are additional cart items on an existing order, append them first
-        for (const item of cart) {
-          await apiClient.post(`/orders/${orderId}/items`, {
-            product_id: item.product.id,
-            quantity: item.quantity,
-            modifiers: item.modifiers,
-            notes: item.note,
-          });
-        }
-        if (orderType === 'TAKEAWAY') {
-          await apiClient.post(`/orders/${orderId}/submit-kitchen`);
-        }
-        setCart([]);
-      }
-
-      if (!orderId) {
-        showAlert('Không có đơn hàng nào cần thanh toán!', 'info', 'Thông báo');
-        return;
-      }
-
-      await openPaymentModalForOrder(orderId, totalAmountToPay);
-    } catch (err: any) {
-      showAlert(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi thanh toán', 'error', 'Lỗi Thanh Toán');
-    } finally {
-      setIsSubmitting(false);
+    if (totalAmountToPay <= 0) {
+      showAlert('Không có đơn hàng nào cần thanh toán!', 'info', 'Thông báo');
+      return;
     }
+
+    // Case 1: If table already has an active order on backend AND no new cart items:
+    if (activeOrderId && cart.length === 0) {
+      await openPaymentModalForOrder(activeOrderId, existingOrderTotal);
+      return;
+    }
+
+    // Case 2: If table already has an active order on backend AND also new cart items:
+    if (activeOrderId && cart.length > 0) {
+      const code = activeTableOrder?.order_code || ('ORD-' + activeOrderId.slice(0, 6).toUpperCase());
+      setPaymentModalData({
+        orderId: activeOrderId,
+        orderCode: code,
+        amount: totalAmountToPay,
+        isPaid: false,
+      });
+      setPaymentMethodChoice('VIETQR');
+      setCashReceivedInput('');
+      setPaymentModalOpen(true);
+      return;
+    }
+
+    // Case 3: New order (from cart) without an existing backend order:
+    // Generate draft code for VietQR display without creating order in backend yet!
+    const draftCode = 'ORD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    setPaymentModalData({
+      orderId: 'NEW_ORDER_DRAFT',
+      orderCode: draftCode,
+      amount: totalAmountToPay,
+      isPaid: false,
+    });
+    setPaymentMethodChoice('VIETQR');
+    setCashReceivedInput('');
+    setPaymentModalOpen(true);
   };
 
   const handleConfirmPosPayment = async (method: 'VIETQR' | 'CASH') => {
     if (!paymentModalData) return;
     setIsSubmitting(true);
     try {
-      await apiClient.post(`/orders/${paymentModalData.orderId}/pay`, {
+      let targetOrderId = paymentModalData.orderId;
+
+      if (targetOrderId === 'NEW_ORDER_DRAFT') {
+        // Create order on backend now
+        const orderRes: any = await apiClient.post('/orders', {
+          table_id: orderType === 'DINE_IN' ? selectedTable?.id : undefined,
+          order_type: orderType,
+          branch_id: branchId,
+        });
+        const orderData = orderRes.data?.data || orderRes.data || orderRes;
+        targetOrderId = orderData.id || orderData.order_id;
+
+        // Add items from cart
+        for (const item of cart) {
+          await apiClient.post(`/orders/${targetOrderId}/items`, {
+            product_id: item.product.id,
+            quantity: item.quantity,
+            modifiers: item.modifiers,
+            notes: item.note,
+          });
+        }
+
+        if (orderType === 'TAKEAWAY') {
+          await apiClient.post(`/orders/${targetOrderId}/submit-kitchen`).catch(() => null);
+        }
+      } else {
+        // Order already existed on backend (activeOrderId)
+        // If there are new cart items, append them before paying
+        if (cart.length > 0) {
+          for (const item of cart) {
+            await apiClient.post(`/orders/${targetOrderId}/items`, {
+              product_id: item.product.id,
+              quantity: item.quantity,
+              modifiers: item.modifiers,
+              notes: item.note,
+            });
+          }
+        }
+      }
+
+      // Execute payment
+      await apiClient.post(`/orders/${targetOrderId}/pay`, {
         payment_method: method,
       });
 
@@ -533,8 +572,10 @@ const POS: React.FC = () => {
         'Thanh Toán Hoàn Tất'
       );
       setPaymentModalOpen(false);
+      setPaymentModalData(null);
       setActiveOrderId(null);
       setCart([]);
+      localStorage.removeItem('pos_cart');
 
       if (orderType === 'TAKEAWAY') {
         fetchTakeawayOrders();
@@ -1173,24 +1214,31 @@ const POS: React.FC = () => {
       )}
 
       {/* POS VietQR Payment Modal */}
-      {paymentModalOpen && paymentModalData && (
+      {paymentModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-white max-w-md w-full max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#FED8B1]">
             <div className="p-4 border-b bg-[#543310] text-white flex justify-between items-center shrink-0">
               <div>
-                <h2 className="font-bold text-lg text-[#FED8B1]">Thanh toán Đơn hàng #{paymentModalData.orderCode}</h2>
+                <h2 className="font-bold text-lg text-[#FED8B1]">
+                  Thanh toán Đơn hàng {paymentModalData ? `#${paymentModalData.orderCode}` : ''}
+                </h2>
                 <p className="text-xs text-amber-200/80">Chọn hình thức Chuyển khoản QR hoặc Tiền mặt</p>
               </div>
               <button
                 onClick={() => setPaymentModalOpen(false)}
-                className="text-white/70 hover:text-white text-2xl font-bold leading-none"
+                className="text-white/70 hover:text-white text-2xl font-bold leading-none cursor-pointer"
               >
                 &times;
               </button>
             </div>
 
             <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-[#FAF7F3]">
-              {paymentModalData.isPaid ? (
+              {isPaymentModalLoading || !paymentModalData ? (
+                <div className="py-16 flex flex-col items-center justify-center space-y-4">
+                  <div className="w-10 h-10 border-4 border-[#D67D3E] border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-sm font-semibold text-[#543310]">Đang tải thông tin đơn hàng & tạo mã QR...</p>
+                </div>
+              ) : paymentModalData.isPaid ? (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center space-y-3">
                   <div className="w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto text-xl font-bold">✓</div>
                   <h3 className="font-bold text-green-800 text-lg">Đơn hàng đã được thanh toán!</h3>
@@ -1355,7 +1403,7 @@ const POS: React.FC = () => {
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex flex-col gap-2 shrink-0">
-              {paymentModalData.isPaid ? (
+              {paymentModalData && paymentModalData.isPaid ? (
                 <button
                   onClick={() => setPaymentModalOpen(false)}
                   className="w-full bg-[#543310] text-white py-2.5 rounded-xl font-bold hover:bg-[#D67D3E] transition"
@@ -1367,7 +1415,7 @@ const POS: React.FC = () => {
                   {paymentMethodChoice === 'VIETQR' ? (
                     <button
                       onClick={() => handleConfirmPosPayment('VIETQR')}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isPaymentModalLoading || !paymentModalData}
                       className="w-full bg-[#543310] text-white py-3 rounded-xl font-bold hover:bg-[#D67D3E] transition disabled:opacity-50 shadow-md text-sm"
                     >
                       {isSubmitting ? 'Đang ghi nhận...' : '✓ Xác nhận đã nhận Chuyển Khoản (VietQR)'}
@@ -1375,7 +1423,7 @@ const POS: React.FC = () => {
                   ) : (
                     <button
                       onClick={() => handleConfirmPosPayment('CASH')}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isPaymentModalLoading || !paymentModalData}
                       className="w-full bg-[#237A57] text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition disabled:opacity-50 shadow-md text-sm"
                     >
                       {isSubmitting ? 'Đang ghi nhận...' : '💵 Xác nhận thu tiền mặt & Hoàn tất'}
@@ -1384,7 +1432,7 @@ const POS: React.FC = () => {
                   <button
                     onClick={() => setPaymentModalOpen(false)}
                     disabled={isSubmitting}
-                    className="w-full bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-100 transition text-sm"
+                    className="w-full bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-100 transition text-sm cursor-pointer"
                   >
                     Đóng
                   </button>

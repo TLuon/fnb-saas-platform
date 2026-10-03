@@ -230,6 +230,13 @@ const LiveFloorMap: React.FC = () => {
             <span>📞</span>
             <span>Đặt Bàn Qua Điện Thoại</span>
           </button>
+          <button
+            onClick={() => navigate('/floor-editor')}
+            className="bg-white hover:bg-orange-50 text-[#543310] border border-[#543310] px-3.5 py-2 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+          >
+            <span>✏️</span>
+            <span>Chỉnh Sửa Sơ Đồ Bàn</span>
+          </button>
         </div>
         <div className="flex items-center gap-4 text-sm font-medium">
           <span className="text-gray-500">Cập nhật lúc: {lastUpdated.toLocaleTimeString()}</span>
@@ -259,9 +266,16 @@ const LiveFloorMap: React.FC = () => {
             </div>
           ) : tables.length === 0 ? (
             <div className="w-full h-full flex flex-col items-center justify-center bg-white rounded-lg border border-[#E8DED5] shadow-inner text-gray-400">
-              <span className="text-4xl mb-4">🪑</span>
-              <span className="font-medium text-lg">Tầng này chưa có bàn nào</span>
-              <p className="text-sm mt-2">Vui lòng dùng công cụ Floor Editor để thiết kế sơ đồ.</p>
+              <span className="text-4xl mb-3">🪑</span>
+              <span className="font-bold text-lg text-gray-700">Tầng này chưa có bàn ghế nào</span>
+              <p className="text-sm mt-1 text-gray-500 mb-4">Bạn có thể thiết kế sơ đồ mới hoặc sao chép từ Tầng trệt.</p>
+              <button
+                onClick={() => navigate('/floor-editor')}
+                className="bg-[#D67D3E] hover:bg-[#b86428] text-white px-4 py-2 rounded-xl font-bold text-xs shadow flex items-center gap-1.5 transition"
+              >
+                <span>🛠️</span>
+                <span>Chỉnh Sửa & Thêm Bàn Ghế Cho Tầng Này</span>
+              </button>
             </div>
           ) : (
             <FloorMapCanvas
@@ -490,7 +504,10 @@ const LiveFloorMap: React.FC = () => {
                 </button>
                 {activeOrder && selectedTable.status === 'OCCUPIED' && (
                   <button
-                    onClick={() => navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}&action=pay`)}
+                    onClick={() => {
+                      const orderAmount = Number(activeOrder?.final_amount || activeOrder?.total_amount || 0);
+                      navigate(`/pos?floor_id=${selectedFloor}&table_id=${selectedTable.id}&action=pay&order_id=${activeOrder.id}&amount=${orderAmount}`);
+                    }}
                     className="flex-1 bg-[#237A57] text-white py-2.5 rounded-lg font-bold hover:bg-green-700 transition shadow-sm text-sm"
                   >
                     Thanh toán

@@ -35,7 +35,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requiredRole }) 
         authorized = location.pathname === '/kds/bar';
       } else {
         // Cashier Staff (staff.runtime@example.com)
-        authorized = ['/pos', '/floor-map', '/kds/kitchen', '/kds/bar', '/orders-history'].includes(location.pathname);
+        authorized = ['/pos', '/floor-map', '/floor-editor', '/kds/kitchen', '/kds/bar', '/orders-history'].includes(location.pathname);
       }
     }
   }

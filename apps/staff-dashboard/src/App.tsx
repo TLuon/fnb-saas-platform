@@ -40,7 +40,7 @@ function App() {
               <Route path="support/tickets" element={<AuthGuard requiredRole="SUPPORT"><SupportTickets /></AuthGuard>} />
               <Route path="shifts" element={<AuthGuard requiredRole="OWNER"><ShiftManagement /></AuthGuard>} />
               <Route path="inventory" element={<AuthGuard requiredRole="OWNER"><Inventory /></AuthGuard>} />
-              <Route path="floor-editor" element={<AuthGuard requiredRole="OWNER"><FloorEditor /></AuthGuard>} />
+              <Route path="floor-editor" element={<AuthGuard requiredRole="STAFF"><FloorEditor /></AuthGuard>} />
               <Route path="floor-map" element={<AuthGuard requiredRole="STAFF"><LiveFloorMap /></AuthGuard>} />
               <Route path="pos" element={<AuthGuard requiredRole="STAFF"><POS /></AuthGuard>} />
               <Route path="kds/kitchen" element={<AuthGuard requiredRole="STAFF"><KDSKitchen /></AuthGuard>} />

@@ -69,6 +69,7 @@ describe('OrderService & OrderController Tests', () => {
       emitKdsNewTicket: vi.fn(),
       emitKdsItemStatusChanged: vi.fn(),
       emitTableStatusChanged: vi.fn(),
+      emitOrderStatusChanged: vi.fn(),
     };
 
     const mockWalletService: any = {};

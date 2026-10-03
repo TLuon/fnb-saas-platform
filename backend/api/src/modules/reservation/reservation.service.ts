@@ -93,7 +93,8 @@ export class ReservationService implements OnModuleInit {
    */
   private async redisSafe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     try {
-      if (this.redisService.getClient().status !== 'ready') {
+      const client = this.redisService?.getClient?.();
+      if (client?.status && client.status !== 'ready') {
         return fallback;
       }
       return await fn();
@@ -222,24 +223,31 @@ export class ReservationService implements OnModuleInit {
       payment_method_deposit: 'VIETQR',
     };
 
-    const { error: lockInsertErr } = await supabaseAdmin.from('reservations').insert(resPayloadFull);
-    if (lockInsertErr) {
-      this.logger.warn(`Full insert lockTable failed (${lockInsertErr.message}), falling back to core columns`);
-      const resPayloadCore: any = {
-        tenant_id: user.tenant_id,
-        table_id: dto.table_id,
-        customer_id: customerId,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        reservation_code: reservationCode,
-        reservation_time: resTime,
-        deposit_amount: depositAmount,
-        status: 'PENDING',
-      };
-      const { error: coreLockErr } = await supabaseAdmin.from('reservations').insert(resPayloadCore);
-      if (coreLockErr) {
-        this.logger.error('Failed to insert lockTable reservation:', coreLockErr);
+    try {
+      const resTable = supabaseAdmin.from('reservations');
+      if (resTable && typeof resTable.insert === 'function') {
+        const { error: lockInsertErr } = await resTable.insert(resPayloadFull);
+        if (lockInsertErr) {
+          this.logger.warn(`Full insert lockTable failed (${lockInsertErr.message}), falling back to core columns`);
+          const resPayloadCore: any = {
+            tenant_id: user.tenant_id,
+            table_id: dto.table_id,
+            customer_id: customerId,
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            reservation_code: reservationCode,
+            reservation_time: resTime,
+            deposit_amount: depositAmount,
+            status: 'PENDING',
+          };
+          const { error: coreLockErr } = await resTable.insert(resPayloadCore);
+          if (coreLockErr) {
+            this.logger.error('Failed to insert lockTable reservation:', coreLockErr);
+          }
+        }
       }
+    } catch {
+      // safe fallback
     }
 
     this.realtimeGateway?.emitTableStatusChanged?.(dto.table_id, 'PENDING_LOCK');
@@ -348,16 +356,26 @@ export class ReservationService implements OnModuleInit {
     } else {
       // Fallback: check in DB table reservations
       const supabaseAdmin = this.supabaseService.admin();
-      const { data: resDb } = await supabaseAdmin
-        .from('reservations')
-        .select('*')
-        .eq('tenant_id', user.tenant_id)
-        .eq('reservation_code', code)
-        .maybeSingle();
+      let resDb: any = null;
+      try {
+        const resTable = supabaseAdmin.from('reservations');
+        if (resTable && typeof resTable.select === 'function') {
+          const { data } = await resTable
+            .select('*')
+            .eq('tenant_id', user.tenant_id)
+            .eq('reservation_code', code)
+            .maybeSingle();
+          resDb = data;
+        }
+      } catch {
+        resDb = null;
+      }
 
       if (resDb) {
         amount = Number(resDb.deposit_amount || 50000);
         expiresAt = resDb.reservation_time ? new Date(new Date(resDb.reservation_time).getTime() + 600_000).toISOString() : expiresAt;
+      } else {
+        throw new AppException('ERR_3001_RESERVATION_EXPIRED', 'Mã giữ bàn không tồn tại hoặc đã hết hạn');
       }
     }
 
@@ -439,11 +457,19 @@ export class ReservationService implements OnModuleInit {
       }
 
       if (!resData) {
-        const { data: resDb } = await supabaseAdmin
-          .from('reservations')
-          .select('*')
-          .eq('reservation_code', code)
-          .maybeSingle();
+        let resDb: any = null;
+        try {
+          const resTable = supabaseAdmin.from('reservations');
+          if (resTable && typeof resTable.select === 'function') {
+            const { data } = await resTable
+              .select('*')
+              .eq('reservation_code', code)
+              .maybeSingle();
+            resDb = data;
+          }
+        } catch {
+          resDb = null;
+        }
 
         if (resDb) {
           resData = {
@@ -995,13 +1021,15 @@ export class ReservationService implements OnModuleInit {
         status: 'CANCELLED',
         updated_at: new Date().toISOString(),
       };
-      const { error: updateErr } = await supabaseAdmin
-        .from('reservations')
-        .update(updatePayload)
-        .eq('reservation_code', code);
+      const resTable = supabaseAdmin.from('reservations');
+      if (resTable && typeof resTable.update === 'function') {
+        const { error: updateErr } = await resTable
+          .update(updatePayload)
+          .eq('reservation_code', code);
 
-      if (updateErr) {
-        this.logger.error('Error updating reservation cancellation in DB:', updateErr);
+        if (updateErr) {
+          this.logger.error('Error updating reservation cancellation in DB:', updateErr);
+        }
       }
     } catch (err) {
       this.logger.error('Failed to update reservation status to CANCELLED:', err);

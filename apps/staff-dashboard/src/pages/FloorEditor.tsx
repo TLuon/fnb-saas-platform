@@ -23,7 +23,9 @@ const FloorEditor: React.FC = () => {
   const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
   const [deletedTableIds, setDeletedTableIds] = useState<Set<string>>(new Set());
 
-  const branchId = useStore(authStore, (state) => state.branchId);
+  const profile = useStore(authStore, (state) => state.profile);
+  const storeBranchId = useStore(authStore, (state) => state.branchId);
+  const branchId = profile?.branch_id || storeBranchId || (typeof window !== 'undefined' ? localStorage.getItem('branchId') : '') || '22222222-2222-2222-2222-222222222222';
 
   useEffect(() => {
     if (!branchId) {
@@ -73,15 +75,18 @@ const FloorEditor: React.FC = () => {
   };
 
   const checkOverlap = (table: FloorTableCanvas, x: number, y: number) => {
-    const tw = table.width || 80;
-    const th = table.height || 80;
+    // 6px tolerance margin so touching edges or nearby decor items don't trigger false overlap
+    const tw = (table.width || 80) - 12;
+    const th = (table.height || 80) - 12;
+    const px = x + 6;
+    const py = y + 6;
     for (const t of tables) {
       if (t.id === table.id) continue;
-      const ttw = t.width || 80;
-      const tth = t.height || 80;
-      const tx = t.coord_x ?? 0;
-      const ty = t.coord_y ?? 0;
-      if (x < tx + ttw && x + tw > tx && y < ty + tth && y + th > ty) {
+      const ttw = (t.width || 80) - 12;
+      const tth = (t.height || 80) - 12;
+      const tx = (t.coord_x ?? 0) + 6;
+      const ty = (t.coord_y ?? 0) + 6;
+      if (px < tx + ttw && px + tw > tx && py < ty + tth && py + th > ty) {
         return true;
       }
     }
@@ -90,7 +95,7 @@ const FloorEditor: React.FC = () => {
 
   const handleTableMove = (table: FloorTableCanvas, x: number, y: number) => {
     if (checkOverlap(table, x, y)) {
-      showAlert('Vị trí bàn hoặc trang trí bị chồng chéo!', 'warning', 'Trùng vị trí');
+      showAlert('Vị trí bàn hoặc trang trí bị chồng chéo với đối tượng khác!', 'warning', 'Trùng vị trí');
       // revert to old position by triggering a re-render with old coords
       setTables(prev => [...prev]);
       return;
@@ -125,14 +130,51 @@ const FloorEditor: React.FC = () => {
     });
   };
 
+  const getNextFreePosition = (w: number, h: number) => {
+    const startX = 60;
+    const startY = 60;
+    const stepX = 130;
+    const stepY = 110;
+    const maxCols = 5;
+
+    for (let i = 0; i < 50; i++) {
+      const col = i % maxCols;
+      const row = Math.floor(i / maxCols);
+      const testX = startX + col * stepX;
+      const testY = startY + row * stepY;
+
+      const hasOverlap = tables.some(t => {
+        const tw = t.width || 80;
+        const th = t.height || 80;
+        const tx = t.coord_x ?? 0;
+        const ty = t.coord_y ?? 0;
+        return testX < tx + tw && testX + w > tx && testY < ty + th && testY + h > ty;
+      });
+
+      if (!hasOverlap) {
+        return { x: testX, y: testY };
+      }
+    }
+    return { x: 100 + (tables.length % 5) * 30, y: 100 + (tables.length % 5) * 30 };
+  };
+
   const handleAddTable = () => {
     const newId = `new-${Date.now()}`;
+    const pos = getNextFreePosition(80, 80);
+    const currFloor = floors.find(f => f.id === selectedFloor);
+    const floorPrefix = currFloor?.name?.toLowerCase().includes('lầu 1') ? 'L1.'
+      : currFloor?.name?.toLowerCase().includes('lầu 2') || currFloor?.name?.toLowerCase().includes('tầng 2') ? 'L2.'
+      : currFloor?.name?.toLowerCase().includes('lầu 3') || currFloor?.name?.toLowerCase().includes('tầng 3') ? 'L3.'
+      : 'B';
+    const num = String(tables.filter(t => !['door','stairs','plant','window','balcony','wc','counter','aquarium'].includes(t.shape || '')).length + 1).padStart(2, '0');
+    const tableName = `${floorPrefix}${num}`;
+
     const newTable: FloorTableCanvas = {
       id: newId,
-      name: `Bàn ${tables.length + 1}`,
+      name: tableName,
       status: 'AVAILABLE',
-      coord_x: 100,
-      coord_y: 100,
+      coord_x: pos.x,
+      coord_y: pos.y,
       width: 80,
       height: 80,
       shape: 'rectangle',
@@ -167,12 +209,13 @@ const FloorEditor: React.FC = () => {
     };
 
     const size = defaultSizes[shape] || { w: 100, h: 50 };
+    const pos = getNextFreePosition(size.w, size.h);
     const newTable: FloorTableCanvas = {
       id: newId,
       name: defaultLabels[shape] || 'Trang trí',
       status: 'AVAILABLE',
-      coord_x: 120,
-      coord_y: 120,
+      coord_x: pos.x,
+      coord_y: pos.y,
       width: size.w,
       height: size.h,
       shape: shape,
@@ -259,6 +302,9 @@ const FloorEditor: React.FC = () => {
 
   const [isAddFloorOpen, setIsAddFloorOpen] = useState(false);
   const [newFloorName, setNewFloorName] = useState('');
+  const [isEditFloorOpen, setIsEditFloorOpen] = useState(false);
+  const [editingFloor, setEditingFloor] = useState<Floor | null>(null);
+  const [editFloorName, setEditFloorName] = useState('');
 
   const handleAddFloor = () => {
     if (!branchId) return setError('Tài khoản chưa được gán chi nhánh');
@@ -270,7 +316,11 @@ const FloorEditor: React.FC = () => {
     if (!newFloorName.trim()) return;
     setIsAddFloorOpen(false);
     setIsLoading(true);
-    apiClient.post('/floors', { name: newFloorName.trim(), branch_id: branchId })
+    apiClient.post('/floors', {
+      name: newFloorName.trim(),
+      branch_id: branchId,
+      floor_level: floors.length + 1
+    })
       .then(() => {
         return apiClient.get(`/floors?branch_id=${branchId}`);
       })
@@ -284,6 +334,86 @@ const FloorEditor: React.FC = () => {
       })
       .catch((e: any) => setError(e.response?.data?.message || 'Không thể tạo tầng mới'))
       .finally(() => setIsLoading(false));
+  };
+
+  const handleOpenEditFloor = (floor: Floor, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingFloor(floor);
+    setEditFloorName(floor.name);
+    setIsEditFloorOpen(true);
+  };
+
+  const handleConfirmEditFloor = async () => {
+    if (!editingFloor || !editFloorName.trim()) return;
+    setIsLoading(true);
+    try {
+      await apiClient.patch(`/floors/${editingFloor.id}`, { name: editFloorName.trim() });
+      setFloors(prev => prev.map(f => f.id === editingFloor.id ? { ...f, name: editFloorName.trim() } : f));
+      setIsEditFloorOpen(false);
+      setEditingFloor(null);
+      showAlert('Đã đổi tên tầng thành công!', 'success', 'Thành công');
+    } catch (err: any) {
+      showAlert(err.response?.data?.message || 'Không thể đổi tên tầng', 'error', 'Lỗi');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteFloor = (floorId: string, floorName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (floors.length <= 1) {
+      showAlert('Quán phải có ít nhất 1 tầng!', 'warning', 'Không thể xóa');
+      return;
+    }
+    showConfirm({
+      title: 'Xác nhận xóa tầng',
+      message: `Bạn có chắc chắn muốn xóa tầng "${floorName}" không? Toàn bộ bàn ghế và vật trang trí trên tầng này sẽ bị xóa vĩnh viễn khỏi hệ thống.`,
+      confirmLabel: 'Xóa tầng vĩnh viễn',
+      cancelLabel: 'Hủy',
+      onConfirm: async () => {
+        try {
+          setIsLoading(true);
+          await apiClient.delete(`/floors/${floorId}`);
+          const remaining = floors.filter(f => f.id !== floorId);
+          setFloors(remaining);
+          if (selectedFloor === floorId && remaining.length > 0) {
+            setSelectedFloor(remaining[0].id);
+          }
+          showAlert(`Đã xóa tầng "${floorName}" thành công!`, 'success', 'Thành công');
+        } catch (err: any) {
+          showAlert(err.response?.data?.message || 'Không thể xóa tầng', 'error', 'Lỗi');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    });
+  };
+
+  const handleCloneFromGroundFloor = () => {
+    if (!selectedFloor) return;
+    const groundFloor = floors.find(f => f.id !== selectedFloor && (f.name.toLowerCase().includes('trệt') || f.name.toLowerCase().includes('g'))) || floors.find(f => f.id !== selectedFloor);
+    if (!groundFloor) {
+      showAlert('Không tìm thấy tầng mẫu để sao chép!', 'warning', 'Thông báo');
+      return;
+    }
+
+    showConfirm({
+      title: 'Sao chép bàn ghế & địa hình',
+      message: `Bạn có muốn sao chép toàn bộ bàn ghế và địa hình trang trí từ "${groundFloor.name}" sang tầng này không? Các bàn ghế và vật trang trí sẽ được nhân bản ngay lập tức.`,
+      confirmLabel: 'Sao chép ngay',
+      cancelLabel: 'Hủy',
+      onConfirm: async () => {
+        try {
+          setIsLoading(true);
+          await apiClient.post(`/floors/${selectedFloor}/copy-from/${groundFloor.id}`);
+          loadTables(selectedFloor);
+          showAlert(`Đã sao chép bàn ghế và địa hình từ "${groundFloor.name}" thành công!`, 'success', 'Thành công');
+        } catch (err: any) {
+          showAlert(err.response?.data?.message || 'Không thể sao chép sơ đồ', 'error', 'Lỗi');
+          setIsLoading(false);
+        }
+      }
+    });
   };
 
   return (
@@ -327,13 +457,33 @@ const FloorEditor: React.FC = () => {
             {floors.length === 0 ? (
               <div className="p-4 text-sm text-gray-500 text-center">Chưa có tầng nào</div>
             ) : floors.map(f => (
-              <button 
+              <div 
                 key={f.id}
                 onClick={() => setSelectedFloor(f.id)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-100 font-medium transition ${selectedFloor === f.id ? 'bg-[#FAF7F3] text-[#D67D3E] border-l-4 border-l-[#D67D3E]' : 'text-gray-600 hover:bg-gray-50'}`}
+                className={`w-full flex items-center justify-between px-3 py-2.5 border-b border-gray-100 font-medium cursor-pointer transition group ${selectedFloor === f.id ? 'bg-[#FAF7F3] text-[#D67D3E] border-l-4 border-l-[#D67D3E] font-bold' : 'text-gray-600 hover:bg-gray-50'}`}
               >
-                {f.name}
-              </button>
+                <span className="truncate flex-1 text-sm">{f.name}</span>
+                <div className="flex items-center gap-1 shrink-0 ml-1">
+                  <button 
+                    type="button"
+                    title="Đổi tên tầng"
+                    onClick={(e) => handleOpenEditFloor(f, e)}
+                    className="p-1 text-gray-400 hover:text-[#D67D3E] hover:bg-orange-50 rounded transition text-xs"
+                  >
+                    ✏️
+                  </button>
+                  {floors.length > 1 && (
+                    <button 
+                      type="button"
+                      title="Xóa tầng"
+                      onClick={(e) => handleDeleteFloor(f.id, f.name, e)}
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition text-xs"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -355,17 +505,50 @@ const FloorEditor: React.FC = () => {
               <span className="animate-pulse font-medium">Đang tải sơ đồ bàn...</span>
             </div>
           ) : (
-            <FloorMapCanvas 
-              tables={tables} 
-              editable={true}
-              selectedTableId={selectedTable?.id}
-              onTableSelect={setSelectedTable}
-              onTableMove={handleTableMove}
-            />
+            <>
+              {tables.length === 0 && !isLoading && (
+                <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-[#E8DED5] text-center max-w-md z-10 animate-fade-in">
+                  <span className="text-4xl block mb-2">📐</span>
+                  <h3 className="font-bold text-lg text-[#543310] mb-1">Tầng này chưa có bàn ghế & địa hình</h3>
+                  <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                    Bạn có thể thêm bàn & địa hình trang trí bằng thanh công cụ bên dưới, hoặc sao chép nhanh toàn bộ sơ đồ mẫu từ Tầng trệt.
+                  </p>
+                  {floors.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleCloneFromGroundFloor}
+                      disabled={isLoading}
+                      className="bg-[#D67D3E] hover:bg-[#b86428] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow transition flex items-center gap-2 mx-auto"
+                    >
+                      <span>📋</span>
+                      <span>Sao chép toàn bộ từ Tầng trệt</span>
+                    </button>
+                  )}
+                </div>
+              )}
+              <FloorMapCanvas 
+                tables={tables} 
+                editable={true}
+                selectedTableId={selectedTable?.id}
+                onTableSelect={setSelectedTable}
+                onTableMove={handleTableMove}
+              />
+            </>
           )}
           
           {/* Floating Toolbar to add items */}
           <div className="absolute bottom-6 right-6 flex items-center gap-2 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-[#E8DED5]">
+            {floors.length > 1 && (
+              <button
+                type="button"
+                onClick={handleCloneFromGroundFloor}
+                disabled={isLoading || !selectedFloor}
+                className="bg-amber-50 text-[#8C5A2B] border border-amber-300 px-3 py-2 rounded-xl text-xs font-bold hover:bg-amber-100 transition flex items-center gap-1 shadow"
+                title="Sao chép toàn bộ bàn ghế & địa hình từ Tầng trệt sang tầng này"
+              >
+                📋 Sao chép từ Tầng trệt
+              </button>
+            )}
             <button
               onClick={handleAddTable}
               disabled={isLoading || !selectedFloor}
@@ -619,6 +802,47 @@ const FloorEditor: React.FC = () => {
                 className="px-5 py-2.5 text-sm font-bold text-white bg-[#D67D3E] hover:bg-[#b86428] rounded-xl shadow transition disabled:opacity-50"
               >
                 Tạo tầng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Floor Modal */}
+      {isEditFloorOpen && editingFloor && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E8DED5] shadow-2xl p-6 w-full max-w-md animate-fade-in">
+            <h3 className="text-xl font-bold text-[#543310] mb-2">Đổi tên tầng / Lầu</h3>
+            <p className="text-xs text-[#6B625B] mb-4">Nhập tên mới cho tầng này (Ví dụ: Lầu 1, Lầu 2, Sân thượng...)</p>
+            <input
+              type="text"
+              autoFocus
+              value={editFloorName}
+              onChange={(e) => setEditFloorName(e.target.value)}
+              placeholder="Nhập tên tầng..."
+              className="w-full px-4 py-3 border border-[#E8DED5] rounded-xl outline-none focus:ring-2 focus:ring-[#D67D3E] text-sm text-[#543310] font-medium mb-6"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmEditFloor();
+              }}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditFloorOpen(false);
+                  setEditingFloor(null);
+                }}
+                className="px-4 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 bg-gray-100 rounded-xl transition"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEditFloor}
+                disabled={!editFloorName.trim()}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-[#D67D3E] hover:bg-[#b86428] rounded-xl shadow transition disabled:opacity-50"
+              >
+                Lưu tên mới
               </button>
             </div>
           </div>
