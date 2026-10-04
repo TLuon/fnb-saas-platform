@@ -45,7 +45,7 @@ export function PublicHeader() {
               href="/orders" 
               className={`font-black uppercase tracking-wider text-sm transition-all pb-1 border-b-2 ${pathname?.startsWith('/orders') ? 'text-[#543310] border-[#543310]' : 'text-[#6B625B] border-transparent hover:text-[#543310] hover:border-[#E8DED5]'}`}
             >
-              Lịch sử đặt hàng
+              Lịch sử giao dịch
             </Link>
           )}
         </nav>

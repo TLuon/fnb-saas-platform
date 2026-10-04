@@ -313,19 +313,27 @@ export class ReservationService implements OnModuleInit {
       }
     }
 
-    const tableStatus = initialStatus === 'PAID' ? 'RESERVED' : 'PENDING_LOCK';
+    const reserveTimeEpoch = new Date(resTime).getTime();
+    const now = Date.now();
+    const shouldLock = reserveTimeEpoch <= now + 3 * 60 * 60 * 1000;
+    
+    let tableStatus = 'AVAILABLE'; // Default fallback, but we should probably fetch current status.
+    // Wait, it's better to just not update the table if shouldLock is false!
+    if (shouldLock) {
+      tableStatus = initialStatus === 'PAID' ? 'RESERVED' : 'PENDING_LOCK';
 
-    const { error: updateTableErr } = await supabaseAdmin
-      .from('tables')
-      .update({ status: tableStatus, updated_at: new Date().toISOString() })
-      .eq('id', dto.table_id);
+      const { error: updateTableErr } = await supabaseAdmin
+        .from('tables')
+        .update({ status: tableStatus, updated_at: new Date().toISOString() })
+        .eq('id', dto.table_id);
 
-    if (updateTableErr) {
-      this.logger.error('Failed to update table status:', updateTableErr);
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi cập nhật trạng thái bàn: ${updateTableErr.message}`);
+      if (updateTableErr) {
+        this.logger.error('Failed to update table status:', updateTableErr);
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', `Lỗi cập nhật trạng thái bàn: ${updateTableErr.message}`);
+      }
+
+      this.realtimeGateway?.emitTableStatusChanged?.(dto.table_id, tableStatus);
     }
-
-    this.realtimeGateway?.emitTableStatusChanged?.(dto.table_id, tableStatus);
 
     return {
       reservation_code: reservationCode,
@@ -657,11 +665,17 @@ export class ReservationService implements OnModuleInit {
       .update({ status: 'PAID', updated_at: new Date().toISOString() })
       .eq('reservation_code', code);
 
-    // 3. Update table to RESERVED
-    await supabaseAdmin
-      .from('tables')
-      .update({ status: 'RESERVED' })
-      .eq('id', res.table_id);
+    // 3. Update table to RESERVED only if within 3 hours
+    const reserveTimeEpoch = new Date(res.reservation_time).getTime();
+    const now = Date.now();
+    const shouldLock = reserveTimeEpoch <= now + 3 * 60 * 60 * 1000;
+    
+    if (shouldLock) {
+      await supabaseAdmin
+        .from('tables')
+        .update({ status: 'RESERVED' })
+        .eq('id', res.table_id);
+    }
 
     // 4. Free Redis locks (best-effort)
     await this.redisSafe(
@@ -670,7 +684,9 @@ export class ReservationService implements OnModuleInit {
     );
 
     // 5. Notify clients — table status + customer notification
-    this.realtimeGateway?.emitTableStatusChanged?.(res.table_id, 'RESERVED');
+    if (shouldLock) {
+      this.realtimeGateway?.emitTableStatusChanged?.(res.table_id, 'RESERVED');
+    }
 
     const confirmPayload = {
       status: 'PAID',
@@ -679,8 +695,7 @@ export class ReservationService implements OnModuleInit {
       message: 'Cửa hàng đã xác nhận cọc! Đặt bàn của bạn đã thành công.',
     };
 
-    // Broadcast to global server as well as target customer
-    this.realtimeGateway?.server?.emit?.('order_status_changed', confirmPayload);
+    // Removed global broadcast to prevent unrelated customers from being notified
 
     if (res.customer_id) {
       let authUserId: string | null = null;
@@ -1057,8 +1072,8 @@ export class ReservationService implements OnModuleInit {
       message: `Đặt bàn ${code} đã bị hủy. Lý do: ${reason || 'Nhân viên hủy'}`,
     };
 
-    this.realtimeGateway?.server?.emit?.('order_status_changed', cancelPayload);
-
+    // Broadcast removed to prevent notifying unrelated customers.
+    // Specific customer notification will be handled below.
     if (reservation?.customer_id) {
       let authUserId: string | null = null;
       try {

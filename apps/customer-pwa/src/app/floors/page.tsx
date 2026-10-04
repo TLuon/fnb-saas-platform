@@ -35,10 +35,6 @@ export default function FloorsPage() {
   
   const [selectedTable, setSelectedTable] = useState<any | null>(null);
 
-  const [bookingDate, setBookingDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [bookingTime, setBookingTime] = useState('18:00');
-  const [durationHours, setDurationHours] = useState(2);
-  const [guestCount, setGuestCount] = useState(2);
 
   const [showPopupModal, setShowPopupModal] = useState(false);
   const [popupType, setPopupType] = useState<'CONFIRMED' | 'CANCELLED'>('CONFIRMED');
@@ -162,10 +158,10 @@ export default function FloorsPage() {
       
       const payload: any = await apiClient.post('/reservations/lock', { 
         table_id: table.id,
-        booking_date: details?.booking_date || bookingDate,
-        booking_time: details?.booking_time || bookingTime,
-        duration_hours: Number(details?.duration_hours || durationHours),
-        guest_count: Number(details?.guest_count || guestCount),
+        booking_date: details?.booking_date || null,
+        booking_time: details?.booking_time || null,
+        duration_hours: Number(details?.duration_hours || 2),
+        guest_count: Number(details?.guest_count || 2),
       });
       
       const resData = payload?.data || payload;
@@ -226,75 +222,6 @@ export default function FloorsPage() {
       )}
 
       <div className="p-4 max-w-screen-xl mx-auto w-full">
-        {/* Advance Reservation Slot Selector */}
-        <div className="mb-6 bg-white border border-[#E8DED5] rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between border-b border-[#E8DED5] pb-3 mb-3">
-            <h3 className="font-bold text-[#543310] flex items-center gap-2">
-              <span className="text-base">📅</span> Đặt Bàn Theo Khung Giờ & Số Khách
-            </h3>
-            <span className="text-xs font-bold text-[#D67D3E] bg-[#FAF7F3] px-2.5 py-1 rounded-full border border-[#E8DED5]">
-              {guestCount >= 8 ? '🔥 Đặt bàn khách đoàn' : '⏰ Đặt giữ chỗ trước'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div>
-              <label className="block text-gray-500 font-bold mb-1">NGÀY ĐẶT</label>
-              <input
-                type="date"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-                className="w-full border border-[#E8DED5] rounded-xl px-2.5 py-2 font-semibold text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-[#FAF7F3]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-500 font-bold mb-1">GIỜ ĐẾN</label>
-              <input
-                type="time"
-                value={bookingTime}
-                onChange={(e) => setBookingTime(e.target.value)}
-                className="w-full border border-[#E8DED5] rounded-xl px-2.5 py-2 font-semibold text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-[#FAF7F3]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-500 font-bold mb-1">THỜI LƯỢNG GIỮ BÀN</label>
-              <select
-                value={durationHours}
-                onChange={(e) => setDurationHours(Number(e.target.value))}
-                className="w-full border border-[#E8DED5] rounded-xl px-2.5 py-2 font-semibold text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-[#FAF7F3]"
-              >
-                <option value={1}>1 giờ</option>
-                <option value={1.5}>1.5 giờ</option>
-                <option value={2}>2 giờ</option>
-                <option value={3}>3 giờ</option>
-                <option value={4}>4 giờ</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-gray-500 font-bold mb-1">SỐ LƯỢNG KHÁCH</label>
-              <div className="flex items-center border border-[#E8DED5] rounded-xl overflow-hidden bg-[#FAF7F3]">
-                <button
-                  onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                  className="px-3 py-2 font-bold text-[#543310] hover:bg-[#E8DED5]"
-                >
-                  -
-                </button>
-                <span className="flex-1 text-center font-bold text-[#543310] text-sm">
-                  {guestCount} người
-                </span>
-                <button
-                  onClick={() => setGuestCount(guestCount + 1)}
-                  className="px-3 py-2 font-bold text-[#543310] hover:bg-[#E8DED5]"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <h2 className="text-2xl font-bold font-serif text-[#543310] mb-4">Sơ đồ tầng</h2>
         

@@ -81,6 +81,14 @@ export function DepositNotificationModal({
               </div>
             )}
 
+            {isConfirmed && (
+              <div className="mt-2 pt-2 border-t border-[#E8DED5]">
+                <p className="text-xs text-[#237A57] font-medium text-center italic">
+                  * Quý khách lưu ý giữ lại mã bàn để đối chiếu với nhân viên khi đến quán.
+                </p>
+              </div>
+            )}
+
             {!isConfirmed && (
               <div className="mt-2 pt-2 border-t border-[#FECDCA]">
                 <div className="text-xs font-bold text-[#B42318] uppercase tracking-wider mb-1">

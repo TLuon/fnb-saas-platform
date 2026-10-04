@@ -56,7 +56,7 @@ export default function OrdersPage() {
       <PublicHeader />
       
       <div className="max-w-screen-xl mx-auto w-full p-4">
-        <h1 className="text-2xl font-bold font-serif text-[#543310] mb-6">Đơn hàng của tôi</h1>
+        <h1 className="text-2xl font-bold font-serif text-[#543310] mb-6">Đơn hàng & Đặt bàn</h1>
         
         <OrderFilterTabs filter={filter} onChange={setFilter} />
 

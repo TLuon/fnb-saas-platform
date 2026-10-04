@@ -309,8 +309,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   emitOrderStatusChanged(orderId: string, customerId: string | null, payload: any) {
     if (this.server) {
-      this.server.emit('order_status_changed', { ...payload, order_id: orderId });
+      // Broadcast to specific order tracking room
       this.server.to(`order:${orderId}`).emit('order_status_changed', payload);
+      // Broadcast to specific customer's private room
       if (customerId) {
         this.server.to(`customer:${customerId}`).emit('order_status_changed', payload);
       }

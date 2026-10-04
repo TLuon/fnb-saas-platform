@@ -350,29 +350,44 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
         ctx.textBaseline = 'middle';
         ctx.fillText(table.name, 0, 0);
 
-        if (table.status === 'RESERVED' && table.reservation_time) {
-          const reserveTime = new Date(table.reservation_time).getTime();
-          const cancelTime = reserveTime + 60 * 60 * 1000;
-          const now = Date.now();
-          
-          ctx.font = 'bold 12px sans-serif';
-          if (cancelTime > now) {
-            const diff = Math.floor((cancelTime - now) / 1000);
-            const mins = Math.floor(diff / 60);
-            const secs = diff % 60;
-            ctx.fillStyle = mins < 15 ? '#B42318' : '#D67D3E';
-            ctx.fillText(`${mins}:${secs.toString().padStart(2, '0')}`, 0, ry + h + 16);
-          } else {
-            ctx.fillStyle = '#B42318';
-            ctx.fillText('Hết hạn', 0, ry + h + 16);
-          }
-        } else if (table.status === 'OCCUPIED' || table.status === 'CLEANING') {
+        let textYOffset = 16;
+        
+        // Show order code if occupied/cleaning
+        if (table.status === 'OCCUPIED' || table.status === 'CLEANING') {
           const orderCode = typeof table.current_order_id === 'string' && table.current_order_id 
             ? `#${table.current_order_id.slice(0, 6).toUpperCase()}` 
             : 'Đang dùng';
           ctx.font = 'bold 12px sans-serif';
           ctx.fillStyle = '#D67D3E';
-          ctx.fillText(orderCode, 0, ry + h + 16);
+          ctx.fillText(orderCode, 0, ry + h + textYOffset);
+          textYOffset += 16;
+        }
+
+        // Show reservation info if exists
+        if (table.reservation_time && (table.status === 'RESERVED' || table.status === 'AVAILABLE' || table.status === 'OCCUPIED' || table.status === 'CLEANING')) {
+          const reserveTime = new Date(table.reservation_time).getTime();
+          const now = Date.now();
+          
+          ctx.font = 'bold 12px sans-serif';
+          if (reserveTime > now) {
+            const resDate = new Date(table.reservation_time);
+            const isToday = new Date().toDateString() === resDate.toDateString();
+            const timeStr = resDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            ctx.fillStyle = '#115E59';
+            ctx.fillText(isToday ? timeStr : `${resDate.getDate()}/${resDate.getMonth()+1} ${timeStr}`, 0, ry + h + textYOffset);
+          } else if (table.status === 'RESERVED') {
+            const cancelTime = reserveTime + 60 * 60 * 1000;
+            if (cancelTime > now) {
+              const diff = Math.floor((cancelTime - now) / 1000);
+              const mins = Math.floor(diff / 60);
+              const secs = diff % 60;
+              ctx.fillStyle = mins < 15 ? '#B42318' : '#D67D3E';
+              ctx.fillText(`${mins}:${secs.toString().padStart(2, '0')}`, 0, ry + h + textYOffset);
+            } else {
+              ctx.fillStyle = '#B42318';
+              ctx.fillText('Hết hạn', 0, ry + h + textYOffset);
+            }
+          }
         }
       }
 

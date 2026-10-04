@@ -102,26 +102,34 @@ export class ShiftService {
     // 2. Resolve public.users.id từ auth_user_id (user.sub)
     const appUserId = await this.resolvePublicUserId(client, user);
 
-    // 3. Tính toán tiền mặt dự kiến dựa trên orders thanh toán CASH trong ca
-    const { data: cashOrders, error: ordersError } = await client
+    // 3. Tính toán doanh thu trong ca
+    const { data: allOrders, error: ordersError } = await client
       .from('orders')
-      .select('final_amount')
+      .select('final_amount, payment_method')
       .eq('shift_id', shiftId)
       .eq('status', 'COMPLETED');
 
     if (ordersError) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', ordersError.message);
 
-    const totalCashOrders = (cashOrders ?? []).reduce(
-      (sum, o) => sum + Number(o.final_amount || 0),
-      0,
-    );
+    let totalCashOrders = 0;
+    let totalTransferOrders = 0;
+
+    for (const o of allOrders || []) {
+      const amt = Number(o.final_amount || 0);
+      if (o.payment_method === 'VIETQR' || o.payment_method === 'TRANSFER' || o.payment_method === 'CREDIT_CARD') {
+        totalTransferOrders += amt;
+      } else {
+        totalCashOrders += amt; // Default to cash if null or CASH
+      }
+    }
+
     const startingCash = Number(shift.starting_cash || 0);
     const expectedCash = startingCash + totalCashOrders;
     const actualCash = Number(dto.ending_cash ?? dto.final_cash ?? 0);
     const difference = actualCash - expectedCash;
 
     // 4. Cập nhật đóng ca kèm thông tin đối soát
-    const reconciliationNote = `Đối soát tiền mặt: Khởi đầu=${startingCash}, Tiền mặt đơn=${totalCashOrders}, Dự kiến=${expectedCash}, Thực tế=${actualCash}, Chênh lệch=${difference}`;
+    const reconciliationNote = `Đối soát: Đầu ca=${startingCash}, Tiền mặt đơn=${totalCashOrders}, CK/Thẻ=${totalTransferOrders}, Tiền mặt dự kiến=${expectedCash}, Thực tế=${actualCash}, Lệch=${difference}`;
     const updatedNotes = dto.notes
       ? shift.notes
         ? `${shift.notes} | Đóng ca: ${dto.notes} [${reconciliationNote}]`
@@ -215,15 +223,27 @@ export class ShiftService {
     if (error) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
     
     if (data) {
-      // Calculate live expected_cash for the open shift
-      const { data: cashOrders } = await client
+      // Calculate live expected_cash and expected_transfer for the open shift
+      const { data: allOrders } = await client
         .from('orders')
-        .select('final_amount')
+        .select('final_amount, payment_method')
         .eq('shift_id', data.id)
         .eq('status', 'COMPLETED');
         
-      const totalCashOrders = cashOrders?.reduce((sum, order) => sum + Number(order.final_amount), 0) ?? 0;
+      let totalCashOrders = 0;
+      let totalTransferOrders = 0;
+      for (const o of allOrders || []) {
+        const amt = Number(o.final_amount || 0);
+        if (o.payment_method === 'VIETQR' || o.payment_method === 'TRANSFER' || o.payment_method === 'CREDIT_CARD') {
+          totalTransferOrders += amt;
+        } else {
+          totalCashOrders += amt;
+        }
+      }
+      
       data.expected_cash = Number(data.starting_cash ?? data.initial_cash ?? 0) + totalCashOrders;
+      data.expected_transfer = totalTransferOrders;
+      data.total_revenue = totalCashOrders + totalTransferOrders;
     }
 
     return data ?? null;

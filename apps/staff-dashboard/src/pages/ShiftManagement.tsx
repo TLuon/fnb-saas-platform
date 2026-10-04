@@ -71,7 +71,8 @@ function ShiftHistory({ shifts }: { shifts: ShiftRecord[] }) {
               <th className="p-3 text-left font-semibold">Bắt đầu</th>
               <th className="p-3 text-left font-semibold">Kết thúc</th>
               <th className="p-3 text-right font-semibold">Đầu ca</th>
-              <th className="p-3 text-right font-semibold">Cuối ca</th>
+              <th className="p-3 text-right font-semibold">Doanh thu</th>
+              <th className="p-3 text-right font-semibold">Cuối ca (Đếm)</th>
               <th className="p-3 text-center font-semibold">Trạng thái</th>
             </tr>
           </thead>
@@ -85,6 +86,11 @@ function ShiftHistory({ shifts }: { shifts: ShiftRecord[] }) {
                 <td className="p-3 text-gray-700">{formatDate(shift.startTime)}</td>
                 <td className="p-3 text-gray-700">{formatDate(shift.endTime)}</td>
                 <td className="p-3 text-right text-gray-700">{formatCurrency(shift.startingCash)}</td>
+                <td className="p-3 text-right">
+                  <div className="font-bold text-[#D67D3E]">{formatCurrency((shift.revenueCash || 0) + (shift.revenueTransfer || 0))}</div>
+                  <div className="text-xs text-gray-500">TM: {formatCurrency(shift.revenueCash || 0)}</div>
+                  <div className="text-xs text-gray-500">CK: {formatCurrency(shift.revenueTransfer || 0)}</div>
+                </td>
                 <td className="p-3 text-right text-gray-700">
                   {shift.reportedCash === null ? '--' : formatCurrency(shift.reportedCash)}
                 </td>
@@ -110,6 +116,7 @@ function ShiftHistory({ shifts }: { shifts: ShiftRecord[] }) {
 
 function ShiftManagementContent() {
   const profile = useStore(authStore, (state) => state.profile);
+  const role = useStore(authStore, (state) => state.role);
   const authBranchId = useStore(authStore, (state) => state.branchId);
   const {
     shifts,
@@ -235,7 +242,15 @@ function ShiftManagementContent() {
                   <span className="font-bold">{formatCurrency(activeShift.startingCash)}</span>
                 </p>
                 <p className="mt-2 pt-2 border-t border-green-200">
-                  Hệ thống tính toán:{' '}
+                  <span className="font-bold">Tổng doanh thu hệ thống:</span>{' '}
+                  <span className="font-bold text-[#D67D3E]">{formatCurrency((activeShift.revenueCash || 0) + (activeShift.revenueTransfer || 0))}</span>
+                  <br />
+                  <span className="text-xs text-gray-600">- Tiền mặt (Khách trả): {formatCurrency(activeShift.revenueCash || 0)}</span>
+                  <br />
+                  <span className="text-xs text-gray-600">- Chuyển khoản/Thẻ: {formatCurrency(activeShift.revenueTransfer || 0)}</span>
+                </p>
+                <p className="mt-2 pt-2 border-t border-green-200">
+                  <span className="font-bold">Tiền mặt dự kiến có trong két:</span>{' '}
                   <span className="font-black text-lg">{formatCurrency(expectedCash)}</span>
                 </p>
               </div>
@@ -274,13 +289,15 @@ function ShiftManagementContent() {
           )}
         </section>
 
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-xl font-black text-[#543310]">Lịch sử ca</h2>
-            <p className="text-sm text-gray-500">Danh sách ca mở và đã chốt từ API.</p>
-          </div>
-          <ShiftHistory shifts={shifts} />
-        </section>
+        {role === 'OWNER' && (
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-xl font-black text-[#543310]">Lịch sử ca</h2>
+              <p className="text-sm text-gray-500">Danh sách ca mở và đã chốt từ API.</p>
+            </div>
+            <ShiftHistory shifts={shifts} />
+          </section>
+        )}
       </div>
     </div>
   );

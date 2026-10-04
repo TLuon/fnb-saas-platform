@@ -20,8 +20,6 @@ export function TableInfoDrawer({ table, isOpen, onClose, onSelectTable }: Table
   const { requireAuth } = useAuthGuard();
 
   const [bookingType, setBookingType] = useState<'SINGLE' | 'GROUP'>('SINGLE');
-  const [bookingDate, setBookingDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [bookingTime, setBookingTime] = useState('18:00');
   const [durationHours, setDurationHours] = useState(2);
   const [guestCount, setGuestCount] = useState(2);
 
@@ -64,8 +62,8 @@ export function TableInfoDrawer({ table, isOpen, onClose, onSelectTable }: Table
   const handleConfirmReservation = () => {
     requireAuth(() => {
       onSelectTable(table, {
-        booking_date: bookingDate,
-        booking_time: bookingTime,
+        booking_date: '',
+        booking_time: '',
         duration_hours: Number(durationHours),
         guest_count: Number(guestCount),
       });
@@ -170,46 +168,23 @@ export function TableInfoDrawer({ table, isOpen, onClose, onSelectTable }: Table
           </div>
 
           {/* Step 3: Timing parameters */}
-          <div className="grid grid-cols-3 gap-2.5">
-            <div>
-              <label className="block text-[11px] font-bold text-[#543310] uppercase mb-1 flex items-center gap-1">
-                <Calendar size={12} className="text-[#D67D3E]" /> Ngày đặt
-              </label>
-              <input
-                type="date"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-                className="w-full border border-[#E8DED5] rounded-xl px-2 py-2 font-medium text-xs text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-[#543310] uppercase mb-1 flex items-center gap-1">
-                <Clock size={12} className="text-[#D67D3E]" /> Giờ đến
-              </label>
-              <input
-                type="time"
-                value={bookingTime}
-                onChange={(e) => setBookingTime(e.target.value)}
-                className="w-full border border-[#E8DED5] rounded-xl px-2 py-2 font-medium text-xs text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-[#543310] uppercase mb-1 flex items-center gap-1">
-                <Clock size={12} className="text-[#D67D3E]" /> Thời lượng
-              </label>
-              <select
-                value={durationHours}
-                onChange={(e) => setDurationHours(Number(e.target.value))}
-                className="w-full border border-[#E8DED5] rounded-xl px-1.5 py-2 font-medium text-xs text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-white"
-              >
-                <option value={1}>1 giờ</option>
-                <option value={1.5}>1.5 giờ</option>
-                <option value={2}>2 giờ</option>
-                <option value={3}>3 giờ</option>
-                <option value={4}>4 giờ</option>
-              </select>
+          <div>
+            <label className="block text-[11px] font-bold text-[#543310] uppercase mb-1 flex items-center gap-1">
+              <Clock size={12} className="text-[#D67D3E]" /> Thời gian giữ bàn (Tối đa 2 giờ)
+            </label>
+            <select
+              value={durationHours}
+              onChange={(e) => setDurationHours(Number(e.target.value))}
+              className="w-full border border-[#E8DED5] rounded-xl px-3 py-2.5 font-bold text-sm text-[#543310] focus:border-[#D67D3E] focus:outline-none bg-white mb-2"
+            >
+              <option value={1}>1 giờ</option>
+              <option value={1.5}>1 giờ 30 phút</option>
+              <option value={2}>2 giờ</option>
+            </select>
+            
+            <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 text-xs text-orange-800 flex flex-col gap-1">
+              <p><strong>Lưu ý:</strong> Tính năng đặt bàn trực tuyến chỉ áp dụng cho <strong>khách đến liền (giữ tối đa 2 giờ)</strong>.</p>
+              <p>Đối với nhu cầu đặt bàn trước theo ngày/giờ hoặc giữ bàn trên 2 tiếng, vui lòng liên hệ nhân viên qua số <strong>Hotline: 1900 1234</strong> để được hỗ trợ.</p>
             </div>
           </div>
 

@@ -197,10 +197,15 @@ export class FloorService {
     return data.map((t) => {
       const res = resMap.get(t.id);
       if (res) {
+        const reserveTime = new Date(res.reservation_time).getTime();
+        const now = Date.now();
+        // Only lock the table if the reservation is within the next 3 hours (or in the past)
+        const shouldLock = reserveTime <= now + 3 * 60 * 60 * 1000;
+        
         const derivedStatus = res.status === 'PAID' ? 'RESERVED' : 'PENDING_LOCK';
         return {
           ...t,
-          status: derivedStatus,
+          status: shouldLock ? derivedStatus : t.status, // Don't override if > 3 hours
           customer_name: res.customer_name,
           customer_phone: res.customer_phone,
           reservation_time: res.reservation_time,

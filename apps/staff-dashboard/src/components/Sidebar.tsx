@@ -66,7 +66,7 @@ export function Sidebar() {
   let staffLinks = [
     { to: '/pos', icon: <Coffee size={20} />, label: 'Bán hàng (POS)' },
     { to: '/floor-map', icon: <UsersRound size={20} />, label: 'Sơ đồ bàn' },
-    { to: '/floor-editor', icon: <UtensilsCrossed size={20} />, label: 'Chỉnh sửa Sơ đồ' },
+    { to: '/shifts', icon: <Clock size={20} />, label: 'Giao ca / Chốt ca' },
     { to: '/kds/kitchen', icon: <UtensilsCrossed size={20} />, label: 'KDS - Bếp (Theo dõi)' },
     { to: '/kds/bar', icon: <Coffee size={20} />, label: 'KDS - Quầy Bar (Theo dõi)' },
     { to: '/orders-history', icon: <Receipt size={20} />, label: 'Thống kê hóa đơn' },

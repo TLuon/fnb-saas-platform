@@ -29,6 +29,8 @@ type RawShift = {
   reportedCash?: unknown;
   expected_cash?: unknown;
   status?: unknown;
+  expected_transfer?: unknown;
+  total_revenue?: unknown;
 };
 
 export interface ShiftRecord {
@@ -154,8 +156,8 @@ export function normalizeShift(raw: unknown): ShiftRecord | null {
     ),
     endTime: optionalString(shift.closed_at ?? shift.end_time ?? shift.endTime),
     startingCash,
-    revenueCash: 0,
-    revenueTransfer: 0,
+    revenueCash: expectedCash !== null ? expectedCash - startingCash : 0,
+    revenueTransfer: optionalNumber(shift.expected_transfer) || 0,
     reportedCash,
     expectedCash,
     status: normalizeStatus(shift.status),
