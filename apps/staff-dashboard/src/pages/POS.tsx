@@ -153,63 +153,68 @@ const POS: React.FC = () => {
     let client: RealtimeClient;
 
     const initSocket = async () => {
-      client = new RealtimeClient({
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
-        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-        socketUrl,
-        token: token || undefined,
-      });
-
-      await client.connect();
-
-      client.socket.on('product_out_of_stock', (data: { product_id: string }) => {
-        setOutOfStockIds(prev => new Set(prev).add(data.product_id));
-      });
-
-
-
-      client.socket.on('kds_item_status_changed', (data: any) => {
-        const orderCode = data.order_code || `ORD-${(data.order_id || '').slice(0, 6).toUpperCase()}`;
-        const productName = data.product_name || 'Một món';
-
-        if (data.kitchen_status === 'READY') {
-          setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã chuẩn bị xong, hãy bấm "Giao món" để phục vụ khách!`, blinkCount: 0, isVisible: true });
-        } else if (data.kitchen_status === 'SERVED') {
-          setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã sẵn sàng & báo POS, vui lòng mang ra cho khách!`, blinkCount: 0, isVisible: true });
-        }
-
-        setActiveTableOrder((prev: any) => {
-          if (!prev) return prev;
-          const newItems = prev.order_items?.map((it: any) =>
-            (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
-              ? { ...it, kitchen_status: data.kitchen_status }
-              : it
-          );
-          return { ...prev, order_items: newItems };
+      try {
+        client = new RealtimeClient({
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+          supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+          socketUrl,
+          token: token || undefined,
         });
 
-        setActiveTakeawayOrders((prev: any[]) => prev.map((order: any) => {
-          const newItems = (order.order_items || order.items || []).map((it: any) =>
-            (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
-              ? { ...it, kitchen_status: data.kitchen_status }
-              : it
-          );
-          return { ...order, order_items: newItems, items: newItems };
-        }));
-      });
+        await client.connect();
 
-      client.socket.on('connect', () => {
-        setIsConnected(true);
-        client.socket.emit('join_branch', { branch_id: branchId });
-      });
+        if (client && client.socket) {
+          client.socket.on('product_out_of_stock', (data: { product_id: string }) => {
+            setOutOfStockIds(prev => new Set(prev).add(data.product_id));
+          });
 
-      client.socket.on('disconnect', () => {
+          client.socket.on('kds_item_status_changed', (data: any) => {
+            const orderCode = data.order_code || `ORD-${(data.order_id || '').slice(0, 6).toUpperCase()}`;
+            const productName = data.product_name || 'Một món';
+
+            if (data.kitchen_status === 'READY') {
+              setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã chuẩn bị xong, hãy bấm "Giao món" để phục vụ khách!`, blinkCount: 0, isVisible: true });
+            } else if (data.kitchen_status === 'SERVED') {
+              setToastConfig({ id: Date.now(), text: `🔔 Món [${productName}] của đơn [${orderCode}] đã sẵn sàng & báo POS, vui lòng mang ra cho khách!`, blinkCount: 0, isVisible: true });
+            }
+
+            setActiveTableOrder((prev: any) => {
+              if (!prev) return prev;
+              const newItems = prev.order_items?.map((it: any) =>
+                (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
+                  ? { ...it, kitchen_status: data.kitchen_status }
+                  : it
+              );
+              return { ...prev, order_items: newItems };
+            });
+
+            setActiveTakeawayOrders((prev: any[]) => prev.map((order: any) => {
+              const newItems = (order.order_items || order.items || []).map((it: any) =>
+                (it.id === data.order_item_id || it.order_item_id === data.order_item_id)
+                  ? { ...it, kitchen_status: data.kitchen_status }
+                  : it
+              );
+              return { ...order, order_items: newItems, items: newItems };
+            }));
+          });
+
+          client.socket.on('connect', () => {
+            setIsConnected(true);
+            if (client && client.socket) client.socket.emit('join_branch', { branch_id: branchId });
+          });
+
+          client.socket.on('disconnect', () => {
+            setIsConnected(false);
+          });
+          
+          if (client.socket.connected) {
+            setIsConnected(true);
+            client.socket.emit('join_branch', { branch_id: branchId });
+          }
+        }
+      } catch (err) {
+        console.error('POS socket init error:', err);
         setIsConnected(false);
-      });
-      
-      if (client.socket.connected) {
-        setIsConnected(true);
-        client.socket.emit('join_branch', { branch_id: branchId });
       }
     };
 

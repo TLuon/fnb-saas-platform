@@ -167,37 +167,43 @@ const LiveFloorMap: React.FC = () => {
     let client: RealtimeClient;
 
     const initSocket = async () => {
-      client = new RealtimeClient({
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
-        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-        socketUrl: import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl),
-        token: accessToken,
-      });
+      try {
+        client = new RealtimeClient({
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+          supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+          socketUrl: import.meta.env.VITE_SOCKET_URL || getSocketBaseUrl(apiUrl),
+          token: accessToken,
+        });
 
-      await client.connect();
+        await client.connect();
 
-      client.socket.on('connect', () => {
-        setIsConnected(true);
-        fetchTables(selectedFloorRef.current);
-      });
+        if (client && client.socket) {
+          client.socket.on('connect', () => {
+            setIsConnected(true);
+            fetchTables(selectedFloorRef.current);
+          });
 
-      client.socket.on('disconnect', () => setIsConnected(false));
+          client.socket.on('disconnect', () => setIsConnected(false));
 
-      client.socket.on('table_status_changed', (data: any) => {
-        const currentFloor = selectedFloorRef.current;
-        if (data.floor_id === currentFloor || !data.floor_id) {
-          fetchTables(currentFloor);
+          client.socket.on('table_status_changed', (data: any) => {
+            const currentFloor = selectedFloorRef.current;
+            if (data.floor_id === currentFloor || !data.floor_id) {
+              fetchTables(currentFloor);
+            }
+          });
+
+          if (client.socket.connected) {
+            setIsConnected(true);
+            fetchTables(selectedFloorRef.current);
+          }
         }
-      });
-
-      if (client.socket.connected) {
-        setIsConnected(true);
-        fetchTables(selectedFloorRef.current);
+      } catch (err) {
+        console.error('Socket init error:', err);
+        setIsConnected(false);
       }
     };
 
     initSocket();
-
 
     const snapshotInterval = window.setInterval(
       () => fetchTables(selectedFloorRef.current),
@@ -206,7 +212,13 @@ const LiveFloorMap: React.FC = () => {
 
     return () => {
       window.clearInterval(snapshotInterval);
-      if (client) client.disconnect();
+      if (client) {
+        try {
+          client.disconnect();
+        } catch (e) {
+          console.error(e);
+        }
+      }
     };
   }, [accessToken, branchId, fetchTables, selectedFloor]);
 
