@@ -688,6 +688,51 @@ export class ReservationService implements OnModuleInit {
       this.realtimeGateway?.emitTableStatusChanged?.(res.table_id, 'RESERVED');
     }
 
+    // 6. Record the deposit as a transaction (order)
+    const depositAmount = Number(res.deposit_amount || 0);
+    if (depositAmount > 0) {
+      // Find branch_id for the table
+      let branchId = user.branch_id;
+      if (!branchId) {
+        const { data: tableData } = await supabaseAdmin
+          .from('tables')
+          .select('floor_id, floors(branch_id)')
+          .eq('id', res.table_id)
+          .single();
+        branchId = (tableData?.floors as any)?.branch_id || user.branch_id;
+      }
+
+      // Find active shift
+      let shiftId = null;
+      if (branchId) {
+        const { data: shiftData } = await supabaseAdmin
+          .from('shifts')
+          .select('id')
+          .eq('branch_id', branchId)
+          .eq('status', 'OPEN')
+          .maybeSingle();
+        shiftId = shiftData?.id || null;
+      }
+
+      const orderCode = 'DEP_' + code.substring(0, 6) + Math.random().toString(36).substring(2, 4).toUpperCase();
+      
+      await supabaseAdmin.from('orders').insert({
+        tenant_id: user.tenant_id,
+        branch_id: branchId,
+        shift_id: shiftId,
+        table_id: res.table_id,
+        customer_id: res.customer_id,
+        order_code: orderCode,
+        order_type: 'DINE_IN',
+        status: 'COMPLETED',
+        subtotal: depositAmount,
+        final_amount: depositAmount,
+        payment_method: 'TRANSFER', // Deposits are typically transfer
+        created_by: user.sub,
+        notes: `Thu tiền cọc đặt bàn #${code}`
+      });
+    }
+
     const confirmPayload = {
       status: 'PAID',
       type: 'DEPOSIT_CONFIRMED',
