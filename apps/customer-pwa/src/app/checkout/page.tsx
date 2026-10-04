@@ -74,16 +74,17 @@ export default function CheckoutPage() {
       setIsProcessing(true);
       setPaymentStatus('PENDING');
 
-      const idempotencyKey = crypto.randomUUID();
-      await apiClient.post(
-        `/orders/${orderId}/pay`, 
-        {
-          payment_method: paymentMethod,
-          voucher_id: selectedVoucher?.id,
-          status: 'PENDING',
-        },
-        { headers: { 'Idempotency-Key': idempotencyKey } }
-      );
+      if (paymentMethod === 'WALLET') {
+        const idempotencyKey = crypto.randomUUID();
+        await apiClient.post(
+          `/orders/${orderId}/pay`, 
+          {
+            payment_method: paymentMethod,
+            voucher_id: selectedVoucher?.id,
+          },
+          { headers: { 'Idempotency-Key': idempotencyKey } }
+        );
+      }
 
       // Clear cart after customer submits transfer info
       clearCart();

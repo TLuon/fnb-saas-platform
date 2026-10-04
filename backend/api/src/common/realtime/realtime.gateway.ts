@@ -255,13 +255,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.server.to(`kds:${branchId}`).emit('kds_item_status_changed', payload);
   }
 
-  emitNewOrder(branchId: string, payload: any) {
-    this.server.to(`kds:${branchId}`).emit('new_order', payload);
+  emitNewOrder(branchId: string | null, payload: any) {
+    if (this.server) {
+      if (branchId) {
+        this.server.to(`kds:${branchId}`).emit('new_order', payload);
+      }
+      this.server.emit('new_order', payload);
+    }
   }
 
-  emitNewReservation(branchId: string, payload: any) {
+  emitNewReservation(branchId: string | null, payload: any) {
     if (this.server) {
-      this.server.to(`kds:${branchId}`).emit('new_reservation', payload);
+      if (branchId) {
+        this.server.to(`kds:${branchId}`).emit('new_reservation', payload);
+      }
+      this.server.emit('new_reservation', payload);
     }
   }
 
