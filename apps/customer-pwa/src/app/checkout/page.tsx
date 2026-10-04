@@ -358,7 +358,7 @@ export default function CheckoutPage() {
 
         {paymentStatus === 'SUCCESS' && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4 shadow-sm animate-fade-in">
-            {orderConfirmed === true ? (
+            {(orderData?.status === 'IN_PROGRESS' || orderData?.status === 'COMPLETED' || orderConfirmed === true) ? (
               <>
                 <div className="w-14 h-14 bg-green-100 text-green-700 rounded-full flex items-center justify-center mx-auto">
                   <Check size={32} />
@@ -366,11 +366,11 @@ export default function CheckoutPage() {
                 <div>
                   <h3 className="font-bold text-xl text-green-800">Tuyệt vời! Đơn hàng đã được xác nhận</h3>
                   <p className="text-sm text-green-700 mt-2 max-w-md mx-auto leading-relaxed font-medium">
-                    {orderMessage}
+                    Nhà hàng đã xác nhận thanh toán và đang chuẩn bị món cho quý khách.
                   </p>
                 </div>
               </>
-            ) : orderConfirmed === false ? (
+            ) : (orderData?.status === 'CANCELLED' || orderConfirmed === false) ? (
               <>
                 <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto font-bold text-2xl">
                   !
@@ -378,7 +378,7 @@ export default function CheckoutPage() {
                 <div>
                   <h3 className="font-bold text-xl text-red-700">Rất tiếc! Đơn hàng bị huỷ</h3>
                   <p className="text-sm text-red-600 mt-2 max-w-md mx-auto leading-relaxed font-medium">
-                    {orderMessage}
+                    {orderMessage || 'Rất tiếc, đơn hàng của quý khách đã bị hủy bởi nhà hàng.'}
                   </p>
                 </div>
               </>
