@@ -975,32 +975,40 @@ export class ReservationService implements OnModuleInit {
 
     if (customerIds.length === 0 && customerPhones.length === 0) return [];
 
-    let query = supabaseAdmin
-      .from('reservations')
-      .select(`
+    let allReservations: any[] = [];
+    const selectStr = `
         *,
         table:tables(table_code, name, floor:floors(name)),
         tenant:tenants(name)
-      `)
-      .order('created_at', { ascending: false });
+    `;
 
-    // Build the correct OR condition
-    if (customerIds.length > 0 && customerPhones.length > 0) {
-      query = query.or(`customer_id.in.(${customerIds.join(',')}),customer_phone.in.(${customerPhones.map(p => `"${p}"`).join(',')})`);
-    } else if (customerIds.length > 0) {
-      query = query.in('customer_id', customerIds);
-    } else if (customerPhones.length > 0) {
-      query = query.in('customer_phone', customerPhones);
-    } else {
-      return [];
+    if (customerIds.length > 0) {
+      const { data: dataById, error: err1 } = await supabaseAdmin
+        .from('reservations')
+        .select(selectStr)
+        .in('customer_id', customerIds);
+      
+      if (err1) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', err1.message);
+      if (dataById) allReservations.push(...dataById);
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    if (customerPhones.length > 0) {
+      const { data: dataByPhone, error: err2 } = await supabaseAdmin
+        .from('reservations')
+        .select(selectStr)
+        .in('customer_phone', customerPhones);
+      
+      if (err2) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', err2.message);
+      if (dataByPhone) allReservations.push(...dataByPhone);
     }
-    return data ?? [];
+
+    // Deduplicate by reservation_code or id
+    const uniqueReservations = Array.from(new Map(allReservations.map(r => [r.id, r])).values());
+    
+    // Sort by created_at descending
+    uniqueReservations.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return uniqueReservations;
   }
 
   /**
