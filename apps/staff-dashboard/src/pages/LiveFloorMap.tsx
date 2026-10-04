@@ -592,9 +592,6 @@ const LiveFloorMap: React.FC = () => {
           } else if (res.reservation_time) {
             resTime = res.reservation_time;
           }
-          
-          const reserveTimeEpoch = new Date(resTime).getTime();
-          const now = Date.now();
           // Show immediately if it's an upcoming active reservation
           setActiveReservation({
             reservation_code: res.reservation_code,
