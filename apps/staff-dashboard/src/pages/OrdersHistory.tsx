@@ -40,7 +40,7 @@ export interface OrderRecord {
   order_type: 'DINE_IN' | 'TAKEAWAY' | string;
   table_id?: string | null;
   table_name?: string;
-  tables?: { table_code?: string };
+  tables?: { table_code?: string; name?: string };
   final_amount?: number;
   total_amount?: number;
   subtotal?: number;
