@@ -78,9 +78,9 @@ export default function MenuManagement() {
     }
   };
 
-  const handleCategorySubmit = async (data: { name: string }) => {
+  const handleCategorySubmit = async (data: { name: string; kitchen_station: 'BAR' | 'KITCHEN' }) => {
     if (editingCategory) {
-      await updateCategory(editingCategory.id, data.name);
+      await updateCategory(editingCategory.id, data);
     } else {
       await addCategory(data);
     }

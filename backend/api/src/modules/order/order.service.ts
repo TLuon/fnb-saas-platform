@@ -164,6 +164,16 @@ export class OrderService {
       }
     }
 
+    if (branchId) {
+      this.realtimeGateway.emitNewOrder(branchId, {
+        order_id: rpcResult.order_id,
+        order_code: rpcResult.order_code,
+        order_type: orderType,
+        status: 'PENDING',
+        message: 'Đơn hàng mới'
+      });
+    }
+
     return {
       id: rpcResult.order_id,
       order_id: rpcResult.order_id,
@@ -784,14 +794,14 @@ export class OrderService {
       }
     }
 
-    const supabase = this.supabaseService.forUser(accessToken);
+    const supabaseAdmin = this.supabaseService.admin();
     const page = query.page && query.page >= 1 ? Math.floor(query.page) : 1;
     const limit = query.limit && query.limit >= 1 ? Math.min(Math.floor(query.limit), 100) : 20;
     const offset = (page - 1) * limit;
 
     let customerId: string | null = null;
     if (user.role_app === 'CUSTOMER') {
-      const { data: customer } = await supabase
+      const { data: customer } = await supabaseAdmin
         .from('customers')
         .select('id')
         .eq('auth_user_id', user.sub)
@@ -807,7 +817,7 @@ export class OrderService {
       customerId = customer.id;
     }
 
-    let queryBuilder = supabase
+    let queryBuilder = supabaseAdmin
       .from('orders')
       .select('*, order_items(*), tables(table_code, name)', { count: 'exact' })
       .eq('tenant_id', user.tenant_id);
