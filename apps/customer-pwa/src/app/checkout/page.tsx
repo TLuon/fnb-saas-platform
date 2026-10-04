@@ -74,8 +74,30 @@ export default function CheckoutPage() {
 
     initSocket();
 
+    let pollInterval: NodeJS.Timeout;
+    if (paymentStatus === 'SUCCESS') {
+      pollInterval = setInterval(async () => {
+        try {
+          const res: any = await apiClient.get(`/orders/${orderId}?_t=${Date.now()}`);
+          const ord = res?.data?.data || res?.data || res;
+          if (ord?.status === 'IN_PROGRESS' || ord?.status === 'COMPLETED') {
+            setOrderConfirmed(true);
+            setOrderMessage('Đơn hàng đã được xác nhận.');
+            clearInterval(pollInterval);
+          } else if (ord?.status === 'CANCELLED') {
+            setOrderConfirmed(false);
+            setOrderMessage('Đơn hàng đã bị huỷ.');
+            clearInterval(pollInterval);
+          }
+        } catch (err) {
+          // ignore
+        }
+      }, 3000);
+    }
+
     return () => {
       if (client) client.disconnect();
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [orderId, paymentStatus]);
 
