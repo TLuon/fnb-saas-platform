@@ -27,18 +27,36 @@ export class RealtimeClient {
 
   async connect() {
     if (this.socket) return;
-    const { io } = await import('socket.io-client');
-    this.socket = io(this.config.socketUrl, {
-      autoConnect: true,
-      ...(this.config.token ? { auth: { token: `Bearer ${this.config.token}` } } : {})
-    });
+    try {
+      const { io } = await import('socket.io-client');
+      this.socket = io(this.config.socketUrl, {
+        autoConnect: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        transports: ['websocket'], // Force websocket to bypass Render sticky session / CORS polling issues
+        ...(this.config.token ? { auth: { token: `Bearer ${this.config.token}` } } : {})
+      });
+    } catch (err) {
+      console.error('Failed to initialize Socket.IO client:', err);
+    }
   }
 
   disconnect() {
     if (this.socket) {
-      this.socket.disconnect();
+      try {
+        this.socket.disconnect();
+      } catch (e) {
+        console.error('Socket disconnect error:', e);
+      }
     }
-    this.supabase.removeAllChannels();
+    if (this.supabase) {
+      try {
+        this.supabase.removeAllChannels();
+      } catch (e) {
+        console.error('Supabase disconnect error:', e);
+      }
+    }
   }
 }
 

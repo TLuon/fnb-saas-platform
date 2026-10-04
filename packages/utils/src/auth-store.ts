@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+import { useStore } from 'zustand';
 import { parseToken } from './auth';
 
 export interface UserProfile {
@@ -130,3 +131,7 @@ export const authStore = createStore<AuthState>((set) => ({
     }
   },
 }));
+
+export function useAuthStore<T>(selector: (state: AuthState) => T): T {
+  return useStore(authStore, selector);
+}
