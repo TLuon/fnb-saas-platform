@@ -877,8 +877,10 @@ export class OrderService {
 
     let queryBuilder = supabaseAdmin
       .from('orders')
-      .select('*, order_items(*), tables(table_code, name)', { count: 'exact' })
+      .select('*, order_items(*), tables(table_code)', { count: 'exact' })
       .eq('tenant_id', user.tenant_id);
+    
+    console.log(`[listOrders] User: ${user.role_app}, Tenant: ${user.tenant_id}, Branch: ${user.branch_id}. Query:`, query);
 
     // Role scoping
     if (user.role_app === 'CUSTOMER') {

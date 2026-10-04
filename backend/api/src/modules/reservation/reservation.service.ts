@@ -939,23 +939,30 @@ export class ReservationService implements OnModuleInit {
       .select('*')
       .eq('tenant_id', user.tenant_id);
 
+    // Helper function to apply branch filter
+    const applyBranchFilter = async (branchId: string, baseQuery: any) => {
+      const { data: floors } = await supabaseAdmin.from('floors').select('id').eq('branch_id', branchId);
+      if (!floors || floors.length === 0) return null; // means empty
+      const floorIds = floors.map(f => f.id);
+      
+      const { data: tables } = await supabaseAdmin.from('tables').select('id').in('floor_id', floorIds);
+      if (!tables || tables.length === 0) return null; // means empty
+      const tableIds = tables.map(t => t.id);
+      
+      return baseQuery.in('table_id', tableIds);
+    };
+
     // Role scoping
     if (user.role_app === 'STAFF') {
       const targetBranchId = query.branch_id || user.branch_id;
       if (targetBranchId) {
-        if (typeof q.or === 'function') {
-          q = q.or(`branch_id.eq.${targetBranchId},branch_id.is.null`);
-        } else {
-          q = q.eq('branch_id', targetBranchId);
-        }
+        q = await applyBranchFilter(targetBranchId, q);
+        if (!q) return { data: [], meta: { total: 0, page: 1, limit: 20 } };
       }
     } else if (user.role_app === 'OWNER') {
       if (query.branch_id) {
-        if (typeof q.or === 'function') {
-          q = q.or(`branch_id.eq.${query.branch_id},branch_id.is.null`);
-        } else {
-          q = q.eq('branch_id', query.branch_id);
-        }
+        q = await applyBranchFilter(query.branch_id, q);
+        if (!q) return { data: [], meta: { total: 0, page: 1, limit: 20 } };
       }
     }
 

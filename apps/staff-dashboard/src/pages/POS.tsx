@@ -622,11 +622,14 @@ const POS: React.FC = () => {
     apiClient.get(`/orders${query}`)
       .then((res: any) => {
         const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
-        // Lọc bỏ các đơn COMPLETED và CANCELLED để chỉ giữ lại đơn chưa hoàn thành
+        console.log('[fetchTakeawayOrders] Raw API response:', res.data, 'List:', list);
         const activeOnly = list.filter((o: any) => o.status !== 'COMPLETED' && o.status !== 'CANCELLED');
+        console.log('[fetchTakeawayOrders] Active only:', activeOnly);
         setActiveTakeawayOrders(activeOnly);
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error('[fetchTakeawayOrders] Error:', err);
+      });
   };
 
   const [pendingReservationCount, setPendingReservationCount] = useState(0);
