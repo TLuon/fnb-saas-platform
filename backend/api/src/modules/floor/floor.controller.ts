@@ -27,13 +27,13 @@ export class FloorController {
     return this.floorService.listFloors(token || '', query.branch_id);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Post('floors')
   createFloor(@Body() dto: CreateFloorDto, @CurrentAccessToken() token: string) {
     return this.floorService.createFloor(token, dto);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Patch('floors/:id')
   updateFloor(
     @Param('id') floorId: string,
@@ -43,13 +43,13 @@ export class FloorController {
     return this.floorService.updateFloor(token, floorId, dto);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Delete('floors/:id')
   deleteFloor(@Param('id') floorId: string, @CurrentAccessToken() token: string) {
     return this.floorService.deleteFloor(token, floorId);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Post('floors/:id/copy-from/:sourceFloorId')
   copyFloorLayout(
     @Param('id') targetFloorId: string,
@@ -65,13 +65,13 @@ export class FloorController {
     return this.floorService.getFloorTables(token || '', floorId);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Post('tables')
   createTable(@Body() dto: CreateTableDto, @CurrentAccessToken() token: string) {
     return this.floorService.createTable(token, dto);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Patch('tables/:id')
   updateTable(
     @Param('id') tableId: string,
@@ -81,7 +81,7 @@ export class FloorController {
     return this.floorService.updateTable(token, tableId, dto);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Delete('tables/:id')
   deleteTable(@Param('id') tableId: string, @CurrentAccessToken() token: string) {
     return this.floorService.deleteTable(token, tableId);

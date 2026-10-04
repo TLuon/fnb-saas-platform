@@ -8,7 +8,7 @@ import { UpdateStaffDto } from './dto/update-staff.dto.js';
 import { ListStaffQueryDto } from './dto/list-staff-query.dto.js';
 
 @Controller('staff')
-@Roles('OWNER', 'STAFF')
+@Roles('OWNER')
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 

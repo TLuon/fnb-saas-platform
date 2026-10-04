@@ -10,7 +10,7 @@ import { ReportTablesQueryDto } from './dto/report-tables-query.dto.js';
 export class ReportsController {
   constructor(private readonly cdpService: CdpService) {}
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Get('dashboard')
   getDashboard(
     @Query() query: DashboardQueryDto,
@@ -20,7 +20,7 @@ export class ReportsController {
     return this.cdpService.getDashboard(token, user, query.branch_id, query.period);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Get('orders')
   getRevenueOrders(
     @Query() query: DashboardQueryDto,
@@ -30,7 +30,7 @@ export class ReportsController {
     return this.cdpService.getRevenueOrders(token, user, query.branch_id, query.period);
   }
 
-  @Roles('OWNER', 'STAFF')
+  @Roles('OWNER')
   @Get('tables')
   getOccupiedTables(
     @Query() query: ReportTablesQueryDto,
