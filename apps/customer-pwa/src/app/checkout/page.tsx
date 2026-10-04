@@ -84,6 +84,12 @@ export default function CheckoutPage() {
           },
           { headers: { 'Idempotency-Key': idempotencyKey } }
         );
+      } else {
+        try {
+          await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+        } catch (subErr) {
+          console.warn('Notice staff on checkout submission:', subErr);
+        }
       }
 
       // Clear cart after customer submits transfer info

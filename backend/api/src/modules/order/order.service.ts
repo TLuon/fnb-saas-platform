@@ -165,7 +165,7 @@ export class OrderService {
     }
 
     if (branchId) {
-      this.realtimeGateway.emitNewOrder(branchId, {
+      this.realtimeGateway?.emitNewOrder?.(branchId, {
         order_id: rpcResult.order_id,
         order_code: rpcResult.order_code,
         order_type: orderType,
@@ -182,13 +182,13 @@ export class OrderService {
     };
   }
 
-  async addOrderItem(user: AuthenticatedUser, accessToken: string, orderId: string, dto: AddOrderItemDto) {
-    const supabase = user.role_app === 'OWNER' ? this.supabaseService.admin() : this.supabaseService.forUser(accessToken);
+  async addOrderItem(user: AuthenticatedUser, _accessToken: string, orderId: string, dto: AddOrderItemDto) {
+    const supabase = this.supabaseService.admin();
 
     // 1. Check order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status')
+      .select('id, status, branch_id, order_code, order_type')
       .eq('id', orderId)
       .single();
 
@@ -222,8 +222,6 @@ export class OrderService {
         unit_price: product.price,
         modifiers: dto.modifiers || [],
         kitchen_status: 'QUEUED',
-        // added_by_customer_id: phải là customers.id, không phải auth.users.id (sub)
-        // RLS sẽ lọc đúng qua forUser() nên không cần set thêm nếu customer chưa được resolve
         added_by_customer_id: null
       });
 
@@ -233,6 +231,16 @@ export class OrderService {
     }
 
     await this.calculateOrderSubtotal(supabase, orderId);
+
+    if (this.realtimeGateway) {
+      this.realtimeGateway.emitNewOrder?.(order.branch_id || null, {
+        order_id: orderId,
+        order_code: order.order_code,
+        order_type: order.order_type,
+        status: order.status,
+        message: 'Món mới đã được thêm vào đơn hàng',
+      });
+    }
 
     return { message: 'Đã thêm món vào order' };
   }
@@ -369,6 +377,16 @@ export class OrderService {
           items: items
         });
       }
+    }
+
+    if (this.realtimeGateway) {
+      this.realtimeGateway.emitNewOrder?.(branchId || null, {
+        order_id: order.id,
+        order_code: orderCode,
+        order_type: order.order_type,
+        status: 'IN_PROGRESS',
+        message: 'Đơn hàng đã được chuyển bếp',
+      });
     }
 
     return { message: 'Đã gửi bếp thành công' };
@@ -838,12 +856,20 @@ export class OrderService {
       if (query.order_type !== 'TAKEAWAY') {
         const targetBranchId = query.branch_id || user.branch_id;
         if (targetBranchId) {
-          queryBuilder = queryBuilder.or(`branch_id.eq.${targetBranchId},branch_id.is.null`);
+          if (typeof queryBuilder.or === 'function') {
+            queryBuilder = queryBuilder.or(`branch_id.eq.${targetBranchId},branch_id.is.null`);
+          } else {
+            queryBuilder = queryBuilder.eq('branch_id', targetBranchId);
+          }
         }
       }
     } else if (user.role_app === 'OWNER') {
       if (query.order_type !== 'TAKEAWAY' && query.branch_id) {
-        queryBuilder = queryBuilder.or(`branch_id.eq.${query.branch_id},branch_id.is.null`);
+        if (typeof queryBuilder.or === 'function') {
+          queryBuilder = queryBuilder.or(`branch_id.eq.${query.branch_id},branch_id.is.null`);
+        } else {
+          queryBuilder = queryBuilder.eq('branch_id', query.branch_id);
+        }
       }
     }
 
