@@ -67,7 +67,7 @@ const LiveFloorMap: React.FC = () => {
       }
       setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'AVAILABLE' as any, reservation_code: undefined } : t));
       if (selectedTable?.id === tableId) {
-        setSelectedTable(prev => prev ? { ...prev, status: 'AVAILABLE' as any, reservation_code: undefined } : null);
+        setSelectedTable((prev: any) => prev ? { ...prev, status: 'AVAILABLE' as any, reservation_code: undefined } : null);
       }
       setActiveReservation(null);
       setShowCancelModal(false);
@@ -593,7 +593,7 @@ const LiveFloorMap: React.FC = () => {
           setTables(prev => prev.map(t => t.id === targetTableId ? { ...t, status: targetStatus, reservation_code: res.reservation_code } : t));
 
           if (selectedTable && selectedTable.id === targetTableId) {
-            setSelectedTable(prev => prev ? { ...prev, status: targetStatus, reservation_code: res.reservation_code } : null);
+            setSelectedTable((prev: any) => prev ? { ...prev, status: targetStatus, reservation_code: res.reservation_code } : null);
           }
 
           setActiveReservation({
