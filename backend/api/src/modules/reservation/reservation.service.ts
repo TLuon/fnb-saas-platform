@@ -939,6 +939,26 @@ export class ReservationService implements OnModuleInit {
       .select('*')
       .eq('tenant_id', user.tenant_id);
 
+    // Role scoping
+    if (user.role_app === 'STAFF') {
+      const targetBranchId = query.branch_id || user.branch_id;
+      if (targetBranchId) {
+        if (typeof q.or === 'function') {
+          q = q.or(`branch_id.eq.${targetBranchId},branch_id.is.null`);
+        } else {
+          q = q.eq('branch_id', targetBranchId);
+        }
+      }
+    } else if (user.role_app === 'OWNER') {
+      if (query.branch_id) {
+        if (typeof q.or === 'function') {
+          q = q.or(`branch_id.eq.${query.branch_id},branch_id.is.null`);
+        } else {
+          q = q.eq('branch_id', query.branch_id);
+        }
+      }
+    }
+
     if (query.status) {
       if (query.status === 'PENDING') {
         q = q.in('status', ['PENDING', 'PENDING_LOCK']);

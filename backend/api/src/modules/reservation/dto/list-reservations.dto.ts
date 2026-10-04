@@ -13,4 +13,8 @@ export class ListReservationsDto {
   @IsOptional()
   @IsString()
   date?: string;
+
+  @IsOptional()
+  @IsUuidLoose()
+  branch_id?: string;
 }

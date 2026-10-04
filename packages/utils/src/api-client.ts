@@ -64,7 +64,12 @@ export function createApiClient(options: CreateApiClientOptions = {}): AxiosInst
     if (options.getToken) {
       token = options.getToken();
     } else if (typeof window !== 'undefined') {
-      token = localStorage.getItem('access_token');
+      try {
+        const { authStore } = require('./auth-store');
+        token = authStore.getState().accessToken || localStorage.getItem('access_token');
+      } catch (e) {
+        token = localStorage.getItem('access_token');
+      }
     }
     if (token && reqConfig.headers) {
       if (typeof (reqConfig.headers as any).set === 'function') {

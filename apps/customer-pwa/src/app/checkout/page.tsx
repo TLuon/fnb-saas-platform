@@ -11,7 +11,7 @@ import { WalletBalanceRow } from '../../components/checkout/WalletBalanceRow';
 import { CoffeePassSelector } from '../../components/checkout/CoffeePassSelector';
 import { PaymentStatusBanner, PaymentStatus } from '../../components/checkout/PaymentStatusBanner';
 import { RetryPaymentButton } from '../../components/checkout/RetryPaymentButton';
-import { apiClient, generateVietQRUrl, VIETCOMBANK_CONFIG } from '@fnb/utils';
+import { apiClient, generateVietQRUrl, VIETCOMBANK_CONFIG, RealtimeClient } from '@fnb/utils';
 import { useCartStore } from '../../stores/cartStore';
 import { unwrapOrderDetails } from '../../lib/checkout';
 import { Copy, Check } from 'lucide-react';
@@ -33,6 +33,47 @@ export default function CheckoutPage() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('IDLE');
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [orderConfirmed, setOrderConfirmed] = useState<boolean | null>(null);
+  const [orderMessage, setOrderMessage] = useState<string>('');
+
+  useEffect(() => {
+    if (!orderId || paymentStatus !== 'SUCCESS') return;
+
+    let client: RealtimeClient | null = null;
+    
+    const initSocket = async () => {
+      const token = localStorage.getItem('access_token') || undefined;
+      const socketUrl = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      
+      client = new RealtimeClient({
+        supabaseUrl: '',
+        supabaseKey: '',
+        socketUrl,
+        token,
+      });
+
+      await client.connect();
+      
+      if (client.socket) {
+        // Auth user Id is from token payload, the backend automatically joins `customer:${authUserId}` on connection
+        client.socket.on('order_status_changed', (data: any) => {
+          if (data.status === 'IN_PROGRESS' || data.status === 'COMPLETED') {
+            setOrderConfirmed(true);
+            setOrderMessage(data.message || 'Đơn hàng đã được xác nhận.');
+          } else if (data.status === 'CANCELLED') {
+            setOrderConfirmed(false);
+            setOrderMessage(data.reason || data.message || 'Đơn hàng đã bị huỷ.');
+          }
+        });
+      }
+    };
+    
+    initSocket();
+    
+    return () => {
+      if (client) client.disconnect();
+    };
+  }, [orderId, paymentStatus]);
 
   useEffect(() => {
     if (!orderId) {
@@ -282,18 +323,47 @@ export default function CheckoutPage() {
 
         {paymentStatus === 'SUCCESS' && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4 shadow-sm animate-fade-in">
-            <div className="w-14 h-14 bg-emerald-100 text-[#237A57] rounded-full flex items-center justify-center mx-auto">
-              <Check size={32} />
-            </div>
-            <div>
-              <h3 className="font-bold text-xl text-[#543310]">Đã gửi thông tin thanh toán!</h3>
-              <p className="text-sm text-gray-600 mt-2 max-w-md mx-auto leading-relaxed">
-                {paymentMethod === 'CASH' 
-                  ? <span>Nhà hàng đã nhận được yêu cầu của bạn. Vui lòng thanh toán bằng tiền mặt tại quầy thu ngân. Món của bạn sẽ được chuẩn bị ngay sau khi thanh toán hoàn tất.</span>
-                  : <span>Nhà hàng đã nhận được yêu cầu của bạn. Nhân viên quầy thu ngân sẽ đối soát giao dịch chuyển khoản (Nội dung: <strong className="text-[#D67D3E] font-mono">{transferMemo}</strong>) và chuyển đơn xuống Bếp chế biến.</span>
-                }
-              </p>
-            </div>
+            {orderConfirmed === true ? (
+              <>
+                <div className="w-14 h-14 bg-green-100 text-green-700 rounded-full flex items-center justify-center mx-auto">
+                  <Check size={32} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xl text-green-800">Tuyệt vời! Đơn hàng đã được xác nhận</h3>
+                  <p className="text-sm text-green-700 mt-2 max-w-md mx-auto leading-relaxed font-medium">
+                    {orderMessage}
+                  </p>
+                </div>
+              </>
+            ) : orderConfirmed === false ? (
+              <>
+                <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto font-bold text-2xl">
+                  !
+                </div>
+                <div>
+                  <h3 className="font-bold text-xl text-red-700">Rất tiếc! Đơn hàng bị huỷ</h3>
+                  <p className="text-sm text-red-600 mt-2 max-w-md mx-auto leading-relaxed font-medium">
+                    {orderMessage}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto animate-pulse">
+                  <span className="text-2xl font-bold">...</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-xl text-[#543310]">Đang chờ thu ngân xác nhận...</h3>
+                  <p className="text-sm text-gray-600 mt-2 max-w-md mx-auto leading-relaxed">
+                    {paymentMethod === 'CASH' 
+                      ? <span>Nhà hàng đã nhận được yêu cầu của bạn. Vui lòng thanh toán bằng tiền mặt tại quầy thu ngân. Món của bạn sẽ được chuẩn bị ngay sau khi thanh toán hoàn tất.</span>
+                      : <span>Nhà hàng đã nhận được yêu cầu của bạn. Nhân viên quầy thu ngân sẽ đối soát giao dịch chuyển khoản (Nội dung: <strong className="text-[#D67D3E] font-mono">{transferMemo}</strong>) và chuyển đơn xuống Bếp chế biến.</span>
+                    }
+                  </p>
+                </div>
+              </>
+            )}
+
             <button
               onClick={() => router.push('/')}
               className="w-full py-4 bg-[#237A57] text-white font-bold rounded-xl hover:bg-[#1c6346] transition-colors text-lg flex items-center justify-center gap-2 shadow-md mt-4"

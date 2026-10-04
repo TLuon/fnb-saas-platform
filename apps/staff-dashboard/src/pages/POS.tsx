@@ -617,8 +617,8 @@ const POS: React.FC = () => {
 
   const fetchTakeawayOrders = () => {
     const query = branchId && branchId.includes('-')
-      ? `?branch_id=${branchId}&order_type=TAKEAWAY`
-      : '?order_type=TAKEAWAY';
+      ? `?branch_id=${branchId}&order_type=TAKEAWAY&_t=${Date.now()}`
+      : `?order_type=TAKEAWAY&_t=${Date.now()}`;
     apiClient.get(`/orders${query}`)
       .then((res: any) => {
         const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
@@ -631,7 +631,10 @@ const POS: React.FC = () => {
 
   const [pendingReservationCount, setPendingReservationCount] = useState(0);
   const fetchPendingReservations = () => {
-    apiClient.get('/reservations?status=PENDING')
+    const query = branchId && branchId.includes('-')
+      ? `/reservations?status=PENDING&branch_id=${branchId}&_t=${Date.now()}`
+      : `/reservations?status=PENDING&_t=${Date.now()}`;
+    apiClient.get(query)
       .then((res: any) => {
         const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
         setPendingReservationCount(list.length);
