@@ -26,15 +26,18 @@ interface SupabaseJwtPayload extends JWTPayload {
 @WebSocketGateway({
   cors: {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3001')
+      const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000')
         .split(',')
         .map((o) => o.trim())
         .filter(Boolean);
       if (
         !origin ||
+        allowedOrigins.includes('*') ||
         allowedOrigins.includes(origin) ||
-        (process.env.NODE_ENV !== 'production' &&
-          (origin.includes('localhost') || origin.includes('127.0.0.1')))
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.onrender.com') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1')
       ) {
         callback(null, true);
       } else {
