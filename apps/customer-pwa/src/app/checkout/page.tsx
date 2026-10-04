@@ -15,6 +15,7 @@ import { apiClient, generateVietQRUrl, VIETCOMBANK_CONFIG, RealtimeClient } from
 import { useCartStore } from '../../stores/cartStore';
 import { unwrapOrderDetails } from '../../lib/checkout';
 import { Copy, Check } from 'lucide-react';
+import { OrderNotificationModal } from '../../components/OrderNotificationModal';
 
 export default function CheckoutPage() {
   const searchParams = useSearchParams();
@@ -25,11 +26,11 @@ export default function CheckoutPage() {
   const [orderData, setOrderData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  
+
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY'>('TAKEAWAY');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('VIETQR');
   const [selectedVoucher, setSelectedVoucher] = useState<VoucherOption | null>(null);
-  
+
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('IDLE');
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -40,11 +41,11 @@ export default function CheckoutPage() {
     if (!orderId || paymentStatus !== 'SUCCESS') return;
 
     let client: RealtimeClient | null = null;
-    
+
     const initSocket = async () => {
       const token = localStorage.getItem('access_token') || undefined;
       const socketUrl = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      
+
       client = new RealtimeClient({
         supabaseUrl: '',
         supabaseKey: '',
@@ -53,7 +54,7 @@ export default function CheckoutPage() {
       });
 
       await client.connect();
-      
+
       if (client.socket) {
         // Explicitly join the order tracking room
         client.socket.emit('join_order_tracking', { order_id: orderId });
@@ -70,9 +71,9 @@ export default function CheckoutPage() {
         });
       }
     };
-    
+
     initSocket();
-    
+
     return () => {
       if (client) client.disconnect();
     };
@@ -121,7 +122,7 @@ export default function CheckoutPage() {
       if (paymentMethod === 'WALLET') {
         const idempotencyKey = crypto.randomUUID();
         await apiClient.post(
-          `/orders/${orderId}/pay`, 
+          `/orders/${orderId}/pay`,
           {
             payment_method: paymentMethod,
             voucher_id: selectedVoucher?.id,
@@ -139,7 +140,7 @@ export default function CheckoutPage() {
       // Clear cart after customer submits transfer info
       clearCart();
       sessionStorage.removeItem('selected_voucher_id');
-      
+
       // DO NOT automatically submit to kitchen here for VIETQR!
       // Cashier must inspect bank app & confirm in POS first to prevent fraud.
       setPaymentStatus('SUCCESS');
@@ -195,15 +196,15 @@ export default function CheckoutPage() {
   return (
     <main className="min-h-screen bg-[#FAF7F3] flex flex-col pb-32">
       <PublicHeader />
-      
+
       <div className="max-w-screen-xl mx-auto w-full p-4 space-y-6">
         <h1 className="text-2xl font-bold font-serif text-[#543310]">Thanh toán</h1>
 
         <PaymentStatusBanner status={paymentStatus} />
 
-        <OrderTypeSelector 
-          type={orderType} 
-          onChange={setOrderType} 
+        <OrderTypeSelector
+          type={orderType}
+          onChange={setOrderType}
           tableName={orderData.table_name || orderData.tables?.table_code || ''}
         />
 
@@ -233,7 +234,7 @@ export default function CheckoutPage() {
         )}
 
         {paymentMethod === 'COFFEE_PASS' && (
-          <CoffeePassSelector hasPass={true} passName="Gói Cà phê Sáng (Còn 5 ly)" onSelect={() => {}} />
+          <CoffeePassSelector hasPass={true} passName="Gói Cà phê Sáng (Còn 5 ly)" onSelect={() => { }} />
         )}
 
         {/* Thanh toán VietQR Thực tế (Vietcombank) */}
@@ -241,11 +242,11 @@ export default function CheckoutPage() {
           <div className="bg-white p-6 rounded-2xl border border-[#FED8B1] shadow-sm max-w-md mx-auto text-center space-y-4">
             <h3 className="font-bold text-[#543310] text-lg">Quét mã VietQR để thanh toán</h3>
             <p className="text-xs text-[#6B625B]">Số tiền & Nội dung chuyển khoản đã được tạo tự động</p>
-            
+
             <div className="bg-[#FAF7F3] p-4 rounded-xl border border-[#E8DED5] flex justify-center">
-              <img 
-                src={vietQrUrl} 
-                alt="Vietcombank VietQR Payment Code" 
+              <img
+                src={vietQrUrl}
+                alt="Vietcombank VietQR Payment Code"
                 className="w-[240px] h-[240px] object-contain rounded-lg"
               />
             </div>
@@ -259,7 +260,7 @@ export default function CheckoutPage() {
                 <span className="text-[#6B625B]">Số tài khoản:</span>
                 <div className="flex items-center gap-1.5 font-bold text-[#543310] font-mono">
                   <span>{VIETCOMBANK_CONFIG.accountNo}</span>
-                  <button 
+                  <button
                     onClick={() => handleCopy(VIETCOMBANK_CONFIG.accountNo, 'acc')}
                     className="p-1 text-gray-400 hover:text-[#D67D3E] transition"
                     title="Sao chép số tài khoản"
@@ -276,7 +277,7 @@ export default function CheckoutPage() {
                 <span className="text-[#6B625B]">Nội dung CK:</span>
                 <div className="flex items-center gap-1.5 font-bold text-[#D67D3E] font-mono">
                   <span>{transferMemo}</span>
-                  <button 
+                  <button
                     onClick={() => handleCopy(transferMemo, 'memo')}
                     className="p-1 text-gray-400 hover:text-[#D67D3E] transition"
                     title="Sao chép nội dung chuyển khoản"
@@ -358,7 +359,7 @@ export default function CheckoutPage() {
                 <div>
                   <h3 className="font-bold text-xl text-[#543310]">Đang chờ thu ngân xác nhận...</h3>
                   <p className="text-sm text-gray-600 mt-2 max-w-md mx-auto leading-relaxed">
-                    {paymentMethod === 'CASH' 
+                    {paymentMethod === 'CASH'
                       ? <span>Nhà hàng đã nhận được yêu cầu của bạn. Vui lòng thanh toán bằng tiền mặt tại quầy thu ngân. Món của bạn sẽ được chuẩn bị ngay sau khi thanh toán hoàn tất.</span>
                       : <span>Nhà hàng đã nhận được yêu cầu của bạn. Nhân viên quầy thu ngân sẽ đối soát giao dịch chuyển khoản (Nội dung: <strong className="text-[#D67D3E] font-mono">{transferMemo}</strong>) và chuyển đơn xuống Bếp chế biến.</span>
                     }
@@ -371,12 +372,21 @@ export default function CheckoutPage() {
               onClick={() => router.push('/')}
               className="w-full py-4 bg-[#237A57] text-white font-bold rounded-xl hover:bg-[#1c6346] transition-colors text-lg flex items-center justify-center gap-2 shadow-md mt-4"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
               Quay về Trang chủ
             </button>
           </div>
         )}
       </div>
+
+      <OrderNotificationModal
+        isOpen={orderConfirmed !== null}
+        type={orderConfirmed ? 'CONFIRMED' : 'CANCELLED'}
+        orderCode={orderCode}
+        tableName={orderData?.table_name || orderData?.tables?.table_code}
+        reason={orderMessage}
+        onClose={() => setOrderConfirmed(null)}
+      />
     </main>
   );
 }
