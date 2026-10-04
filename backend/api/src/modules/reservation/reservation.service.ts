@@ -138,7 +138,7 @@ export class ReservationService implements OnModuleInit {
 
     let resTime = new Date().toISOString();
     if (dto.booking_date && dto.booking_time) {
-      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00`).toISOString();
+      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00+07:00`).toISOString();
     }
 
     // 2. Try Redis lock first, fallback to DB-only if Redis is down
@@ -267,7 +267,7 @@ export class ReservationService implements OnModuleInit {
 
     let resTime = new Date().toISOString();
     if (dto.booking_date && dto.booking_time) {
-      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00`).toISOString();
+      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00+07:00`).toISOString();
     }
 
     const customerName = dto.customer_name || 'Khách qua điện thoại';
