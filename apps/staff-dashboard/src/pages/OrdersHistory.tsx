@@ -13,7 +13,9 @@ import {
   XCircle, 
   DollarSign, 
   FileText,
-  AlertCircle
+  AlertCircle,
+  CalendarDays,
+  User
 } from 'lucide-react';
 import { apiClient, authStore } from '@fnb/utils';
 import { useStore } from 'zustand';
@@ -40,7 +42,7 @@ export interface OrderRecord {
   order_type: 'DINE_IN' | 'TAKEAWAY' | string;
   table_id?: string | null;
   table_name?: string;
-  tables?: { table_code?: string };
+  tables?: { table_code?: string; name?: string };
   final_amount?: number;
   total_amount?: number;
   subtotal?: number;
@@ -48,6 +50,13 @@ export interface OrderRecord {
   payment_method?: string;
   order_items?: OrderItemRecord[];
   items?: OrderItemRecord[];
+  itemType?: 'order' | 'reservation';
+  reservation_code?: string;
+  reservation_time?: string;
+  deposit_amount?: number;
+  guest_count?: number;
+  customer_name?: string;
+  customer_phone?: string;
 }
 
 export default function OrdersHistory() {
@@ -77,9 +86,15 @@ export default function OrdersHistory() {
         ? `/orders?branch_id=${branchId}&limit=100`
         : `/orders?limit=100`;
       
-      const res: any = await apiClient.get(query);
-      const list = res.data?.data || res.data || (Array.isArray(res) ? res : []);
-      setOrders(list);
+      const [ordersRes, resRes]: any = await Promise.all([
+        apiClient.get(query).catch(() => ({ data: [] })),
+        apiClient.get('/reservations?limit=100').catch(() => ({ data: [] }))
+      ]);
+
+      const ordersList = (ordersRes.data?.data || ordersRes.data || (Array.isArray(ordersRes) ? ordersRes : [])).map((o: any) => ({ ...o, itemType: 'order' }));
+      const resList = (resRes.data?.data || resRes.data || (Array.isArray(resRes) ? resRes : [])).map((r: any) => ({ ...r, itemType: 'reservation' }));
+      
+      setOrders([...ordersList, ...resList]);
     } catch (err: any) {
       console.error('Lỗi khi tải lịch sử hóa đơn:', err);
       showAlert(err.response?.data?.message || err.message || 'Không thể tải lịch sử hóa đơn', 'error', 'Lỗi Tải Dữ Liệu');
@@ -103,7 +118,7 @@ export default function OrdersHistory() {
 
   // Compute Statistics for TODAY based on computer local time
   const statsToday = useMemo(() => {
-    const todayOrders = orders.filter(o => isSameDay(new Date(o.created_at), today));
+    const todayOrders = orders.filter(o => o.itemType === 'order' && isSameDay(new Date(o.created_at || o.reservation_time || 0), today));
     const completedOrders = todayOrders.filter(o => o.status === 'COMPLETED');
     
     const revenue = completedOrders.reduce((sum, o) => {
@@ -128,7 +143,7 @@ export default function OrdersHistory() {
   // Filtered and sorted order list
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
-      const orderDate = new Date(order.created_at);
+      const orderDate = new Date(order.created_at || order.reservation_time || 0);
       
       // Date filter logic
       if (dateFilter === 'TODAY') {
@@ -157,21 +172,34 @@ export default function OrdersHistory() {
       }
 
       // Status filter logic
-      if (statusFilter !== 'ALL' && order.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'ALL') {
+        if (order.itemType === 'reservation') {
+          if (statusFilter === 'ACTIVE' && !['PENDING', 'PAID', 'PENDING_LOCK', 'RESERVED', 'CONFIRMED'].includes(order.status)) return false;
+          if (statusFilter !== 'ACTIVE' && order.status !== statusFilter) return false;
+        } else {
+          if (statusFilter === 'ACTIVE' && !['PENDING', 'IN_PROGRESS', 'PREPARING', 'READY'].includes(order.status)) return false;
+          if (statusFilter !== 'ACTIVE' && order.status !== statusFilter) return false;
+        }
       }
 
       // Order type filter logic
-      if (typeFilter !== 'ALL' && order.order_type !== typeFilter) {
-        return false;
+      if (typeFilter !== 'ALL') {
+        if (typeFilter === 'RESERVATION') {
+          if (order.itemType !== 'reservation') return false;
+        } else {
+          if (order.order_type !== typeFilter || order.itemType === 'reservation') return false;
+        }
       }
 
       // Search matching logic (Matches Code, Items, Table)
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase().trim();
-        const code = (order.order_code || order.order_number || order.id || '').toLowerCase();
+        const code = (order.order_code || order.order_number || order.reservation_code || order.id || '').toLowerCase();
         const tableCode = (order.tables?.table_code || order.table_name || '').toLowerCase();
         
+        const customerName = (order.customer_name || '').toLowerCase();
+        const customerPhone = (order.customer_phone || '').toLowerCase();
+
         const itemsList = order.order_items || order.items || [];
         const matchesDishName = itemsList.some((item: any) => {
           const dishName = (item.product_name || item.name || '').toLowerCase();
@@ -179,17 +207,17 @@ export default function OrdersHistory() {
           return dishName.includes(term) || note.includes(term);
         });
 
-        if (!code.includes(term) && !tableCode.includes(term) && !matchesDishName) {
+        if (!code.includes(term) && !tableCode.includes(term) && !matchesDishName && !customerName.includes(term) && !customerPhone.includes(term)) {
           return false;
         }
       }
 
       return true;
     }).sort((a, b) => {
-      const timeA = new Date(a.created_at).getTime();
-      const timeB = new Date(b.created_at).getTime();
-      const amtA = Number(a.final_amount || a.total_amount || a.subtotal || 0);
-      const amtB = Number(b.final_amount || b.total_amount || b.subtotal || 0);
+      const timeA = new Date(a.created_at || a.reservation_time || 0).getTime();
+      const timeB = new Date(b.created_at || b.reservation_time || 0).getTime();
+      const amtA = Number(a.final_amount || a.total_amount || a.subtotal || a.deposit_amount || 0);
+      const amtB = Number(b.final_amount || b.total_amount || b.subtotal || b.deposit_amount || 0);
 
       if (sortBy === 'NEWEST') return timeB - timeA;
       if (sortBy === 'OLDEST') return timeA - timeB;
@@ -203,7 +231,44 @@ export default function OrdersHistory() {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, itemType?: string) => {
+    if (itemType === 'reservation') {
+      switch (status) {
+        case 'PENDING':
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#FEE4E2] text-[#B42318] border border-[#B42318]/20">
+              <Clock size={13} /> Chờ xác nhận
+            </span>
+          );
+        case 'PAID':
+        case 'RESERVED':
+        case 'CONFIRMED':
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#E2F3E5] text-[#237A57] border border-[#237A57]/20">
+              <CheckCircle2 size={13} /> Đã nhận cọc
+            </span>
+          );
+        case 'CHECKED_IN':
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#E0F2FE] text-[#0369A1] border border-[#0369A1]/20">
+              <User size={13} /> Đã đến
+            </span>
+          );
+        case 'CANCELLED':
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
+              <XCircle size={13} /> Đã hủy
+            </span>
+          );
+        default:
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200">
+              {status}
+            </span>
+          );
+      }
+    }
+
     switch (status) {
       case 'COMPLETED':
         return (
@@ -453,6 +518,7 @@ export default function OrdersHistory() {
                 <option value="ALL">Tất cả loại đơn</option>
                 <option value="DINE_IN">Tại bàn</option>
                 <option value="TAKEAWAY">Mang đi / Online</option>
+                <option value="RESERVATION">Đặt bàn (Cọc)</option>
               </select>
             </div>
           </div>
@@ -515,8 +581,7 @@ export default function OrdersHistory() {
                   const items = order.order_items || order.items || [];
                   const totalAmt = Number(order.final_amount || order.total_amount || order.subtotal || 0);
                   const isDineIn = order.order_type === 'DINE_IN';
-                  const tableName = order.tables?.table_code || order.table_name;
-
+                  const tableName = order.tables?.table_code || order.tables?.name || order.table_name;
                   return (
                     <tr 
                       key={order.id} 
@@ -528,15 +593,16 @@ export default function OrdersHistory() {
                       </td>
 
                       <td className="py-3.5 px-4 text-xs font-semibold text-gray-600">
-                        {new Date(order.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                        {new Date(order.created_at || order.reservation_time || 0).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(order.created_at || order.reservation_time || 0).toLocaleDateString('vi-VN')}
                       </td>
 
                       <td className="py-3.5 px-4">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold ${
+                          order.itemType === 'reservation' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
                           isDineIn ? 'bg-amber-50 text-[#543310] border border-amber-200' : 'bg-orange-50 text-[#D67D3E] border border-orange-200'
                         }`}>
-                          {isDineIn ? <Store size={12} /> : <ShoppingBag size={12} />}
-                          {isDineIn ? (tableName ? `Bàn ${tableName}` : 'Tại bàn') : 'Mang đi'}
+                          {order.itemType === 'reservation' ? <CalendarDays size={12} /> : isDineIn ? <Store size={12} /> : <ShoppingBag size={12} />}
+                          {order.itemType === 'reservation' ? (tableName ? `Đặt bàn ${tableName}` : 'Đặt bàn') : isDineIn ? (tableName ? `Bàn ${tableName}` : 'Tại bàn') : 'Mang đi'}
                         </span>
                       </td>
 
@@ -560,7 +626,7 @@ export default function OrdersHistory() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        {getStatusBadge(order.status)}
+                        {getStatusBadge(order.status, order.itemType)}
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
@@ -591,9 +657,9 @@ export default function OrdersHistory() {
             {/* Modal Header */}
             <div className="p-5 border-b border-[#E8DED5] flex justify-between items-center bg-[#FAF7F3]">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-[#D67D3E]">Chi tiết hóa đơn</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#D67D3E]">{selectedOrder.itemType === 'reservation' ? 'Chi tiết đặt bàn' : 'Chi tiết hóa đơn'}</span>
                 <h3 className="text-2xl font-black text-[#543310] mt-0.5">
-                  #{selectedOrder.order_code || (selectedOrder.id ? 'ORD-' + selectedOrder.id.slice(0, 6).toUpperCase() : '')}
+                  #{selectedOrder.order_code || selectedOrder.reservation_code || (selectedOrder.id ? (selectedOrder.itemType === 'reservation' ? 'RES-' : 'ORD-') + selectedOrder.id.slice(0, 6).toUpperCase() : '')}
                 </h3>
               </div>
               <button
@@ -610,66 +676,100 @@ export default function OrdersHistory() {
               <div className="bg-[#FAF7F3] border border-[#E8DED5] p-4 rounded-xl space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-gray-500">Trạng thái:</span>
-                  {getStatusBadge(selectedOrder.status)}
+                  {getStatusBadge(selectedOrder.status, selectedOrder.itemType)}
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-gray-500">Thời gian tạo:</span>
-                  <span className="font-semibold text-[#543310]">{new Date(selectedOrder.created_at).toLocaleString('vi-VN')}</span>
+                  <span className="font-semibold text-[#543310]">{new Date(selectedOrder.created_at || selectedOrder.reservation_time || 0).toLocaleString('vi-VN')}</span>
                 </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-gray-500">Hình thức phục vụ:</span>
-                  <span className="font-bold text-[#D67D3E] uppercase">
-                    {selectedOrder.order_type === 'DINE_IN' 
-                      ? (selectedOrder.tables?.table_code || selectedOrder.table_name ? `Tại bàn (${selectedOrder.tables?.table_code || selectedOrder.table_name})` : 'Tại bàn')
-                      : 'Mang đi / Delivery'}
-                  </span>
-                </div>
+                {selectedOrder.itemType === 'reservation' ? (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-gray-500">Hình thức:</span>
+                    <span className="font-bold text-[#D67D3E] uppercase">Đặt bàn (Cọc)</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-gray-500">Hình thức phục vụ:</span>
+                    <span className="font-bold text-[#D67D3E] uppercase">
+                      {selectedOrder.order_type === 'DINE_IN' 
+                        ? (selectedOrder.tables?.table_code || selectedOrder.table_name ? `Tại bàn (${selectedOrder.tables?.table_code || selectedOrder.table_name})` : 'Tại bàn')
+                        : 'Mang đi / Delivery'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Items List */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Danh sách món ăn ({ (selectedOrder.order_items || selectedOrder.items || []).length })</h4>
-                <div className="space-y-2">
-                  {(selectedOrder.order_items || selectedOrder.items || []).map((it: any, idx: number) => {
-                    const price = Number(it.unit_price || it.price || 0);
-                    const qty = Number(it.quantity || 1);
-                    const itemTotal = price * qty;
-
-                    return (
-                      <div key={it.id || idx} className="p-3 bg-white border border-[#E8DED5] rounded-xl flex justify-between items-start">
-                        <div>
-                          <p className="font-bold text-sm text-[#543310]">{qty}x {it.product_name || it.name || 'Món'}</p>
-                          {it.modifiers && Object.keys(it.modifiers).length > 0 && (
-                            <p className="text-xs text-gray-500 font-semibold mt-0.5">
-                              {typeof it.modifiers === 'object' ? Object.values(it.modifiers).join(', ') : String(it.modifiers)}
-                            </p>
-                          )}
-                          {it.note && (
-                            <p className="text-xs text-[#D67D3E] font-bold italic mt-0.5">Ghi chú: {it.note}</p>
-                          )}
-                        </div>
-                        <p className="font-bold text-sm text-[#543310]">{formatPrice(itemTotal)}</p>
+              {/* Items List or Reservation Details */}
+              {selectedOrder.itemType === 'reservation' ? (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Thông tin khách hàng</h4>
+                    <div className="bg-white border border-[#E8DED5] rounded-xl p-4 space-y-2 text-sm text-[#543310] font-semibold">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Tên:</span>
+                        <span>{selectedOrder.customer_name || 'Không có'}</span>
                       </div>
-                    );
-                  })}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">SĐT:</span>
+                        <span>{selectedOrder.customer_phone || 'Không có'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Số khách:</span>
+                        <span>{selectedOrder.guest_count || 0} người</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Danh sách món ăn ({ (selectedOrder.order_items || selectedOrder.items || []).length })</h4>
+                  <div className="space-y-2">
+                    {(selectedOrder.order_items || selectedOrder.items || []).map((it: any, idx: number) => {
+                      const price = Number(it.unit_price || it.price || 0);
+                      const qty = Number(it.quantity || 1);
+                      const itemTotal = price * qty;
+
+                      return (
+                        <div key={it.id || idx} className="p-3 bg-white border border-[#E8DED5] rounded-xl flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-sm text-[#543310]">{qty}x {it.product_name || it.name || 'Món'}</p>
+                            {it.modifiers && Object.keys(it.modifiers).length > 0 && (
+                              <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                                {typeof it.modifiers === 'object' ? Object.values(it.modifiers).join(', ') : String(it.modifiers)}
+                              </p>
+                            )}
+                            {it.note && (
+                              <p className="text-xs text-[#D67D3E] font-bold italic mt-0.5">Ghi chú: {it.note}</p>
+                            )}
+                          </div>
+                          <p className="font-bold text-sm text-[#543310]">{formatPrice(itemTotal)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Payment Summary */}
               <div className="border-t border-[#E8DED5] pt-4 space-y-2 text-sm">
-                <div className="flex justify-between text-gray-600 font-medium">
-                  <span>Tạm tính:</span>
-                  <span>{formatPrice(Number(selectedOrder.subtotal || selectedOrder.total_amount || selectedOrder.final_amount || 0))}</span>
-                </div>
-                {Number(selectedOrder.discount_amount) > 0 && (
-                  <div className="flex justify-between text-[#237A57] font-semibold">
-                    <span>Chiết khấu / Giảm giá:</span>
-                    <span>-{formatPrice(Number(selectedOrder.discount_amount))}</span>
-                  </div>
+                {selectedOrder.itemType !== 'reservation' && (
+                  <>
+                    <div className="flex justify-between text-gray-600 font-medium">
+                      <span>Tạm tính:</span>
+                      <span>{formatPrice(Number(selectedOrder.subtotal || selectedOrder.total_amount || selectedOrder.final_amount || 0))}</span>
+                    </div>
+                    {Number(selectedOrder.discount_amount) > 0 && (
+                      <div className="flex justify-between text-[#237A57] font-semibold">
+                        <span>Chiết khấu / Giảm giá:</span>
+                        <span>-{formatPrice(Number(selectedOrder.discount_amount))}</span>
+                      </div>
+                    )}
+                  </>
                 )}
                 <div className="flex justify-between items-center text-lg font-black text-[#543310] pt-2 border-t border-gray-100">
-                  <span>TỔNG THANH TOÁN:</span>
-                  <span className="text-[#D67D3E]">{formatPrice(Number(selectedOrder.final_amount || selectedOrder.total_amount || selectedOrder.subtotal || 0))}</span>
+                  <span>{selectedOrder.itemType === 'reservation' ? 'TỔNG TIỀN CỌC:' : 'TỔNG THANH TOÁN:'}</span>
+                  <span className="text-[#D67D3E]">{formatPrice(Number(selectedOrder.final_amount || selectedOrder.total_amount || selectedOrder.subtotal || selectedOrder.deposit_amount || 0))}</span>
                 </div>
                 {selectedOrder.payment_method && (
                   <div className="flex justify-between text-xs text-gray-500 font-semibold pt-1">
@@ -682,16 +782,18 @@ export default function OrdersHistory() {
 
             {/* Modal Footer Actions */}
             <div className="p-5 border-t border-[#E8DED5] bg-[#FAF7F3] flex gap-3">
-              <button
-                onClick={() => handlePrintReceipt(selectedOrder)}
-                className="flex-1 py-3 bg-[#543310] text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-black transition"
-              >
-                <Printer size={18} />
-                In lại Hóa đơn
-              </button>
+              {selectedOrder.itemType !== 'reservation' && (
+                <button
+                  onClick={() => handlePrintReceipt(selectedOrder)}
+                  className="flex-1 py-3 bg-[#543310] text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-black transition"
+                >
+                  <Printer size={18} />
+                  In lại Hóa đơn
+                </button>
+              )}
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="px-5 py-3 bg-white border border-[#E8DED5] text-[#543310] rounded-xl font-bold hover:bg-gray-100 transition"
+                className="px-5 py-3 bg-white border border-[#E8DED5] text-[#543310] rounded-xl font-bold hover:bg-gray-100 transition flex-1 sm:flex-none sm:w-[120px]"
               >
                 Đóng
               </button>

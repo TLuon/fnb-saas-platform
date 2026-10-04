@@ -255,6 +255,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.server.to(`kds:${branchId}`).emit('kds_item_status_changed', payload);
   }
 
+  emitNewOrder(branchId: string, payload: any) {
+    this.server.to(`kds:${branchId}`).emit('new_order', payload);
+  }
+
   /** REALTIME_EVENTS.md #2.6 — support_ticket_urgent_created */
   emitSupportTicketUrgent(tenantId: string, payload: any) {
     this.server.to(`support:${tenantId}`).emit('support_ticket_urgent_created', payload);

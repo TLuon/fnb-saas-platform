@@ -138,7 +138,7 @@ export class ReservationService implements OnModuleInit {
 
     let resTime = new Date().toISOString();
     if (dto.booking_date && dto.booking_time) {
-      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00`).toISOString();
+      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00+07:00`).toISOString();
     }
 
     // 2. Try Redis lock first, fallback to DB-only if Redis is down
@@ -267,7 +267,7 @@ export class ReservationService implements OnModuleInit {
 
     let resTime = new Date().toISOString();
     if (dto.booking_date && dto.booking_time) {
-      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00`).toISOString();
+      resTime = new Date(`${dto.booking_date}T${dto.booking_time}:00+07:00`).toISOString();
     }
 
     const customerName = dto.customer_name || 'Khách qua điện thoại';
@@ -688,6 +688,51 @@ export class ReservationService implements OnModuleInit {
       this.realtimeGateway?.emitTableStatusChanged?.(res.table_id, 'RESERVED');
     }
 
+    // 6. Record the deposit as a transaction (order)
+    const depositAmount = Number(res.deposit_amount || 0);
+    if (depositAmount > 0) {
+      // Find branch_id for the table
+      let branchId = user.branch_id;
+      if (!branchId) {
+        const { data: tableData } = await supabaseAdmin
+          .from('tables')
+          .select('floor_id, floors(branch_id)')
+          .eq('id', res.table_id)
+          .single();
+        branchId = (tableData?.floors as any)?.branch_id || user.branch_id;
+      }
+
+      // Find active shift
+      let shiftId = null;
+      if (branchId) {
+        const { data: shiftData } = await supabaseAdmin
+          .from('shifts')
+          .select('id')
+          .eq('branch_id', branchId)
+          .eq('status', 'OPEN')
+          .maybeSingle();
+        shiftId = shiftData?.id || null;
+      }
+
+      const orderCode = 'DEP_' + code.substring(0, 6) + Math.random().toString(36).substring(2, 4).toUpperCase();
+      
+      await supabaseAdmin.from('orders').insert({
+        tenant_id: user.tenant_id,
+        branch_id: branchId,
+        shift_id: shiftId,
+        table_id: res.table_id,
+        customer_id: res.customer_id,
+        order_code: orderCode,
+        order_type: 'DINE_IN',
+        status: 'COMPLETED',
+        subtotal: depositAmount,
+        final_amount: depositAmount,
+        payment_method: 'TRANSFER', // Deposits are typically transfer
+        created_by: user.sub,
+        notes: `Thu tiền cọc đặt bàn #${code}`
+      });
+    }
+
     const confirmPayload = {
       status: 'PAID',
       type: 'DEPOSIT_CONFIRMED',
@@ -915,28 +960,55 @@ export class ReservationService implements OnModuleInit {
 
     const { data: customers, error: custErr } = await supabaseAdmin
       .from('customers')
-      .select('id')
+      .select('id, phone')
       .eq('auth_user_id', user.sub);
 
     if (custErr) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', custErr.message);
-    if (!customers || customers.length === 0) return [];
+    
+    const customerIds = customers?.map(c => c.id).filter(Boolean) || [];
+    const customerPhones = customers?.map(c => c.phone).filter(Boolean) || [];
+    
+    // Fallback: Check if we have their phone directly from user object
+    if ((user as any).phone && !customerPhones.includes((user as any).phone)) {
+       customerPhones.push((user as any).phone);
+    }
 
-    const customerIds = customers.map(c => c.id);
+    if (customerIds.length === 0 && customerPhones.length === 0) return [];
 
-    const { data, error } = await supabaseAdmin
-      .from('reservations')
-      .select(`
+    let allReservations: any[] = [];
+    const selectStr = `
         *,
         table:tables(table_code, name, floor:floors(name)),
         tenant:tenants(name)
-      `)
-      .in('customer_id', customerIds)
-      .order('created_at', { ascending: false });
+    `;
 
-    if (error) {
-      throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);
+    if (customerIds.length > 0) {
+      const { data: dataById, error: err1 } = await supabaseAdmin
+        .from('reservations')
+        .select(selectStr)
+        .in('customer_id', customerIds);
+      
+      if (err1) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', err1.message);
+      if (dataById) allReservations.push(...dataById);
     }
-    return data ?? [];
+
+    if (customerPhones.length > 0) {
+      const { data: dataByPhone, error: err2 } = await supabaseAdmin
+        .from('reservations')
+        .select(selectStr)
+        .in('customer_phone', customerPhones);
+      
+      if (err2) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', err2.message);
+      if (dataByPhone) allReservations.push(...dataByPhone);
+    }
+
+    // Deduplicate by reservation_code or id
+    const uniqueReservations = Array.from(new Map(allReservations.map(r => [r.id, r])).values());
+    
+    // Sort by created_at descending
+    uniqueReservations.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return uniqueReservations;
   }
 
   /**

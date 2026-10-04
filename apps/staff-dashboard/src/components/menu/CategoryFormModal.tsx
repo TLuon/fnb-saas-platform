@@ -5,12 +5,13 @@ import type { Category } from '../../store/menuStore';
 interface CategoryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string }) => Promise<void>;
+  onSubmit: (data: { name: string; kitchen_station: 'BAR' | 'KITCHEN' }) => Promise<void>;
   initialData?: Category | null;
 }
 
 export function CategoryFormModal({ isOpen, onClose, onSubmit, initialData }: CategoryFormModalProps) {
   const [name, setName] = useState('');
+  const [kitchenStation, setKitchenStation] = useState<'BAR' | 'KITCHEN'>('KITCHEN');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,8 +19,10 @@ export function CategoryFormModal({ isOpen, onClose, onSubmit, initialData }: Ca
     if (isOpen) {
       if (initialData) {
         setName(initialData.name);
+        setKitchenStation(initialData.kitchen_station || 'KITCHEN');
       } else {
         setName('');
+        setKitchenStation('KITCHEN');
       }
       setError('');
     }
@@ -37,7 +40,7 @@ export function CategoryFormModal({ isOpen, onClose, onSubmit, initialData }: Ca
     try {
       setLoading(true);
       setError('');
-      await onSubmit({ name: name.trim() });
+      await onSubmit({ name: name.trim(), kitchen_station: kitchenStation });
       onClose();
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra');
@@ -76,6 +79,36 @@ export function CategoryFormModal({ isOpen, onClose, onSubmit, initialData }: Ca
               disabled={loading}
               autoFocus
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-1">Khu vực chế biến *</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="kitchen_station"
+                  value="KITCHEN"
+                  checked={kitchenStation === 'KITCHEN'}
+                  onChange={() => setKitchenStation('KITCHEN')}
+                  className="w-4 h-4 text-[var(--color-brand-primary)] border-gray-300 focus:ring-[var(--color-brand-secondary)]"
+                  disabled={loading}
+                />
+                <span className="text-sm font-medium text-gray-700">Bếp (KITCHEN)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="kitchen_station"
+                  value="BAR"
+                  checked={kitchenStation === 'BAR'}
+                  onChange={() => setKitchenStation('BAR')}
+                  className="w-4 h-4 text-[var(--color-brand-primary)] border-gray-300 focus:ring-[var(--color-brand-secondary)]"
+                  disabled={loading}
+                />
+                <span className="text-sm font-medium text-gray-700">Quầy Pha Chế (BAR)</span>
+              </label>
+            </div>
           </div>
 
           <div className="pt-4 border-t border-gray-100 flex justify-end gap-3 mt-6">

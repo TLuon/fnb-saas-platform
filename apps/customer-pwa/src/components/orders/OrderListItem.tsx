@@ -57,7 +57,7 @@ export function OrderListItem({ order }: OrderListItemProps) {
   const code = isReservation ? order.reservation_code : (order.order_code || order.order_number || ('ORD-' + order.id?.slice(0, 6).toUpperCase()));
   const locationText = isReservation 
     ? `Đặt bàn ${order.table?.table_code || order.table?.name || order.table_id || ''}`
-    : (isDineIn ? (order.tables?.table_code || order.table_name ? `Bàn ${order.tables?.table_code || order.table_name}` : 'Tại bàn') : 'Mang đi');
+    : (isDineIn ? (order.tables?.table_code || order.tables?.name || order.table_name ? `Bàn ${order.tables?.table_code || order.tables?.name || order.table_name}` : 'Tại bàn') : 'Mang đi');
 
   return (
     <Link href={href} className="block bg-[#FFFFFF] p-4 rounded-xl shadow-sm border border-[#E8DED5] mb-4 hover:border-[#D67D3E] transition-colors">

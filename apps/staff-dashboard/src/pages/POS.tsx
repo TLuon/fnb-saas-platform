@@ -196,6 +196,11 @@ const POS: React.FC = () => {
               );
               return { ...order, order_items: newItems, items: newItems };
             }));
+          client.socket.on('new_order', (data: any) => {
+            if (data.order_type === 'TAKEAWAY') {
+              fetchTakeawayOrders();
+              setToastConfig({ id: Date.now(), text: `🔔 Có đơn Mang đi / Online mới (Mã: ${data.order_code}), hãy kiểm tra!`, blinkCount: 0, isVisible: true });
+            }
           });
 
           client.socket.on('connect', () => {

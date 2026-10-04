@@ -4,6 +4,7 @@ import { apiClient } from '@fnb/utils';
 export interface Category {
   id: string;
   name: string;
+  kitchen_station?: 'BAR' | 'KITCHEN';
 }
 
 export interface Product {
@@ -22,7 +23,7 @@ interface MenuStore {
   products: Product[];
   fetchMenu: () => Promise<void>;
   addCategory: (c: Omit<Category, 'id'>) => Promise<void>;
-  updateCategory: (id: string, name: string) => Promise<void>;
+  updateCategory: (id: string, data: { name?: string; kitchen_station?: 'BAR' | 'KITCHEN' }) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   addProduct: (p: Omit<Product, 'id'>) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -49,6 +50,7 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
         (c: any) => ({
           id: c.id,
           name: c.name,
+          kitchen_station: c.kitchen_station,
         }),
       );
 
@@ -107,10 +109,10 @@ export const useMenuStore = create<MenuStore>((set, get) => ({
     set((state) => ({ categories: [...state.categories, finalCat] }));
   },
 
-  updateCategory: async (id, name) => {
-    await apiClient.patch(`/categories/${id}`, { name });
+  updateCategory: async (id, data) => {
+    await apiClient.patch(`/categories/${id}`, data);
     set((state) => ({
-      categories: state.categories.map((c) => (c.id === id ? { ...c, name } : c)),
+      categories: state.categories.map((c) => (c.id === id ? { ...c, ...data } : c)),
     }));
   },
 
