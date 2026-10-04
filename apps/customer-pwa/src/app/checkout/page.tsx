@@ -38,7 +38,7 @@ export default function CheckoutPage() {
   const [orderMessage, setOrderMessage] = useState<string>('');
 
   useEffect(() => {
-    if (!orderId || paymentStatus !== 'SUCCESS') return;
+    if (!orderId) return;
 
     let client: RealtimeClient | null = null;
 
@@ -75,25 +75,30 @@ export default function CheckoutPage() {
     initSocket();
 
     let pollInterval: NodeJS.Timeout;
-    if (paymentStatus === 'SUCCESS') {
-      pollInterval = setInterval(async () => {
-        try {
-          const res: any = await apiClient.get(`/orders/${orderId}?_t=${Date.now()}`);
-          const ord = res?.data?.data || res?.data || res;
-          if (ord?.status === 'IN_PROGRESS' || ord?.status === 'COMPLETED') {
-            setOrderConfirmed(true);
-            setOrderMessage('Đơn hàng đã được xác nhận.');
-            clearInterval(pollInterval);
-          } else if (ord?.status === 'CANCELLED') {
-            setOrderConfirmed(false);
-            setOrderMessage('Đơn hàng đã bị huỷ.');
-            clearInterval(pollInterval);
-          }
-        } catch (err) {
-          // ignore
+
+    const checkStatus = async () => {
+      try {
+        const res: any = await apiClient.get(`/orders/${orderId}?_t=${Date.now()}`);
+        const ord = unwrapOrderDetails(res);
+        console.log('Polling order status:', ord?.status);
+        if (ord) setOrderData(ord); // UPDATE STATE SO UI RE-RENDERS
+        
+        if (ord?.status === 'IN_PROGRESS' || ord?.status === 'COMPLETED') {
+          setOrderConfirmed(true);
+          setOrderMessage('Đơn hàng đã được xác nhận.');
+          if (pollInterval) clearInterval(pollInterval);
+        } else if (ord?.status === 'CANCELLED') {
+          setOrderConfirmed(false);
+          setOrderMessage('Đơn hàng đã bị huỷ.');
+          if (pollInterval) clearInterval(pollInterval);
         }
-      }, 3000);
-    }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    };
+
+    checkStatus(); // Check immediately
+    pollInterval = setInterval(checkStatus, 3000); // Then poll
 
     return () => {
       if (client) client.disconnect();
@@ -346,6 +351,10 @@ export default function CheckoutPage() {
             {isProcessing ? 'Đang gửi thông tin...' : paymentMethod === 'VIETQR' ? `Tôi đã chuyển khoản (${formatPrice(payableAmount)})` : paymentMethod === 'CASH' ? `Xác nhận thanh toán tại quầy (${formatPrice(payableAmount)})` : 'Xác nhận thanh toán'}
           </button>
         )}
+
+        <div className="text-center mt-4 text-sm text-gray-500 font-mono">
+          [DEBUG] Raw Order Status: {orderData?.status} | Modal isOpen: {orderConfirmed !== null ? 'true' : 'false'}
+        </div>
 
         {paymentStatus === 'SUCCESS' && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4 shadow-sm animate-fade-in">
