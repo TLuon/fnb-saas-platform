@@ -364,14 +364,12 @@ const LiveFloorMap: React.FC = () => {
                         </span>
                       </div>
 
-                      {(reservation.booking_date || reservation.booking_time) && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-[#6B625B]">Khung giờ đặt:</span>
-                          <span className="font-bold text-[#543310]">
-                            {reservation.booking_time || '18:00'} ({reservation.booking_date || 'Hôm nay'})
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-[#6B625B]">Khung giờ đặt:</span>
+                        <span className="font-bold text-[#543310]">
+                          {reservation.booking_time || new Date(reservation.reservation_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ({reservation.booking_date || new Date(reservation.reservation_time).toLocaleDateString('vi-VN')})
+                        </span>
+                      </div>
 
                       {reservation.guest_count > 0 && (
                         <div className="flex justify-between items-center">
