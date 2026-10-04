@@ -940,10 +940,10 @@ export class ReservationService implements OnModuleInit {
       .eq('tenant_id', user.tenant_id);
 
     if (query.status) {
-      q = q.eq('status', query.status);
       if (query.status === 'PENDING') {
-        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-        q = q.gte('reservation_time', fifteenMinsAgo);
+        q = q.in('status', ['PENDING', 'PENDING_LOCK']);
+      } else {
+        q = q.eq('status', query.status);
       }
     }
     if (query.table_id) {

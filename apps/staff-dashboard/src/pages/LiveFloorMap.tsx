@@ -147,7 +147,7 @@ const LiveFloorMap: React.FC = () => {
       return;
     }
 
-    apiClient.get(`/api/v1/floors?branch_id=${branchId}`)
+    apiClient.get(`/floors?branch_id=${branchId}`)
       .then((res: any) => {
         const floorList = res.data?.data || res.data || res || [];
         setFloors(floorList);

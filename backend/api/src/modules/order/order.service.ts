@@ -835,12 +835,14 @@ export class OrderService {
     if (user.role_app === 'CUSTOMER') {
       queryBuilder = queryBuilder.eq('customer_id', customerId);
     } else if (user.role_app === 'STAFF') {
-      const targetBranchId = query.branch_id || user.branch_id;
-      if (targetBranchId) {
-        queryBuilder = queryBuilder.or(`branch_id.eq.${targetBranchId},branch_id.is.null`);
+      if (query.order_type !== 'TAKEAWAY') {
+        const targetBranchId = query.branch_id || user.branch_id;
+        if (targetBranchId) {
+          queryBuilder = queryBuilder.or(`branch_id.eq.${targetBranchId},branch_id.is.null`);
+        }
       }
     } else if (user.role_app === 'OWNER') {
-      if (query.branch_id) {
+      if (query.order_type !== 'TAKEAWAY' && query.branch_id) {
         queryBuilder = queryBuilder.or(`branch_id.eq.${query.branch_id},branch_id.is.null`);
       }
     }
