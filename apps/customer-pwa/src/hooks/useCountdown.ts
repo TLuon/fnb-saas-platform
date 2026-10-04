@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { CountdownTimer } from '@fnb/utils';
 
 export function useCountdown(targetTimestamp: number | null, onComplete: () => void) {
   const [remaining, setRemaining] = useState(0);
@@ -15,26 +14,29 @@ export function useCountdown(targetTimestamp: number | null, onComplete: () => v
       return;
     }
 
-    const diffSeconds = Math.max(0, Math.floor((targetTimestamp - Date.now()) / 1000));
-    setRemaining(diffSeconds);
+    const calculateRemaining = () => {
+      return Math.max(0, Math.ceil((targetTimestamp - Date.now()) / 1000));
+    };
 
-    if (diffSeconds <= 0) {
+    const initial = calculateRemaining();
+    setRemaining(initial);
+
+    if (initial <= 0) {
       onCompleteRef.current();
       return;
     }
 
-    const timer = new CountdownTimer(
-      diffSeconds,
-      (rem) => setRemaining(rem),
-      () => {
-        setRemaining(0);
+    const intervalId = setInterval(() => {
+      const current = calculateRemaining();
+      setRemaining(current);
+
+      if (current <= 0) {
+        clearInterval(intervalId);
         onCompleteRef.current();
       }
-    );
+    }, 500); // Check every 500ms to avoid skipping seconds visually
 
-    timer.start();
-
-    return () => timer.stop();
+    return () => clearInterval(intervalId);
   }, [targetTimestamp]);
 
   return remaining;
