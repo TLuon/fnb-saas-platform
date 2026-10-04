@@ -199,10 +199,22 @@ const POS: React.FC = () => {
           });
 
           client.socket.on('new_order', (data: any) => {
+            fetchTakeawayOrders();
             if (data.order_type === 'TAKEAWAY') {
-              fetchTakeawayOrders();
               setToastConfig({ id: Date.now(), text: `🔔 Có đơn Mang đi / Online mới (Mã: ${data.order_code}), hãy kiểm tra!`, blinkCount: 0, isVisible: true });
+            } else {
+              setToastConfig({ id: Date.now(), text: `🔔 Có đơn tại bàn mới (Mã: ${data.order_code})!`, blinkCount: 0, isVisible: true });
             }
+          });
+
+          client.socket.on('new_reservation', (_data: any) => {
+            fetchPendingReservations();
+            setToastConfig({ id: Date.now(), text: `🔔 Có lượt Đặt bàn mới! Hãy kiểm tra danh sách bàn chờ.`, blinkCount: 0, isVisible: true });
+          });
+
+          client.socket.on('table_status_changed', (_data: any) => {
+            fetchPendingReservations();
+            fetchTakeawayOrders();
           });
 
           client.socket.on('connect', () => {

@@ -458,7 +458,7 @@ export class OrderService {
     // 1. Check order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status, table_id, final_amount, subtotal, branch_id, shift_id, order_type, customers(auth_user_id)')
+      .select('id, order_code, status, table_id, final_amount, subtotal, branch_id, shift_id, order_type, customers(auth_user_id)')
       .eq('id', orderId)
       .single();
 
@@ -719,6 +719,15 @@ export class OrderService {
         status: targetStatus,
         message: msg,
       });
+      if (order.branch_id) {
+        this.realtimeGateway?.emitNewOrder?.(order.branch_id, {
+          order_id: orderId,
+          order_code: order.order_code,
+          order_type: order.order_type,
+          status: targetStatus,
+          message: 'Đơn hàng đã được thanh toán / cập nhật'
+        });
+      }
     }
 
     return { message: 'Đã thanh toán thành công' };

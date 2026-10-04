@@ -34,7 +34,14 @@ export function CheckoutButton({ isDisabled, itemCount, totalAmount, items, orde
       }
 
       // 1. Tạo order DINE_IN hoặc TAKEAWAY
-      const payload: any = { order_type: 'TAKEAWAY' };
+      const activeBranchId = typeof window !== 'undefined' 
+        ? (localStorage.getItem('active_branch_id') || process.env.NEXT_PUBLIC_BRANCH_ID) 
+        : process.env.NEXT_PUBLIC_BRANCH_ID;
+
+      const payload: any = { 
+        order_type: 'TAKEAWAY',
+        ...(activeBranchId ? { branch_id: activeBranchId } : {}),
+      };
       if (reservationCode) {
         payload.reservation_code = reservationCode;
         payload.order_type = 'DINE_IN';

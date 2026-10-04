@@ -117,7 +117,7 @@ export class ReservationService implements OnModuleInit {
     // 1. Check table status using supabaseAdmin (bypass RLS restriction on customer table updates)
     const { data: table, error } = await supabaseAdmin
       .from('tables')
-      .select('id, status')
+      .select('id, status, floor_id, floors(branch_id)')
       .eq('id', dto.table_id)
       .single();
 
@@ -128,6 +128,8 @@ export class ReservationService implements OnModuleInit {
     if (table.status !== 'AVAILABLE') {
       throw new AppException('ERR_2002_TABLE_LOCKED', 'Bàn không ở trạng thái AVAILABLE');
     }
+
+    const branchId = (table?.floors as any)?.branch_id || null;
 
     const redisClient = this.redisService.getClient();
     const lockKey = `lock:${user.tenant_id}:${dto.table_id}`;
@@ -251,6 +253,15 @@ export class ReservationService implements OnModuleInit {
     }
 
     this.realtimeGateway?.emitTableStatusChanged?.(dto.table_id, 'PENDING_LOCK');
+    if (branchId && this.realtimeGateway?.emitNewReservation) {
+      this.realtimeGateway.emitNewReservation(branchId, {
+        reservation_code: reservationCode,
+        table_id: dto.table_id,
+        customer_name: customerName,
+        deposit_amount: depositAmount,
+        status: 'PENDING',
+      });
+    }
 
     return {
       reservation_code: reservationCode,
