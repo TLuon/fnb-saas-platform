@@ -960,23 +960,42 @@ export class ReservationService implements OnModuleInit {
 
     const { data: customers, error: custErr } = await supabaseAdmin
       .from('customers')
-      .select('id')
+      .select('id, phone')
       .eq('auth_user_id', user.sub);
 
     if (custErr) throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', custErr.message);
-    if (!customers || customers.length === 0) return [];
+    
+    const customerIds = customers?.map(c => c.id).filter(Boolean) || [];
+    const customerPhones = customers?.map(c => c.phone).filter(Boolean) || [];
+    
+    // Fallback: Check if we have their phone directly from user object
+    if ((user as any).phone && !customerPhones.includes((user as any).phone)) {
+       customerPhones.push((user as any).phone);
+    }
 
-    const customerIds = customers.map(c => c.id);
+    if (customerIds.length === 0 && customerPhones.length === 0) return [];
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('reservations')
       .select(`
         *,
         table:tables(table_code, name, floor:floors(name)),
         tenant:tenants(name)
       `)
-      .in('customer_id', customerIds)
       .order('created_at', { ascending: false });
+
+    // Build the correct OR condition
+    if (customerIds.length > 0 && customerPhones.length > 0) {
+      query = query.or(`customer_id.in.(${customerIds.join(',')}),customer_phone.in.(${customerPhones.map(p => `"${p}"`).join(',')})`);
+    } else if (customerIds.length > 0) {
+      query = query.in('customer_id', customerIds);
+    } else if (customerPhones.length > 0) {
+      query = query.in('customer_phone', customerPhones);
+    } else {
+      return [];
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message);

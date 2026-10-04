@@ -805,7 +805,7 @@ export class OrderService {
 
     let queryBuilder = supabase
       .from('orders')
-      .select('*, order_items(*), tables(table_code)', { count: 'exact' })
+      .select('*, order_items(*), tables(table_code, name)', { count: 'exact' })
       .eq('tenant_id', user.tenant_id);
 
     // Role scoping

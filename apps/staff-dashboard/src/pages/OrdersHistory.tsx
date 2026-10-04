@@ -515,8 +515,7 @@ export default function OrdersHistory() {
                   const items = order.order_items || order.items || [];
                   const totalAmt = Number(order.final_amount || order.total_amount || order.subtotal || 0);
                   const isDineIn = order.order_type === 'DINE_IN';
-                  const tableName = order.tables?.table_code || order.table_name;
-
+                  const tableName = order.tables?.table_code || order.tables?.name || order.table_name;
                   return (
                     <tr 
                       key={order.id} 
