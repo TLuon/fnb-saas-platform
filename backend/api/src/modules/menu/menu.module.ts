@@ -1,0 +1,1 @@
+﻿import { Module } from '@nestjs/common';import { MenuController } from './menu.controller.js';import { MenuService } from './menu.service.js';import { CloudinaryModule } from '../../common/cloudinary/cloudinary.module.js';@Module({  imports: [CloudinaryModule],  controllers: [MenuController],  providers: [MenuService],})export class MenuModule {}

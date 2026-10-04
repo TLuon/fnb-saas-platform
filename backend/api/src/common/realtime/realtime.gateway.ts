@@ -1,0 +1,323 @@
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  OnGatewayInit,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+} from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
+import { RoleApp } from '../types/auth.types.js';
+import { RedisService } from '../redis.service.js';
+
+interface SupabaseJwtPayload extends JWTPayload {
+  role_app?: RoleApp;
+  tenant_id?: string | null;
+  branch_id?: string | null;
+  email?: string;
+}
+
+@Injectable()
+@WebSocketGateway({
+  cors: {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
+      if (
+        !origin ||
+        allowedOrigins.includes('*') ||
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.onrender.com') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1')
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS not allowed for this origin'), false);
+      }
+    },
+    credentials: true,
+  },
+})
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+  @WebSocketServer()
+  server: Server;
+
+  private readonly logger = new Logger(RealtimeGateway.name);
+  private jwks: ReturnType<typeof createRemoteJWKSet>;
+  private issuer: string;
+
+  constructor(
+    private readonly configService: ConfigService,
+    @Optional() private readonly redisService?: RedisService,
+  ) {}
+
+  afterInit(_server: Server) {
+    const supabaseUrl = this.configService.get<string>('supabase.url') ?? '';
+    this.issuer = this.configService.get<string>('supabase.jwtIssuer') ?? `${supabaseUrl}/auth/v1`;
+    this.jwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
+    this.logger.log('RealtimeGateway initialized');
+  }
+
+  async handleConnection(client: Socket) {
+    try {
+      const token = this.extractToken(client);
+      if (!token) {
+        // Allow guest connection, they can only join specific public rooms like order tracking
+        this.logger.log(`Guest client connected: ${client.id}`);
+        return;
+      }
+
+      const result = await jwtVerify(token, this.jwks, { issuer: this.issuer });
+      const payload = result.payload as SupabaseJwtPayload;
+
+      if (!payload.role_app || !payload.sub || !payload.tenant_id) {
+        client.disconnect();
+        return;
+      }
+
+      // Lưu trữ user info để có thể lấy ra trong các subscribeMessage nếu cần
+      (client as any).user = {
+        sub: payload.sub,
+        role_app: payload.role_app,
+        tenant_id: payload.tenant_id,
+        branch_id: payload.branch_id,
+      };
+
+      // Room isolation: kds:{branch_id} (Dựa theo REALTIME_EVENTS.md)
+      // KDS chỉ phục vụ staff/owner
+      if ((payload.role_app === 'STAFF' || payload.role_app === 'OWNER') && payload.branch_id) {
+        const kdsRoom = `kds:${payload.branch_id}`;
+        client.join(kdsRoom);
+        this.logger.log(`Client ${client.id} joined ${kdsRoom}`);
+      }
+
+      // Room: support:{tenant_id} — REALTIME_EVENTS.md mục 1
+      if ((payload.role_app === 'SUPPORT' || payload.role_app === 'OWNER') && payload.tenant_id) {
+        const supportRoom = `support:${payload.tenant_id}`;
+        client.join(supportRoom);
+        this.logger.log(`Client ${client.id} joined ${supportRoom}`);
+      }
+
+      // Room: customer:{user_id}
+      if (payload.role_app === 'CUSTOMER' && payload.sub) {
+        const customerRoom = `customer:${payload.sub}`;
+        client.join(customerRoom);
+        this.logger.log(`Client ${client.id} joined ${customerRoom}`);
+      }
+    } catch (err: any) {
+      this.logger.error(`WebSocket Connection error: ${err.message}`);
+      client.disconnect();
+    }
+  }
+
+  handleDisconnect(client: Socket) {
+    this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  /**
+   * ISSUE 2 FIX — join_group_order handler (server-side)
+   *
+   * Client emit: socket.emit('join_group_order', { table_id: '<uuid>' })
+   * Server xác minh:
+   *   1. Socket đã xác thực JWT (client.user được set trong handleConnection)
+   *   2. tenant_id lấy từ JWT — không tin payload client gửi
+   *   3. Client chỉ được join room thuộc tenant của mình
+   *
+   * Room name khớp chính xác với emitGroupOrderCartUpdated: group_order:{tenantId}:{tableId}
+   */
+  @SubscribeMessage('join_group_order')
+  async handleJoinGroupOrder(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { table_id: string }
+  ) {
+    const user = (client as any).user;
+
+    // Guard: socket phải đã xác thực (handleConnection set user)
+    if (!user || !user.tenant_id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const tableId = data?.table_id;
+    if (!tableId || typeof tableId !== 'string') {
+      client.emit('error', { message: 'table_id is required' });
+      return;
+    }
+
+    // NEW-004 Authorization:
+    // Kiểm tra session giỏ hàng của bàn có tồn tại trong Redis không.
+    // Nếu không có active session, từ chối tham gia để chống nghe lén tuỳ tiện cùng tenant.
+    if (this.redisService) {
+      try {
+        const redis = this.redisService.getClient();
+        const sessionKey = `session:${user.tenant_id}:${tableId}`;
+        const sessionExists = await redis.exists(sessionKey);
+        if (!sessionExists) {
+          client.emit('error', { message: 'Active group order session not found for this table' });
+          return;
+        }
+      } catch (err: any) {
+        this.logger.error(`Failed to verify group order session: ${err.message}`);
+      }
+    }
+
+    // tenant_id lấy từ JWT claim — client không thể inject tenant khác
+    const room = `group_order:${user.tenant_id}:${tableId}`;
+    client.join(room);
+    this.logger.log(`Client ${client.id} joined group order room ${room}`);
+
+    client.emit('joined_group_order', { room, table_id: tableId });
+  }
+
+  @SubscribeMessage('join_branch')
+  handleJoinBranch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { branch_id: string }
+  ) {
+    const user = (client as any).user;
+    if (!user || !user.tenant_id) return;
+
+    if (data?.branch_id && (user.role_app === 'STAFF' || user.role_app === 'OWNER')) {
+      const kdsRoom = `kds:${data.branch_id}`;
+      client.join(kdsRoom);
+      this.logger.log(`Client ${client.id} joined ${kdsRoom} via join_branch event`);
+    }
+  }
+
+  /**
+   * leave_group_order — cleanup khi client rời khỏi phòng nhóm chủ động
+   */
+  @SubscribeMessage('leave_group_order')
+  handleLeaveGroupOrder(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { table_id: string }
+  ) {
+    const user = (client as any).user;
+
+    if (!user || !user.tenant_id) return;
+
+    const tableId = data?.table_id;
+    if (!tableId || typeof tableId !== 'string') return;
+
+    const room = `group_order:${user.tenant_id}:${tableId}`;
+    client.leave(room);
+    this.logger.log(`Client ${client.id} left group order room ${room}`);
+  }
+
+  @SubscribeMessage('join_order_tracking')
+  handleJoinOrderTracking(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { order_id: string }
+  ) {
+    const orderId = data?.order_id;
+    if (!orderId || typeof orderId !== 'string') return;
+
+    const room = `order:${orderId}`;
+    client.join(room);
+    this.logger.log(`Client ${client.id} joined order tracking room ${room}`);
+  }
+
+  @SubscribeMessage('leave_order_tracking')
+  handleLeaveOrderTracking(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { order_id: string }
+  ) {
+    const orderId = data?.order_id;
+    if (!orderId || typeof orderId !== 'string') return;
+
+    const room = `order:${orderId}`;
+    client.leave(room);
+    this.logger.log(`Client ${client.id} left order tracking room ${room}`);
+  }
+
+  private extractToken(client: Socket): string | null {
+    const auth = client.handshake.auth?.token || client.handshake.headers?.authorization;
+    if (!auth) return null;
+    const parts = auth.split(' ');
+    return parts.length === 2 && parts[0] === 'Bearer' ? parts[1] : auth;
+  }
+
+  // Event emitters called from business services
+  emitKdsNewTicket(branchId: string, payload: any) {
+    this.server.to(`kds:${branchId}`).emit('kds_new_ticket', payload);
+  }
+
+  emitKdsItemStatusChanged(branchId: string, payload: any) {
+    this.server.to(`kds:${branchId}`).emit('kds_item_status_changed', payload);
+  }
+
+  /** REALTIME_EVENTS.md #2.6 — support_ticket_urgent_created */
+  emitSupportTicketUrgent(tenantId: string, payload: any) {
+    this.server.to(`support:${tenantId}`).emit('support_ticket_urgent_created', payload);
+  }
+
+  /** REALTIME_EVENTS.md #2.4 — group_order_cart_updated */
+  emitGroupOrderCartUpdated(tenantId: string, tableId: string, payload: any) {
+    this.server.to(`group_order:${tenantId}:${tableId}`).emit('group_order_cart_updated', payload);
+  }
+
+  /** REALTIME_EVENTS.md #2.5 — unmatched_transaction_created */
+  emitUnmatchedTransactionCreated(
+    tenantId: string,
+    payload: {
+      transaction_id: string;
+      amount: number;
+      raw_transfer_content?: string;
+    },
+  ) {
+    this.server.to(`support:${tenantId}`).emit('unmatched_transaction_created', payload);
+  }
+
+  /** Gap 3 / B2 Roadmap 3 — product_out_of_stock */
+  emitProductOutOfStock(
+    branchId: string | null,
+    payload: {
+      product_id?: string;
+      product_name?: string;
+      ingredient_id: string;
+      ingredient_name: string;
+      current_stock: number;
+      tenant_id?: string;
+      branch_id?: string | null;
+      timestamp?: string;
+    },
+  ) {
+    const data = {
+      ...payload,
+      timestamp: payload.timestamp ?? new Date().toISOString(),
+    };
+    if (branchId && this.server) {
+      this.server.to(`kds:${branchId}`).emit('product_out_of_stock', data);
+    }
+    if (payload.tenant_id && this.server) {
+      this.server.to(`support:${payload.tenant_id}`).emit('product_out_of_stock', data);
+    }
+  }
+
+  /** Emit table status change to everyone */
+  emitTableStatusChanged(tableId: string, status: string) {
+    if (this.server) {
+      this.server.emit('table_status_changed', { table_id: tableId, status });
+    }
+  }
+
+  emitOrderStatusChanged(orderId: string, customerId: string | null, payload: any) {
+    if (this.server) {
+      // Broadcast to specific order tracking room
+      this.server.to(`order:${orderId}`).emit('order_status_changed', payload);
+      // Broadcast to specific customer's private room
+      if (customerId) {
+        this.server.to(`customer:${customerId}`).emit('order_status_changed', payload);
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: #543310;
+  --color-brand-secondary: #D67D3E;
+  --color-brand-accent: #FED8B1;
+  --color-brand-neutral: #FAF7F3;
+  --color-brand-error: #B42318;
+  --color-brand-success: #237A57;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-serif: "Playfair Display", serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-brand-neutral);
+  color: #333;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hiệu ứng Răng cưa đục lỗ (Punch-hole) cho Vé/Ticket */
+.ticket-punch {
+  mask-image: radial-gradient(circle at 0 50%, transparent 12px, black 13px), radial-gradient(circle at 100% 50%, transparent 12px, black 13px);
+  mask-size: 51% 100%;
+  mask-repeat: no-repeat;
+  mask-position: left center, right center;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
