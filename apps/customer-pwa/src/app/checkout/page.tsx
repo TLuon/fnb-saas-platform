@@ -86,7 +86,7 @@ export default function CheckoutPage() {
         );
       } else {
         try {
-          await apiClient.post(`/orders/${orderId}/submit-kitchen`);
+          await apiClient.post(`/orders/${orderId}/confirm-payment`);
         } catch (subErr) {
           console.warn('Notice staff on checkout submission:', subErr);
         }

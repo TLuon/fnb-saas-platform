@@ -48,6 +48,16 @@ export class OrderController {
     return this.orderService.updateOrderItem(user, accessToken, orderId, itemId, dto);
   }
 
+  @Post(':id/confirm-payment')
+  @Roles('CUSTOMER', 'STAFF', 'OWNER')
+  async confirmCustomerPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentAccessToken() accessToken: string,
+    @Param('id') orderId: string,
+  ) {
+    return this.orderService.confirmCustomerPayment(user, accessToken, orderId);
+  }
+
   @Post(':id/submit-kitchen')
   @Roles('STAFF', 'CUSTOMER', 'OWNER')
   async submitKitchen(

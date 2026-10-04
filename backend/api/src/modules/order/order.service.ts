@@ -298,6 +298,37 @@ export class OrderService {
     return { message: 'Đã cập nhật món' };
   }
 
+  async confirmCustomerPayment(user: AuthenticatedUser, accessToken: string, orderId: string) {
+    const supabase = user.role_app === 'OWNER' ? this.supabaseService.admin() : this.supabaseService.forUser(accessToken);
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, order_code, status, branch_id, order_type')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
+    }
+
+    if (order.status !== 'PENDING') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order không ở trạng thái chờ thanh toán');
+    }
+
+    // Just notify staff that customer has paid
+    if (this.realtimeGateway) {
+      this.realtimeGateway.emitNewOrder?.(order.branch_id || null, {
+        order_id: order.id,
+        order_code: order.order_code,
+        order_type: order.order_type,
+        status: order.status,
+        message: 'Khách hàng vừa xác nhận thanh toán, vui lòng kiểm tra!',
+      });
+    }
+
+    return { message: 'Đã xác nhận thanh toán, chờ nhân viên duyệt' };
+  }
+
   async submitKitchen(user: AuthenticatedUser, accessToken: string, orderId: string) {
     const supabase = user.role_app === 'OWNER' ? this.supabaseService.admin() : this.supabaseService.forUser(accessToken);
 
