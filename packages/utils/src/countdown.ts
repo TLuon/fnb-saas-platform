@@ -1,5 +1,6 @@
 export class CountdownTimer {
   private remaining: number;
+  private targetTime: number = 0;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   
   private onTick: (remaining: number) => void;
@@ -16,10 +17,12 @@ export class CountdownTimer {
   }
 
   start() {
-    if (this.intervalId) return;
+    if (this.intervalId || this.remaining <= 0) return;
+    
+    this.targetTime = Date.now() + this.remaining * 1000;
     
     this.intervalId = setInterval(() => {
-      this.remaining -= 1;
+      this.remaining = Math.max(0, Math.floor((this.targetTime - Date.now()) / 1000));
       this.onTick(this.remaining);
       
       if (this.remaining <= 0) {
@@ -33,10 +36,14 @@ export class CountdownTimer {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+      this.remaining = Math.max(0, Math.floor((this.targetTime - Date.now()) / 1000));
     }
   }
 
   getRemaining() {
+    if (this.intervalId) {
+      return Math.max(0, Math.floor((this.targetTime - Date.now()) / 1000));
+    }
     return this.remaining;
   }
 }
