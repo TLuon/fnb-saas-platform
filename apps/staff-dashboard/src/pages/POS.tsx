@@ -196,6 +196,8 @@ const POS: React.FC = () => {
               );
               return { ...order, order_items: newItems, items: newItems };
             }));
+          });
+
           client.socket.on('new_order', (data: any) => {
             if (data.order_type === 'TAKEAWAY') {
               fetchTakeawayOrders();
