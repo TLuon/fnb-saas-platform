@@ -378,8 +378,8 @@ export class OrderService {
       throw new AppException('ERR_4001_ORDER_NOT_FOUND', 'Order không tồn tại');
     }
 
-    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
-      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã hoàn tất hoặc đã bị hủy');
+    if (order.status === 'CANCELLED') {
+      throw new AppException('ERR_4002_ORDER_ALREADY_COMPLETED', 'Order đã bị hủy');
     }
 
     // 2. Fetch existing order item to check existence & valid transition
