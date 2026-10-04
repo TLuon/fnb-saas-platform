@@ -940,29 +940,30 @@ export class ReservationService implements OnModuleInit {
       .eq('tenant_id', user.tenant_id);
 
     // Helper function to apply branch filter
-    const applyBranchFilter = async (branchId: string, baseQuery: any) => {
+    const applyBranchFilter = async (branchId: string, baseQuery: any): Promise<boolean> => {
       const { data: floors } = await supabaseAdmin.from('floors').select('id').eq('branch_id', branchId);
-      if (!floors || floors.length === 0) return null; // means empty
+      if (!floors || floors.length === 0) return false; // means empty
       const floorIds = floors.map(f => f.id);
       
       const { data: tables } = await supabaseAdmin.from('tables').select('id').in('floor_id', floorIds);
-      if (!tables || tables.length === 0) return null; // means empty
+      if (!tables || tables.length === 0) return false; // means empty
       const tableIds = tables.map(t => t.id);
       
-      return baseQuery.in('table_id', tableIds);
+      baseQuery.in('table_id', tableIds);
+      return true;
     };
 
     // Role scoping
     if (user.role_app === 'STAFF') {
       const targetBranchId = query.branch_id || user.branch_id;
       if (targetBranchId) {
-        q = await applyBranchFilter(targetBranchId, q);
-        if (!q) return { data: [], meta: { total: 0, page: 1, limit: 20 } };
+        const hasTables = await applyBranchFilter(targetBranchId, q);
+        if (!hasTables) return [];
       }
     } else if (user.role_app === 'OWNER') {
       if (query.branch_id) {
-        q = await applyBranchFilter(query.branch_id, q);
-        if (!q) return { data: [], meta: { total: 0, page: 1, limit: 20 } };
+        const hasTables = await applyBranchFilter(query.branch_id, q);
+        if (!hasTables) return [];
       }
     }
 

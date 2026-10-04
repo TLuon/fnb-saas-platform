@@ -55,6 +55,9 @@ export default function CheckoutPage() {
       await client.connect();
       
       if (client.socket) {
+        // Explicitly join the order tracking room
+        client.socket.emit('join_order_tracking', { order_id: orderId });
+
         // Auth user Id is from token payload, the backend automatically joins `customer:${authUserId}` on connection
         client.socket.on('order_status_changed', (data: any) => {
           if (data.status === 'IN_PROGRESS' || data.status === 'COMPLETED') {
