@@ -317,10 +317,14 @@ export class OrderService {
 
     // 3. Update order status if it's PENDING
     if (order.status === 'PENDING') {
-      await supabase
+      const supabaseAdmin = this.supabaseService.admin();
+      const { error: updateErr } = await supabaseAdmin
         .from('orders')
         .update({ status: 'IN_PROGRESS' })
         .eq('id', orderId);
+      if (updateErr) {
+        throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', 'Không thể cập nhật trạng thái đơn hàng: ' + updateErr.message);
+      }
     }
 
     // 4. Fire realtime event kds_new_ticket
@@ -890,7 +894,7 @@ export class OrderService {
       `)
       .eq('tenant_id', user.tenant_id)
       .eq('branch_id', branchId)
-      .in('status', ['IN_PROGRESS'])
+      .in('status', ['IN_PROGRESS', 'COMPLETED'])
       .gte('created_at', yesterday.toISOString())
       .order('created_at', { ascending: true });
 
