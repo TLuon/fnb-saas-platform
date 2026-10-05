@@ -6,12 +6,13 @@ interface ProductDetailModalProps {
   product: any;
   isOpen: boolean;
   onClose: () => void;
-  onAddToCart: (product: any, quantity: number, note: string) => void;
+  onAddToCart: (product: any, quantity: number, note: string, modifiers: string, price: number) => void;
 }
 
 export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: ProductDetailModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState('');
+  const [size, setSize] = useState('M');
   const { requireAuth } = useAuthGuard();
 
   if (!isOpen || !product) return null;
@@ -19,11 +20,15 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
   const handleClose = () => {
     setQuantity(1);
     setNote('');
+    setSize('M');
     onClose();
   };
 
+  const extraPrice = size === 'L' ? 10000 : 0;
+  const totalPrice = (product.base_price + extraPrice) * quantity;
+
   const handleAdd = () => {
-    onAddToCart(product, quantity, note);
+    onAddToCart(product, quantity, note, `Size ${size}`, product.base_price + extraPrice);
     handleClose();
   };
 
@@ -59,7 +64,7 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
             <h2 className="text-2xl font-bold text-[#543310] mb-2">{product.name}</h2>
             <p className="text-[#6B625B] text-sm leading-relaxed mb-4">{product.description}</p>
             <div className="text-xl font-bold text-[#D67D3E]">
-              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.base_price)}
+              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.base_price + extraPrice)}
             </div>
           </div>
 
@@ -69,13 +74,13 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
           <div className="mb-6">
             <h3 className="font-bold text-[#222222] mb-3">Tuỳ chọn thêm (Giả lập)</h3>
             <div className="space-y-3">
-              <label className="flex items-center gap-3">
-                <input type="radio" name="size" className="text-[#D67D3E] focus:ring-[#D67D3E]" defaultChecked />
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="radio" name="size" value="M" checked={size === 'M'} onChange={(e) => setSize(e.target.value)} className="text-[#D67D3E] focus:ring-[#D67D3E]" />
                 <span className="text-sm text-[#222222] flex-1">Size M</span>
                 <span className="text-sm text-[#6B625B]">+0đ</span>
               </label>
-              <label className="flex items-center gap-3">
-                <input type="radio" name="size" className="text-[#D67D3E] focus:ring-[#D67D3E]" />
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="radio" name="size" value="L" checked={size === 'L'} onChange={(e) => setSize(e.target.value)} className="text-[#D67D3E] focus:ring-[#D67D3E]" />
                 <span className="text-sm text-[#222222] flex-1">Size L</span>
                 <span className="text-sm text-[#6B625B]">+10.000đ</span>
               </label>
@@ -114,9 +119,11 @@ export function ProductDetailModal({ product, isOpen, onClose, onAddToCart }: Pr
           
           <button 
             onClick={handleAdd}
-            className="flex-1 h-12 bg-[#543310] text-white rounded-xl font-bold flex items-center justify-center hover:bg-[#D67D3E] transition-colors"
+            className="flex-1 h-12 bg-[#543310] text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#D67D3E] transition-colors"
           >
-            Thêm
+            <span>Thêm</span>
+            <span>-</span>
+            <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(totalPrice)}</span>
           </button>
         </div>
 

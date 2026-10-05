@@ -101,15 +101,15 @@ export default function MenuPage() {
     return result;
   }, [products, selectedCategoryId, searchQuery, outOfStockIds]);
 
-  const handleAddToCart = (product: CatalogProduct, quantity: number, note: string) => {
+  const handleAddToCart = (product: CatalogProduct, quantity: number, note: string, modifiers: string = '', price?: number) => {
     addItem({
       productId: product.id,
       name: product.name,
-      price: product.base_price,
+      price: price ?? product.base_price,
       quantity,
       note,
       imageUrl: product.image_url,
-      modifiers: ''
+      modifiers
     });
     showInfo(`Đã thêm ${quantity} x ${product.name} vào giỏ hàng`);
   };
