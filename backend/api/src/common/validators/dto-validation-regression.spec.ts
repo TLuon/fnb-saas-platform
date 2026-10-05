@@ -20,12 +20,12 @@ describe('DTO & Security Validation Regression Tests (Phase 3 & 4)', () => {
       expect(errors.length).toBe(0);
     });
 
-    it('should reject discount_percent less than 1 or greater than 100', async () => {
+    it('should reject discount_percent less than 1 or greater than 100000000', async () => {
       const dtoLow = plainToInstance(ResolveTicketDto, { discount_percent: 0 });
       const errorsLow = await validate(dtoLow);
       expect(errorsLow.some((e) => e.property === 'discount_percent')).toBe(true);
 
-      const dtoHigh = plainToInstance(ResolveTicketDto, { discount_percent: 101 });
+      const dtoHigh = plainToInstance(ResolveTicketDto, { discount_percent: 100000001 });
       const errorsHigh = await validate(dtoHigh);
       expect(errorsHigh.some((e) => e.property === 'discount_percent')).toBe(true);
     });

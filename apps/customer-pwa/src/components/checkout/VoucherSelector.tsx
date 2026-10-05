@@ -65,7 +65,9 @@ export function VoucherSelector({ selectedVoucher, onSelect }: VoucherSelectorPr
             <h3 className="font-bold text-[#543310] text-sm">Voucher / Khuyến mãi</h3>
             <p className="text-xs text-[#6B625B]">
               {selectedVoucher?.discount_percent
-                ? `Đã chọn voucher giảm ${selectedVoucher.discount_percent}%`
+                ? (selectedVoucher.discount_percent > 100 
+                    ? `Đã chọn voucher giảm ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(selectedVoucher.discount_percent)}`
+                    : `Đã chọn voucher giảm ${selectedVoucher.discount_percent}%`)
                 : 'Chọn voucher khả dụng'}
             </p>
           </div>
@@ -100,7 +102,11 @@ export function VoucherSelector({ selectedVoucher, onSelect }: VoucherSelectorPr
                   }}
                   className="flex w-full items-center justify-between rounded-md border border-[#E8DED5] px-3 py-3 text-left hover:border-[#D67D3E]"
                 >
-                  <span className="font-bold text-[#543310]">Giảm {voucher.discount_percent}%</span>
+                  <span className="font-bold text-[#543310]">
+                    {voucher.discount_percent > 100 
+                      ? `Giảm ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(voucher.discount_percent)}`
+                      : `Giảm ${voucher.discount_percent}%`}
+                  </span>
                   <span className="text-xs text-[#6B625B]">
                     {voucher.expires_at ? `HSD ${new Date(voucher.expires_at).toLocaleDateString('vi-VN')}` : 'Không giới hạn'}
                   </span>

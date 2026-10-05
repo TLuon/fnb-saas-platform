@@ -9,7 +9,8 @@ interface IssueVoucherModalProps {
 }
 
 export function IssueVoucherModal({ isOpen, onClose, onSubmit, customerName }: IssueVoucherModalProps) {
-  const [discountPercent, setDiscountPercent] = useState('');
+  const [discountValue, setDiscountValue] = useState('');
+  const [voucherType, setVoucherType] = useState<'PERCENT' | 'AMOUNT'>('PERCENT');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -18,20 +19,31 @@ export function IssueVoucherModal({ isOpen, onClose, onSubmit, customerName }: I
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const discount = Number(discountPercent);
-    if (!Number.isInteger(discount) || discount < 1 || discount > 100) {
-      setError('Mức giảm phải là số nguyên từ 1 đến 100');
+    const val = parseInt(discountValue, 10);
+    
+    if (isNaN(val) || val <= 0) {
+      setError('Vui lòng nhập số hợp lệ lớn hơn 0');
+      return;
+    }
+
+    if (voucherType === 'PERCENT' && val > 100) {
+      setError('Mức giảm phần trăm không được vượt quá 100%');
+      return;
+    }
+    
+    if (voucherType === 'AMOUNT' && val <= 100) {
+      setError('Mức giảm số tiền (VND) phải lớn hơn 100đ để phân biệt với phần trăm');
       return;
     }
 
     try {
       setLoading(true);
       setError('');
-      await onSubmit(discount);
+      await onSubmit(val);
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
-        setDiscountPercent('');
+        setDiscountValue('');
         onClose();
       }, 1500);
     } catch (err: any) {
@@ -72,20 +84,48 @@ export function IssueVoucherModal({ isOpen, onClose, onSubmit, customerName }: I
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1">Mức giảm (%) *</label>
+            <label className="block text-sm font-semibold text-gray-800 mb-2">Loại Voucher</label>
+            <div className="flex gap-4 mb-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="voucherType"
+                  checked={voucherType === 'PERCENT'}
+                  onChange={() => setVoucherType('PERCENT')}
+                  className="w-4 h-4 text-[var(--color-brand-primary)] focus:ring-[var(--color-brand-secondary)]"
+                />
+                <span className="text-sm font-medium">Theo phần trăm (%)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="voucherType"
+                  checked={voucherType === 'AMOUNT'}
+                  onChange={() => setVoucherType('AMOUNT')}
+                  className="w-4 h-4 text-[var(--color-brand-primary)] focus:ring-[var(--color-brand-secondary)]"
+                />
+                <span className="text-sm font-medium">Số tiền cố định (VND)</span>
+              </label>
+            </div>
+
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
+              {voucherType === 'PERCENT' ? 'Mức giảm (%) *' : 'Số tiền giảm (VND) *'}
+            </label>
             <input
               type="number"
-              min="1"
-              max="100"
-              step="1"
-              value={discountPercent}
-              onChange={(e) => setDiscountPercent(e.target.value)}
+              min={voucherType === 'PERCENT' ? "1" : "1000"}
+              max={voucherType === 'PERCENT' ? "100" : "10000000"}
+              step={voucherType === 'PERCENT' ? "1" : "1000"}
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[var(--color-brand-secondary)] focus:border-transparent outline-none transition-all font-bold"
-              placeholder="VD: 10"
+              placeholder={voucherType === 'PERCENT' ? "VD: 10" : "VD: 50000"}
               disabled={loading || success}
               autoFocus
             />
-            <p className="text-xs text-gray-400 mt-2">Hệ thống hiện hỗ trợ voucher giảm theo phần trăm.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              {voucherType === 'PERCENT' ? 'Giảm tối đa 100%' : 'Lưu ý: Mức giảm số tiền nên là số lớn (VD: 50000đ)'}
+            </p>
           </div>
 
           <div className="pt-4 flex justify-end gap-3 mt-4">

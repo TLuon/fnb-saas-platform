@@ -556,9 +556,12 @@ export class OrderService {
       }
 
       const subtotal = Number(order.subtotal || 0);
+      const calcDiscountAmount = Number(voucher.discount_percent) > 100 
+        ? Number(voucher.discount_percent) 
+        : Math.round(subtotal * Number(voucher.discount_percent) / 100);
       const discountAmount = Math.min(
         subtotal,
-        Math.round(subtotal * Number(voucher.discount_percent) / 100),
+        calcDiscountAmount,
       );
       const finalAmount = Math.max(0, subtotal - discountAmount);
       const { error: discountError } = await admin

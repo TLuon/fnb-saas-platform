@@ -6,7 +6,7 @@ export class CreateVoucherDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(100000000)
   discount_percent?: number;
 
   @IsOptional()

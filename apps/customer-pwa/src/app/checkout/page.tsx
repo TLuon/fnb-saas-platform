@@ -186,7 +186,9 @@ export default function CheckoutPage() {
 
   const subtotal = Number(orderData?.subtotal ?? orderData?.final_amount ?? 0);
   const discountAmount = selectedVoucher?.discount_percent
-    ? Math.round(subtotal * selectedVoucher.discount_percent / 100)
+    ? (selectedVoucher.discount_percent > 100
+        ? selectedVoucher.discount_percent
+        : Math.round((subtotal * selectedVoucher.discount_percent) / 100))
     : Number(orderData?.discount_amount ?? 0);
   const payableAmount = Math.max(0, subtotal - discountAmount);
 
