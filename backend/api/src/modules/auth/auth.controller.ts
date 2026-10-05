@@ -34,7 +34,7 @@ export class AuthController {
   @Public()
   @HttpCode(200)
   @Post('forgot-password')
-  forgotPassword(@Body() dto: { email: string }) {
+  forgotPassword(@Body() dto: { email: string; redirect_to?: string }) {
     return this.authService.forgotPassword(dto);
   }
 

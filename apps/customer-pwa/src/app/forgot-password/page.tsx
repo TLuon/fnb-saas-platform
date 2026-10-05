@@ -21,7 +21,8 @@ export default function ForgotPasswordPage() {
 
     try {
       setLoading(true);
-      await apiClient.post('/auth/forgot-password', { email });
+      const redirect_to = typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined;
+      await apiClient.post('/auth/forgot-password', { email, redirect_to });
       setSubmitted(true);
       showInfo('Yêu cầu đã được gửi!');
     } catch (err: any) {

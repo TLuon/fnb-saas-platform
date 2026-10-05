@@ -301,14 +301,16 @@ export class AuthService {
   /**
    * POST /api/v1/auth/forgot-password
    */
-  async forgotPassword(dto: { email: string }) {
+  async forgotPassword(dto: { email: string; redirect_to?: string }) {
     if (!dto.email) {
       throw new AppException('ERR_9001_VALIDATION_FAILED', 'Vui lòng cung cấp email');
     }
 
     const { error } = await this.supabase
       .anon()
-      .auth.resetPasswordForEmail(dto.email);
+      .auth.resetPasswordForEmail(dto.email, {
+        redirectTo: dto.redirect_to,
+      });
 
     if (error) {
       throw new AppException('ERR_9002_INTERNAL_SERVER_ERROR', error.message || 'Không thể gửi email đặt lại mật khẩu');
@@ -325,9 +327,14 @@ export class AuthService {
       throw new AppException('ERR_9001_VALIDATION_FAILED', 'Vui lòng cung cấp mật khẩu mới');
     }
 
+    const { data: { user }, error: authError } = await this.supabase.anon().auth.getUser(dto.token || '');
+    if (authError || !user) {
+      throw new AppException('ERR_9001_VALIDATION_FAILED', 'Token không hợp lệ hoặc đã hết hạn');
+    }
+
     const { error } = await this.supabase
       .admin()
-      .auth.admin.updateUserById(dto.token || '', {
+      .auth.admin.updateUserById(user.id, {
         password: dto.new_password,
       });
 

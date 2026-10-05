@@ -13,6 +13,16 @@ export default function ResetPasswordPage() {
   const router = useRouter();
   const { showError, showInfo } = useToast();
 
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const accessToken = hashParams.get('access_token');
+      if (accessToken) {
+        setToken(accessToken);
+      }
+    }
+  }, []);
+
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token || !newPassword) {
