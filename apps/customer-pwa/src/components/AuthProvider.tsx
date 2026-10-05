@@ -12,6 +12,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { showLoginModal, setShowLoginModal, pathname } = useAuthGuard();
 
   useEffect(() => {
+    // 0. Catch Supabase Auth recovery redirects globally
+    if (typeof window !== 'undefined' && window.location.hash.includes('type=recovery')) {
+      window.location.href = '/reset-password' + window.location.hash;
+      return;
+    }
+
     // 1. Khôi phục token từ localStorage
     authStore.getState().hydrate();
     setIsHydrated(true);
