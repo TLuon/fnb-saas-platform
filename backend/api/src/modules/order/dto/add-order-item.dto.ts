@@ -12,4 +12,7 @@ export class AddOrderItemDto {
 
   @IsOptional()
   modifiers?: any;
+
+  @IsOptional()
+  unit_price?: number;
 }

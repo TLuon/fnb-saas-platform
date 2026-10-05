@@ -1,6 +1,7 @@
 export interface CheckoutCartItem {
   productId: string;
   quantity: number;
+  price?: number;
   modifiers?: unknown;
   note?: string;
 }
@@ -11,6 +12,7 @@ export function buildOrderItemPayload(item: CheckoutCartItem, orderNote?: string
   return {
     product_id: item.productId,
     quantity: item.quantity,
+    unit_price: item.price,
     modifiers: {
       ...(item.modifiers ? { selections: item.modifiers } : {}),
       ...(note ? { note } : {}),

@@ -219,7 +219,7 @@ export class OrderService {
         product_id: product.id,
         product_name: product.name,
         quantity: dto.quantity,
-        unit_price: product.price,
+        unit_price: dto.unit_price !== undefined ? dto.unit_price : product.price,
         modifiers: dto.modifiers || [],
         kitchen_status: 'QUEUED',
         added_by_customer_id: null
