@@ -52,6 +52,32 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Serve a simple HTML at root to catch Supabase Auth redirects (like password recovery)
+  // because Supabase defaults to the Site URL (http://localhost:3000/) when redirect_to is not allowed.
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/', (req: any, res: any) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Đang chuyển hướng...</title>
+        <script>
+          window.onload = function() {
+            var hash = window.location.hash;
+            // Chuyển hướng về trang Đặt lại mật khẩu của Customer PWA (thường chạy port 3001)
+            var customerAppUrl = 'http://localhost:3001/reset-password';
+            window.location.replace(customerAppUrl + hash);
+          };
+        </script>
+      </head>
+      <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+        <p>Đang chuyển hướng bạn đến trang ứng dụng...</p>
+      </body>
+      </html>
+    `);
+  });
+
   await app.listen(process.env.PORT ?? 3001, '0.0.0.0');
 }
 await bootstrap();

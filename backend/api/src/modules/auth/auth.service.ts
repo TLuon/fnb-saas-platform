@@ -329,6 +329,7 @@ export class AuthService {
 
     const { data: { user }, error: authError } = await this.supabase.anon().auth.getUser(dto.token || '');
     if (authError || !user) {
+      console.error('Reset Password getUser error:', authError);
       throw new AppException('ERR_9001_VALIDATION_FAILED', 'Token không hợp lệ hoặc đã hết hạn');
     }
 
